@@ -1,0 +1,785 @@
+#!/usr/bin/env node
+// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the multi-proxy project.
+
+'use strict';
+
+// L2 P3 · MCP Bridge（JSON-RPC 2.0 over stdio）
+// ADR-0004-mcp-bridge：把 AgentRegistry 能力 + RouteEngine 路由暴露为标准 MCP 工具。
+// 零依赖：仅 process.stdin/stdout + JSON，不引第三方 MCP SDK。
+// 门控：PROXY_L2_MCP!=1 时 startStdio() 抛出 'mcp gate closed'。
+
+const { AgentRegistry } = require('./agent-registry.js');
+const { PluginRuntime } = require('./plugin-runtime.js');
+const { RouteEngine } = require('./route-engine.js');
+
+const PROTOCOL_VERSION = '2025-03-26';
+const SERVER_INFO = { name: 'l2-mcp-bridge', version: '0.1.0' };
+
+// MCP JSON-RPC 2.0 error codes
+function rpcError(code, message, data) {
+  const err = { code, message };
+  if (data !== undefined) err.data = data;
+  return err;
+}
+
+// ---- P3  二期 · LLM 拆解真接线（镜像 routes/orchestration.js，非侵入）----
+// 门控 PROXY_LLM_DECOMPOSE ∈ {1,true,on}：开 → MCP orchestrate 在「内置模板拆解」前先尝试
+// LLM 拆解；缺省关 → 行为与既有 22 例完全一致（零 LLM 依赖、确定可复现、零回归）。
+// 与 HTTP 路由同构：复用 l2/llm-decomposer.js 的 makeLlmDecomposer（内核内已带失败降级，
+// LLM 不可达/坏 JSON/自环一律回退内置模板，绝不冒泡），LLM 拆解仅发生在 shadow 前置。
+function isLlmDecomposeOpen() {
+  const v = String(process.env.PROXY_LLM_DECOMPOSE || '').toLowerCase();
+  return v === '1' || v === 'true' || v === 'on';
+}
+// 门控 PROXY_L2_QUALITY ∈ {1,true,on}：开 → orchestrate 在热路径启用质量工程三层检查
+//   （2.1 事实绑定恒开无需门控；2.2 语义审阅 + 2.3 执行保真由此门控启用）。
+//   缺省关 → 与既有行为完全一致（零行为变更，非侵入铁律）。
+//   凭据：见 l2/L2-QUALITY-ENGINEERING.md §五「接热路径验收清单」——翻 realGate 前应显式开启本门控。
+function isQualityGateOpen() {
+  const v = String(process.env.PROXY_L2_QUALITY || '').toLowerCase();
+  return v === '1' || v === 'true' || v === 'on';
+}
+// LLM 拆解连接配置（全部来自 env，缺省走内核默认 127.0.0.1:11434；与 HTTP 路由 buildLlmCfg 同款）
+function buildMcpLlmCfg() {
+  return {
+    baseUrl: process.env.PROXY_LLM_BASE_URL || undefined,
+    model: process.env.PROXY_LLM_MODEL || undefined,
+    token: process.env.PROXY_LLM_TOKEN || undefined,
+    timeoutMs: process.env.PROXY_LLM_TIMEOUT_MS ? Number(process.env.PROXY_LLM_TIMEOUT_MS) : undefined,
+    };
+}
+
+
+function okResponse(id, result) {
+  return { jsonrpc: '2.0', id, result };
+}
+function errResponse(id, code, message, data) {
+  return { jsonrpc: '2.0', id, error: rpcError(code, message, data) };
+}
+
+// 把 AgentRegistry 的能力映射为 MCP tool schema
+function toMcpTool(adapter, registry) {
+  const profile = registry.get(adapter.adapterId);
+  return {
+    name: adapter.adapterId,
+    description: (profile && profile.description) || `Agent profile: ${adapter.adapterId}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Task prompt or input text' },
+        task:    { type: 'string', description: 'Task type (text/code/video/...)'},
+      },
+      required: [],
+      },
+    };
+}
+
+// ---- GATE 1 · MCP 边界的形状门 ----
+// 此前 inputSchema 只在 listTools() 里声明、无任何代码消费：参数错会一路穿到
+// orchestrator.js:170 才被 contract.js 抓住（声明态 ≠ 运行态）。这里用同一份 schema 先拦一次。
+// 只支持本文件实际用到的关键字：type / properties / required / enum。
+// 不做 additionalProperties 拒绝：orchestrate 的 ctx/systemPrompt/messages 等字段本就没声明。
+// 手软原则：number 接受可转数字的字符串（既有调用方传过字符串），其余严格。
+// 开关 PROXY_MCP_SCHEMA_GUARD=0 可关（默认开；纯防御，只拒本来就错的调用）。
+function isSchemaGuardOpen() {
+  return String(process.env.PROXY_MCP_SCHEMA_GUARD || '1') !== '0';
+}
+
+function checkArgs(tool, args) {
+  const a = (args === undefined || args === null) ? {} : args;
+  if (typeof a !== 'object' || Array.isArray(a)) {
+    throw rpcError(-32602, `${tool.name}: arguments must be an object`);
+  }
+  const schema = tool.inputSchema || {};
+  for (const key of (schema.required || [])) {
+    if (a[key] === undefined || a[key] === null) {
+      throw rpcError(-32602, `${tool.name}: missing required argument "${key}"`,
+        { required: schema.required, received: Object.keys(a) });
+    }
+  }
+  const props = schema.properties || {};
+  for (const key of Object.keys(a)) {
+    const spec = props[key];
+    if (!spec || a[key] === undefined) continue;
+    const v = a[key];
+    const ok = spec.type === 'string'  ? typeof v === 'string'
+             : spec.type === 'number'  ? (typeof v === 'number' && Number.isFinite(v))
+                                      || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))
+             : spec.type === 'boolean' ? typeof v === 'boolean'
+             : spec.type === 'object'  ? (typeof v === 'object' && v !== null && !Array.isArray(v))
+             : true;
+    if (!ok) {
+      throw rpcError(-32602, `${tool.name}: argument "${key}" must be ${spec.type}`, { got: typeof v });
+    }
+    if (Array.isArray(spec.enum) && !spec.enum.includes(v)) {
+      throw rpcError(-32602, `${tool.name}: argument "${key}" must be one of ${spec.enum.join('/')}`,
+        { allowed: spec.enum, got: v });
+    }
+  }
+  return a;
+}
+
+class McpServer {
+  // 门控默认关（非侵入铁律）：gate 缺省时读 PROXY_L2_MCP，再缺省 '0'（关）。
+  // 只有显式 gate='1' 或 env=1 才开；构造器不再默认 '1'。
+  constructor({ registry, routeEngine, gate, executor = null, realGate, promptCache, pluginRuntime } = {}) {
+    this.registry = registry || new AgentRegistry();
+     // ④ P0→P1：token 控制平面 prompt-cache 内核（注入缝，默认 undefined = 不启用，零行为变更）。
+     // 注入后 listTools() 才暴露 cache_stats 工具、orchestrate 才附 cacheObservation sidecar，
+     // 默认路径不注入 → 现有测试 listTools()/orchestrate 行为完全不变（零回归）。
+    this.promptCache = (typeof promptCache === 'object' && promptCache !== null) ? promptCache : undefined;
+     // L2 Step 5（A3 #5）：pluginRuntime 注入缝。缺省 new 空 runtime（旧行为，零回归）；
+     // 生产 routes/mcp.js 门控开时传 bootstrapAdapters 建好的 runtime → route engine 的 pluginCaps 非空。
+    this.routeEngine = routeEngine || new RouteEngine({
+      registry: this.registry,
+      pluginRuntime: pluginRuntime || new PluginRuntime({ logger: { log: () => {} } }),
+      shadowMode: true,
+       });
+    this.gate = (gate !== undefined) ? gate : String(process.env.PROXY_L2_MCP || '0');
+    // 二级门控 PROXY_ADAPTER_REAL（默认 0=关）：orchestrate 真执行（真调 adapter / 注入 executor）须显式开。
+    // 非侵入铁律：缺省保持 shadow（不触碰下游 adapter），与 PROXY_L2_MCP（bridge 开/关）解耦。
+    this.realGate = (realGate !== undefined) ? realGate : String(process.env.PROXY_ADAPTER_REAL || '0');
+    // 真执行器（注入缝）：(subtask, ctx) => 结果。缺省 null → orchestrate 始终 shadow（零行为变更）；
+    // 生产/standalone 由 require.main 按 PROXY_ADAPTER_REAL 用 _realExecutor 注入（路由选中 adapter）。
+    this.executor = (typeof executor === 'function') ? executor : null;
+    this.protocolVersion = PROTOCOL_VERSION;
+    this.initialized = false;
+  }
+
+  // 门控检查
+  isGateOpen() {
+    return this.gate === '1';
+  }
+
+  // MCP 生命周期
+  initialize(params) {
+    this.initialized = true;
+    return {
+      protocolVersion: this.protocolVersion,
+      capabilities: {
+        tools: { listChanged: false },
+        // L2 Step 6（A3 #4）：资源面（非侵入只读视图）——活跃 agent 注册表 + profile 只读视图。
+        // resources/listChanged:false：资源集由 registry 决定，注册表变更不主动推送（与 tools 同语义）。
+        resources: { listChanged: false },
+         },
+      serverInfo: SERVER_INFO,
+      };
+  }
+
+  // 列出全部工具（能力声明）
+  listTools() {
+    const adapters = this.registry.list();
+    const tools = adapters.map(a => toMcpTool(a, this.registry));
+    // 加上 L2 原生工具：routeTask（暴露路由决策能力）
+    tools.push({
+      name: 'routeTask',
+      description: 'Route a task to the best agent via L2 RouteEngine. Returns routing decision.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          type:    { type: 'string', description: 'Task type: text/code/video/audio/image' },
+          prompt: { type: 'string', description: 'Task prompt' },
+          agent:   { type: 'string', description: 'Prefer agent (optional)' },
+          // 复杂度词表与 l2/COMPLEXITY-MODE.md §2.2 / decomposer.js 对齐：low/medium/high
+          // （_mapTier 只认这三值，high→large / low→small / 其余→medium；不声明无实际语义的 trivial/complex）
+          complexity: { type: 'string', enum: ['low','medium','high'],
+                       description: 'Task complexity, drives model-tier selection: low→small, medium→medium, high→large' },
+          },
+        required: ['type'],
+        },
+      });
+    // L2 编排能力暴露为 MCP 工具（ADR-0004-mcp-bridge：只读查询 + 决策，默认 shadow 不真执行）
+    //   decompose：把一个请求拆解成子任务 DAG（同步、确定性、零 LLM）—— 暴露 decomposer 能力。
+    //   orchestrate：跑一个 DAG（或先拆解再跑）—— 暴露 orchestrator 能力。默认 shadowMode=true，
+    //   只产出调度/路由决策，不触碰真实 adapter（非侵入铁律 + ADR-0004 shadow 默认开）。
+    //   注意：orchestrate 本质 async（DAG 并发调度），故经 callToolAsync/handleMessageAsync 暴露；
+    //   同步 callTool/handleMessage 保持纯同步、不回归（见下）。
+    tools.push({
+      name: 'decompose',
+      description: 'Decompose a request into a subtask DAG (nodes + dependency edges) via L2 Decomposer. Synchronous, deterministic, rule-based; no LLM. Returns {template, subtasks, edges}.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          input:   { type: 'string', description: 'User request to decompose (e.g. "做一个视频短片" / "jwt 认证")' },
+          },
+        required: ['input'],
+        },
+      });
+    tools.push({
+      name: 'orchestrate',
+      description: 'Run a subtask DAG (or decompose a request first) via L2 Orchestrator. Shadow-only: produces scheduling/routing decisions without executing real adapters. Returns {template, subtasks, report}. Async (concurrent DAG schedule).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          input:       { type: 'string',  description: 'Request to decompose+run (omit if dag given)' },
+          dag:         { type: 'object',  description: 'Pre-built DAG {input, template, subtasks, edges} (skips decomposition)' },
+          shadowMode: { type: 'boolean', description: 'Shadow mode. Default true unless PROXY_ADAPTER_REAL gate is enabled; can be forced per-call.' },
+          maxRetries: { type: 'number',  description: 'Retry count per subtask on failure (default 1)' },
+          llm:         { type: 'boolean',  description: 'LLM decompose this request first. Effective only when gate PROXY_LLM_DECOMPOSE is on (or per-call true); otherwise falls back to built-in template. LLM failure degrades to template silently.' },
+          quality:     { type: 'boolean',  description: 'Enable L2 quality gates (2.2 semantic review + 2.3 execution fidelity) for this call. Same as env PROXY_L2_QUALITY; adds a sidecar "quality" field with any issues found.' },
+          qualityThrow:{ type: 'boolean',  description: 'Only effective with quality=true: error-level semantic/fidelity issues hard-reject the subtask instead of being recorded as diagnostics.' },
+          },
+        required: [],
+        },
+      });
+    // ④ P0→P1：prompt-cache 内核注入时，才把 cache_stats 暴露为 MCP 工具（门控 off 不注入 → 零回归）。
+    // 非侵入铁律：默认路径 listTools() 不含 cache_stats，现有测试 toolCount 完全不变。
+    if (this.promptCache) {
+      tools.push({
+        name: 'cache_stats',
+        description: 'Token control plane · prompt-cache stats: cacheHitRate + recent cache observations (shadow · sidecar only, P0 PoC). Returns {cacheHitRate, cacheHits, totalObservations, breakpoints, recentObservations}.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', description: 'Max recent observations to include (default 50, max 200)' },
+             },
+          required: [],
+          },
+       });
+    }
+    return tools;
+    }
+
+   // ---- L2 Step 6（A3 #4）· MCP 资源面（非侵入只读视图）----
+   // 暴露「活跃 agent 注册表」为 MCP resource：比 tools/call 更贴合非侵入铁律——
+   // 纯只读、不触下游 adapter、不写 agent 文件。让外部 agent 能「看见当前有哪些 agent + 各自能力」。
+   // 资源 uri 形如 l2://agent/<id>；uri 末段不匹配任何注册 agent → 抛 -32602。
+   // 注意：纯只读，不真执行任何 adapter（区别于 PROXY_ADAPTER_REAL 二级门控的真执行路径）。
+   listResources() {
+     const profiles = this.registry ? this.registry.list() : [];
+     return profiles.map((p) => ({
+       uri: `l2://agent/${p.id}`,
+       name: p.id,
+       title: p.name || p.id,
+       description: p.description || `Agent profile: ${p.id}`,
+       mimeType: 'application/json',
+       tags: Array.isArray(p.capabilityTags) ? p.capabilityTags : [],
+     }));
+   }
+
+   // 读单个 agent 的只读视图（脱敏：剔除 token/secret/credential 类字段，绝不回传密钥）。
+   // 未知 uri → 抛 -32602（带 available uri 列表，与 tools/call 的误导修复 Step 3 同风格）。
+   readResource(uri) {
+     if (typeof uri !== 'string' || !uri.startsWith('l2://agent/')) {
+      throw rpcError(-32602, `unknown resource uri: ${uri}`,
+            { available: this.listResources().map((r) => r.uri) });
+     }
+     const id = uri.slice('l2://agent/'.length);
+     let src;
+     try {
+       src = this.registry.get(id);
+     } catch (e) {
+      // registry.get 对未知 id 抛普通 Error（agent not found）→ 显式转 -32602
+      throw rpcError(-32602, `unknown agent id: ${id}`,
+             { available: this.listResources().map((r) => r.uri) });
+      }
+     // 只读视图：剔除任何疑似密钥字段（非侵入 + 防密钥经 MCP 面外泄）。
+     const SENSITIVE = /token|secret|credential|password|apiKey|bearer/i;
+     const view = {};
+     for (const [k, v] of Object.entries(src)) {
+       if (SENSITIVE.test(k)) view[k] = '[redacted]';
+       else view[k] = v;
+     }
+     return {
+      uri,
+      mimeType: 'application/json',
+      text: JSON.stringify(view, null, 2),
+      source: 'registry',
+      note: 'Read-only agent profile view (L2 Step 6). Secrets redacted; no real execution.',
+     };
+   }
+
+   // 按 listTools() 声明的 schema 校验一次入参；未知工具放行（交下游既有 unknown 报错）。
+  _guardArgs(name, args) {
+    const tool = this.listTools().find((t) => t.name === name);
+    return tool ? checkArgs(tool, args) : (args || {});
+  }
+
+  // 调用工具
+  callTool(name, args) {
+    // GATE 1：形状错在这里就拒，别让它穿到编排层（orchestrator.js:170）才被抓。
+    const a = isSchemaGuardOpen() ? this._guardArgs(name, args) : (args || {});
+    // ④ P0→P1：cache_stats 工具（prompt-cache 注入时可用；门控 off / 未注入 → 不暴露，零回归）。
+    if (name === 'cache_stats' && this.promptCache) {
+      const limit = Math.min(Math.max(1, Number(a.limit) || 50), 200);
+      const report = this.promptCache.report();
+      const recent = this.promptCache.getHistory().slice(-limit).reverse();
+      return {
+        tool: 'cache_stats',
+        shadow: true,
+        cacheHitRate: report.cacheHitRate,
+        cacheHits: report.cacheHits,
+        cacheMisses: report.cacheMisses,
+        requestCount: report.requestCount,
+        totalEstTokensUsed: report.totalEstTokensUsed,
+        totalEstTokensSaved: report.totalEstTokensSaved,
+        breakPointCount: report.breakPointCount,
+        gate: report.gate,
+        recentObservations: recent,
+        note: 'Token control plane · prompt-cache P0 PoC (observational · sidecar only · no live request injection)',
+      };
+    }
+    if (name === 'routeTask') {
+      const task = {
+        id: a.id || 'mcp-call',
+        type: a.type,
+        prompt: a.prompt || '',
+        agent: a.agent,
+        complexity: a.complexity,
+        };
+      // 非 shadow 时不真执行（ADR-0004-mcp-bridge 铁律：adapter real 须单独授权），仅返回路由决策
+      const decision = this.routeEngine.route(task);
+      const chosen = decision && decision.chosen;
+      return {
+        task: task.id,
+        shadow: true,
+        route: {
+          chosen: chosen ? {
+            adapterId: chosen.adapterId,
+            source: chosen.source,
+            confidence: chosen.confidence,
+            } : null,
+          candidates: (decision && decision.candidates || []).map(c => ({
+            adapterId: c.adapterId,
+            source: c.source,
+            confidence: c.confidence,
+            tierMatch: c.tierMatch,
+            modelTypeMatch: c.modelTypeMatch,
+            })),
+          fallback: !!(chosen && chosen.fallback),
+          reason: chosen ? chosen.reason : decision.message,
+          },
+        };
+    }
+    // 其他 tool：返回 adapter 能力快照（不真执行）。
+    // registry.get 对未知 key 会抛，需兜住转 -32602。
+    // Step 3：available 改为 listTools() 全量（adapter + routeTask + decompose + orchestrate），
+    // 而非只列 adapter（P2-3：误导消费者认为只有 adapter 可调）。
+    let adapter;
+    try {
+     adapter = this.registry.get(name);
+      } catch (_) {
+     throw rpcError(
+       -32602,
+       `Tool not found: ${name}`,
+       { available: this.listTools().map(t => t.name) }
+       );
+      }
+    if (!adapter) {
+     throw rpcError(
+       -32602,
+       `Tool not found: ${name}`,
+       { available: this.listTools().map(t => t.name) }
+       );
+      }
+    const real = this.realGate === '1';
+    return {
+      adapter: name,
+      shadow: !real,
+      capability: adapter,
+      // 二级门控 PROXY_ADAPTER_REAL 开启时，真执行器经 _realExecutor 路由选中 adapter（非侵入：只算「该谁来跑」，不触下游）；
+      // 缺省关 → 仅路由决策、不触下游。
+      note: real
+        ? 'Real execution enabled (PROXY_ADAPTER_REAL=1): subtask routed to an adapter via the gate.'
+        : 'Shadow mode: no real execution. Enable PROXY_ADAPTER_REAL for real run.',
+        };
+  }
+
+  // 真执行器（注入缝）：非侵入——经 routeEngine.route 路由选中该子任务的 adapter 后，
+  // 委托 this.executor 执行；无 executor 时退化为「仅路由、记录选中 adapter」（不触下游）。
+  // 由 require.main 在 PROXY_ADAPTER_REAL 开启时注入；测试可注入任意 executor 做 E2E。
+  _realExecutor() {
+   const self = this;
+   return async function (subtask, ctx) {
+     const decision = self.routeEngine.route({ ...subtask });
+     const chosen = decision && decision.chosen;
+     const base = { subtaskId: subtask.id, routedAdapterId: chosen ? chosen.adapterId : null };
+     // 无候选策略 = reject（质量工程 §四 待办②）：路由层明确拒执行 → 硬失败，
+     // 不再出现「没有 adapter 却照样调 executor」的静默降级。默认策略 observe 不会走到这里。
+     // 用抛错而非返回 status:'failed'：后者在 orchestrator 语义里只是"执行完成带回值"（status=done），
+     // 只有抛错才会走失败传播（downstream skipped）。重试只是重跑一次路由判定，不触达下游，代价为零。
+     if (decision && decision.rejected) {
+       throw new Error(`route rejected: ${decision.noCandidateReason || 'no routeable adapter'} (policy=reject)`);
+     }
+     if (typeof self.executor === 'function') {
+       try {
+         const value = await self.executor(chosen ? chosen.adapterId : null, subtask, ctx);
+         return Object.assign(base, { status: 'executed', value });
+         } catch (e) {
+         // 失败必须**传播**，不能吞：把 executor 抛错包成 status:'failed' 返回，在 orchestrator
+         // 语义里等于"执行完成带回值"（子任务 done、下游照跑）→ 静默降级，与「绝不静默降级」
+         // 纪律直接冲突（2026-10-01 executor 接线后实测：UnboundAdapterError 被吞成 done，
+         // 表面上全绿、实际下游一次没调）。故 rethrow，让 orchestrator 走 failed + 下游 skipped。
+         // 影响面：仅 executor 被注入时才有此路径（生产此前恒 undefined → 走 'routed' 分支），
+         // 即新能力内部语义，既有零 executor 行为逐字不变。
+         const err = new Error(`executor failed (${chosen ? chosen.adapterId : 'no-adapter'}): ${e && e.message || e}`);
+         err.cause = e;
+         err.routedAdapterId = chosen ? chosen.adapterId : null;
+         throw err;
+         }
+       }
+      return Object.assign(base, { status: 'routed' });
+     };
+    }
+
+  // 异步工具分发：orchestrate 本质 async（DAG 并发调度），其余工具委托同步 callTool（行为不变）。
+  // 与 callTool/handleMessage 并存：同步路径纯同步、零回归；本路径只承载 async 工具。
+  async callToolAsync(name, args) {
+    // GATE 1：async 路径（orchestrate/decompose）同门，避免只有同步入口被守。
+    const a = isSchemaGuardOpen() ? this._guardArgs(name, args) : (args || {});
+    if (name === 'orchestrate') {
+      const { Orchestrator } = require('./orchestrator.js');
+      // 二级门控 PROXY_ADAPTER_REAL（默认关，非侵入）是真执行的唯一权威：
+      //   门控关 → 恒 shadow（不触下游 adapter；per-call shadowMode 不可绕过门控）。
+      //   门控开 → 缺省真执行（缺省 shadowMode=false），per-call shadowMode:true 可强制回 shadow。
+      const gateOn = this.realGate === '1';
+      const shadowMode = gateOn
+         ? (a.shadowMode !== undefined ? (a.shadowMode === true) : false)
+         : true;
+      // 质量工程三层检查在热路径的启用缝（默认关，非侵入铁律，凭据 L2-QUALITY-ENGINEERING.md §五）：
+      //   env PROXY_L2_QUALITY=1 或 per-call args.quality=true 才启用。
+      //   启用后 2.2 语义审阅 + 2.3 执行保真才生效（2.1 事实绑定恒开，无门控）。
+      //   默认关 → Orchestrator 构造参数与既有完全一致，零行为变更。
+      const qualityOn = isQualityGateOpen() || (a.quality === true);
+      const qualityThrow = a.qualityThrow === true;
+      const orch = new Orchestrator({
+      shadowMode,
+      executor: shadowMode ? undefined : this._realExecutor(),
+      // 质量工程 2.2 需要候选信息：仅在质量层启用时注入 routeEngine（Orchestrator 由此从
+      // registry/pluginRuntime 取 adapter 候选）。默认关时传 undefined，保持既有 shadow 产物逐字一致。
+      routeEngine: qualityOn ? this.routeEngine : undefined,
+      semanticReview: qualityOn,
+      semanticThrow: qualityOn && qualityThrow,
+      fidelityCheck: qualityOn,
+      fidelityThrow: qualityOn && qualityThrow,
+        });
+      // P3  二期 · LLM 拆解真接线：门控 PROXY_LLM_DECOMPOSE（env）或 per-call a.llm===true 才介入；
+      //   缺省关 → 走内置模板拆解（既有行为、零 LLM 依赖、零回归）。与 PROXY_ADAPTER_REAL 正交
+      //   （后者管 adapter 真执行，前者管拆解器）；LLM 拆解只产 DAG（数据），shadow 前置，绝不触碰下游。
+      const useLlm = isLlmDecomposeOpen() || (a.llm === true);
+      // 有预置 dag → 直供（跳过拆解；LLM 不介入）；否则按门控选 LLM 拆解 / 内置模板拆解
+      const maxRetries = (a.maxRetries != null) ? Number(a.maxRetries) : undefined;
+      const input = a.input || a.prompt || '';
+      let out;
+      let decomposeSource = null;     // 仅 LLM 路径填充：'llm' / 'template(<reason>)'(失败降级时)
+      if (a.dag && Array.isArray(a.dag.subtasks) && a.dag.subtasks.length > 0) {
+       out = await orch.run(a.dag, { maxRetries, ctx: a.ctx });
+       } else if (useLlm) {
+         // 镜像 routes/orchestration.js：makeLlmDecomposer cfg 从 env，内核内已带失败降级
+         //（LLM 不可达 / 坏 JSON / 自环一律回退 templateDecompose，绝不冒泡）
+       const { makeLlmDecomposer } = require('./llm-decomposer.js');
+       const llmDecompose = makeLlmDecomposer(buildMcpLlmCfg());
+       const dag = await llmDecompose(input, { input });
+       decomposeSource = (dag && dag.meta) ? dag.meta.source : 'llm';
+       out = await orch.run(dag, { maxRetries, ctx: a.ctx });
+       } else {
+         // 默认：内置模板拆解（确定性、零 LLM 依赖）
+       out = await orch.runFromInput(input, { maxRetries, ctx: a.ctx });
+       }
+      const result = {
+       shadow: shadowMode,
+       template: out.history ? out.history.template : null,
+       subtasks: (out.history ? out.history.subtasks : []).map((s) => ({ id: s.id, type: s.type, status: s.status })),
+       report: out.report ? out.report.json : null,
+         };
+      if (decomposeSource !== null) {
+        // 观测：实际走的是 LLM 还是降级回模板；LLM 成功 → 'llm'，失败 → 'template(<reason>)'。
+        // 直供 dag 路径 LLM 不介入 → decomposeSource 恒 null → 不发射该字段（保持 UC4 直供语义）。
+        result.decomposeSource = decomposeSource;
+         }
+      // 质量层观测 sidecar：仅当质量门控开启时才附加字段（默认关 → 结果与既有完全一致，零行为变更）。
+      if (qualityOn) {
+        result.quality = {
+          semanticIssues: orch._semanticIssues || [],           // 2.2 语义审阅：无候选/模态不匹配的诊断
+          fidelityIssues: orch._fidelityIssues || [],            // 2.3 执行保真：下发 prompt 等透传字段被改样
+        };
+         }
+     // ④ P0→P1：prompt-cache 注入时，为本次 orchestrate 请求记一条 cache observation（前缀哈希命中）。
+     // 仅观测（sidecar shadow）：默认不注入 → orchestrate 行为完全不变（零回归）；注入时只加一个
+     // cacheObservation 旁路字段，绝不把 cache_control 写进真实 upstream 请求体（P2 待核实上游支持）。
+    if (this.promptCache) {
+      const obs = this.promptCache.record({
+        systemPrompt: a.systemPrompt,
+        toolSchemas:  a.toolSchemas,
+        messages:     a.messages || (input ? [{ role: 'user', content: input }] : []),
+       });
+      result.cacheObservation = {
+        cacheKey: obs.cacheKey,
+        hit: obs.hit,
+        estTokensUsed: obs.estTokensUsed,
+        estTokensSaved: obs.estTokensSaved,
+        note: 'Observational only; live cache_control injection is P2 (upstream capability unverified)',
+         };
+     }
+      return result;
+       }
+    if (name === 'decompose') {
+      const { templateDecompose } = require('./decomposer.js');
+      const input = a.input || a.prompt || '';
+      if (!String(input).length) {
+        throw rpcError(-32602, 'decompose: missing input',
+           { hint: 'pass arguments.input (the request text to decompose)' });
+        }
+      return { shadow: true, ...templateDecompose(input, { templates: a.templates }) };
+     }
+    // 其余工具（adapter 能力 + routeTask）同步执行路径不变
+    return this.callTool(name, args);
+    }
+
+  // 主分发：一条 MCP JSON-RPC 消息进，一条响应出
+  handleMessage(msg) {
+    // 门控关闭时拒绝所有消息
+    if (!this.isGateOpen()) {
+      throw new Error('mcp gate closed: set PROXY_L2_MCP=1 to enable');
+     }
+
+    if (!msg || msg.jsonrpc !== '2.0') {
+      const id = (msg && msg.id) || null;
+      return errResponse(id, -32600, 'Invalid Request: missing jsonrpc=2.0');
+     }
+
+    const { id, method, params } = msg;
+    // Notification（无 id）不返回响应，仅初始化/日志
+    if (method === 'notifications/initialized' || method === 'initialized') return null;
+
+    switch (method) {
+      case 'initialize':
+        return okResponse(id, this.initialize(params));
+
+      case 'ping':
+        return okResponse(id, null);   // MCP 规范：ping 回 null result
+
+      case 'tools/list':
+        return okResponse(id, { tools: this.listTools() });
+
+      case 'tools/call': {
+        const name = params && params.name;
+        const args = params && params.arguments;
+        if (!name) return errResponse(id, -32602, 'Missing tool name');
+        try {
+          const result = this.callTool(name, args);
+          return okResponse(id, { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] });
+          } catch (e) {
+          if (e && typeof e.code === 'number') {
+            return errResponse(id, e.code, e.message, e.data);
+             }
+          return errResponse(id, -32603, 'Tool execution failed: ' + (e && e.message || String(e)));
+          }
+        }
+
+      case 'resources/list':
+        // L2 Step 6（A3 #4）：活跃 agent 注册表的只读视图（非侵入，不触下游）。
+        return okResponse(id, { resources: this.listResources() });
+
+      case 'resources/read': {
+        // L2 Step 6：读单个 agent 只读视图（脱敏密钥）。纯只读、不真执行。
+        const uri = params && (params.uri || params.name);
+        if (!uri) return errResponse(id, -32602, 'Missing resource uri');
+        try {
+          const res = this.readResource(uri);
+          return okResponse(id, {
+            uri: res.uri,
+            mimeType: res.mimeType,
+            contents: [{ uri: res.uri, mimeType: res.mimeType, text: res.text }],
+            note: res.note,
+          });
+          } catch (e) {
+          if (e && typeof e.code === 'number') {
+            return errResponse(id, e.code, e.message, e.data);
+             }
+          return errResponse(id, -32603, 'Resource read failed: ' + (e && e.message || String(e)));
+          }
+        }
+
+      default:
+        return errResponse(id, -32601, `Method not found: ${method}`);
+      }
+    }
+
+  // 异步主分发：与 handleMessage 同构，但 tools/call 走 callToolAsync（承载 orchestrate 等 async 工具）。
+  // 其余方法（initialize/ping/tools/list/notification）与同步路径行为完全一致。
+  async handleMessageAsync(msg) {
+    // 门控关闭时拒绝所有消息（与 handleMessage 同）
+    if (!this.isGateOpen()) {
+      throw new Error('mcp gate closed: set PROXY_L2_MCP=1 to enable');
+      }
+    if (!msg || msg.jsonrpc !== '2.0') {
+      const id = (msg && msg.id) || null;
+      return errResponse(id, -32600, 'Invalid Request: missing jsonrpc=2.0');
+      }
+    const { id, method, params } = msg;
+    if (method === 'notifications/initialized' || method === 'initialized') return null;
+    switch (method) {
+      case 'initialize':
+        return okResponse(id, this.initialize(params));
+      case 'ping':
+        return okResponse(id, null);
+      case 'tools/list':
+        return okResponse(id, { tools: this.listTools() });
+      case 'tools/call': {
+        const name = params && params.name;
+        const args = params && params.arguments;
+        if (!name) return errResponse(id, -32602, 'Missing tool name');
+        try {
+          const result = await this.callToolAsync(name, args);
+          return okResponse(id, { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] });
+          } catch (e) {
+          if (e && typeof e.code === 'number') {
+            return errResponse(id, e.code, e.message, e.data);
+            }
+          return errResponse(id, -32603, 'Tool execution failed: ' + (e && e.message || String(e)));
+           }
+         }
+
+      case 'resources/list':
+        return okResponse(id, { resources: this.listResources() });
+
+      case 'resources/read': {
+        const uri = params && (params.uri || params.name);
+        if (!uri) return errResponse(id, -32602, 'Missing resource uri');
+        try {
+          const res = this.readResource(uri);
+          return okResponse(id, {
+            uri: res.uri,
+            mimeType: res.mimeType,
+            contents: [{ uri: res.uri, mimeType: res.mimeType, text: res.text }],
+            note: res.note,
+           });
+           } catch (e) {
+          if (e && typeof e.code === 'number') {
+            return errResponse(id, e.code, e.message, e.data);
+             }
+          return errResponse(id, -32603, 'Resource read failed: ' + (e && e.message || String(e)));
+           }
+         }
+
+      default:
+        return errResponse(id, -32601, `Method not found: ${method}`);
+      }
+    }
+
+  // stdio 入口（生产用）
+  startStdio() {
+   if (!this.isGateOpen()) {
+     throw new Error('mcp gate closed: set PROXY_L2_MCP=1 to enable');
+     }
+    // 从 stdin 逐行读 JSON-RPC 消息
+   const readline = require('readline');
+   const rl = readline.createInterface({ input: process.stdin });
+   rl.on('line', line => {
+     if (!line.trim()) return;
+     try {
+       const msg = JSON.parse(line);
+       const resp = this.handleMessage(msg);
+       if (resp !== null) {
+         process.stdout.write(JSON.stringify(resp) + '\n');
+         if (typeof process.stdout.flush === 'function') process.stdout.flush();
+          }
+        } catch (e) {
+       // 解析失败的行输出 -32700 parse error
+       const id = null;
+       try { const m = JSON.parse(line); id = m && m.id; } catch (_) { /* 保持 null */ }
+       process.stdout.write(
+         JSON.stringify(errResponse(id, -32700, 'Parse error: ' + (e && e.message || String(e)))) + '\n'
+         );
+       }
+     });
+   return rl; // 返回接口以便调用方/单测关闭 stdin（避免 main 进程挂起）
+    }
+
+  // 异步 stdio 入口：与 startStdio 同构，但每行消息走 handleMessageAsync。
+  // 承载 orchestrate 等 async 工具（initialize/ping/tools/list/notification 行为与同步路径完全一致，
+  // handleMessageAsync 是其超集，故不回归；仅新增 async 工具可用）。
+  //
+  // drain-on-EOF（关键）：async 工具的响应要等异步 round-trip 才写出；若 stdin EOF 立刻
+  // process.exit(0)，在飞的响应还没写出就被强杀 → 丢响应（UC2/UC3 现象）。用 pending 集合跟踪
+  // 在飞处理，stdin EOF 时等其全部 settle 再 exit；同步 EOF 场景集合恒空 → 立即 exit（行为不变）。
+  // 注意：exit 必须由「本入口独占」——调用方（require.main / 测试）不可再挂 eager 的
+  // rl.on('close', () => process.exit())，否则 eager exit 会在 drain 的 microtask 之前杀掉进程。
+  startStdioAsync() {
+   if (!this.isGateOpen()) {
+     throw new Error('mcp gate closed: set PROXY_L2_MCP=1 to enable');
+     }
+   const readline = require('readline');
+   const rl = readline.createInterface({ input: process.stdin });
+   const pending = new Set();
+   rl.on('line', (line) => {
+     if (!line.trim()) return;
+     const p = (async () => {
+       try {
+         const msg = JSON.parse(line);
+         const resp = await this.handleMessageAsync(msg);
+         if (resp !== null) {
+           process.stdout.write(JSON.stringify(resp) + '\n');
+           if (typeof process.stdout.flush === 'function') process.stdout.flush();
+            }
+          } catch (e) {
+         // 解析失败的行输出 -32700 parse error
+         const id = null;
+         try { const m = JSON.parse(line); id = m && m.id; } catch (_) { /* 保持 null */ }
+         process.stdout.write(
+           JSON.stringify(errResponse(id, -32700, 'Parse error: ' + (e && e.message || String(e)))) + '\n'
+           );
+         }
+       })().finally(() => pending.delete(p));
+     pending.add(p);
+     });
+     // stdin EOF：先在飞 async 响应全部 flush 落地，再 exit（不丢响应）；集合空则立即 exit（与原行为一致）。
+     rl.on('close', () => {
+       Promise.all([...pending])
+         .then(() => process.exit(0))
+         .catch(() => process.exit(1));
+       });
+   return rl; // 返回接口以便调用方/单测关闭 stdin（避免 main 进程挂起）
+    }
+}
+
+module.exports = {
+  McpServer,
+  PROTOCOL_VERSION,
+  SERVER_INFO,
+  rpcError,
+  okResponse,
+  errResponse,
+};
+
+// 直接 node l2/mcp-server.js 时以 stdio 模式启动（门控 PROXY_L2_MCP=1）
+if (require.main === module) {
+  const { AgentRegistry } = require('./agent-registry.js');
+  const { PluginRuntime } = require('./plugin-runtime.js');
+  const { seedDefaultProfiles } = require('./mcp-default-seed.js');
+   // 默认 seed 本地 adapter（h3web/codex）+ 三档 text-tier profile（complexity 路由落点），
+   // 与 manager 接线 routes/mcp.js 共用同一 seed（l2/mcp-default-seed.js 单一来源）。
+  const reg = new AgentRegistry();
+  seedDefaultProfiles(reg);
+  const server = new McpServer({ gate: process.env.PROXY_L2_MCP || '0', registry: reg,
+      pluginRuntime: new PluginRuntime({ logger: { log: () => {} } }), shadowMode: true });
+   // 二级门控 PROXY_ADAPTER_REAL：开启时编排真执行——非侵入的 _realExecutor 经 routeEngine 路由选中
+   // adapter（无注入下游 executor 时退化为「仅路由记录选中 adapter」，绝不触下游/不写 agent 文件）。
+   // 缺省关 → orchestrate 保持 shadow。
+  if (String(process.env.PROXY_ADAPTER_REAL || '0') === '1') {
+    // executor 接线（2026-10-01）：PROXY_EXECUTOR_BIND=1（默认 0）才把真实 adapter 绑上来。
+    // 不开 → executor 仍 undefined → _realExecutor 走「仅路由」退化分支（与改造前逐字一致）。
+    // ⚠️ 开了就会真触下游（真 HTTP 到本地 codex-proxy/h3web/claude），会真花钱、真外发数据。
+    const { isExecutorBindOpen, createBoundExecutor } = require('./executor-bind.js');
+    if (isExecutorBindOpen()) {
+      const bound = createBoundExecutor({ logger: { log: () => {}, warn: () => {} } });
+      server.executor = bound.executor;
+      server._executorBind = bound;      // 运维可见性：describe() 可查"到底绑了谁"
+    } else {
+      server.executor = undefined;       // 真路由但无下游 executor → 「仅路由」退化分支
+    }
+    server.realGate = '1';
+   }
+  // exit 由 startStdioAsync 的 drain-on-EOF 独占（stdin EOF → 等在飞 async 响应 flush 落地再 exit）。
+  // 此处**不再**挂 eager 的 rl.on('close', () => process.exit(0))：它与 drain 是同一 'close' 上的
+  // 两个 listener，eager exit(0) 会抢在 drain 的 Promise.all microtask 之前把进程杀掉 → 丢响应。
+  const rl = server.startStdioAsync();
+  // exit 由 startStdioAsync 的 drain-on-EOF 独占（stdin EOF → 等在飞 async 响应 flush 落地再 exit）。
+  // 关键：此处**不注册** rl.on('close', () => process.exit(0))——它与 drain 是同一 'close' 事件上的
+  // 两个 listener，eager exit(0) 会抢在 drain 的 Promise.all microtask 之前把进程杀掉 → UC2/UC3 丢响应。
+  // readline 已接管 stdin 读取，进程在 drain 完成前由 in-flight 工作 + drain 保活。
+  process.stderr.write('[l2-mcp] bridge started on stdio\n');
+}

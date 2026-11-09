@@ -1,0 +1,280 @@
+# P0 安全门禁 CI（真实验证后写，命令均本地跑通）
+# 9/26 修：cursor-proxy/.gitignore 忽略 dist/ → CI checkout 无 dist/server/start.js
+#         → process-manager.js:41 探测 cursor = false → /api/installed 漏 cursor
+#         → api.test.js:106 / e2e-scenarios.test.js:36 / api.test.js:67 必挂（9 封邮件根因）
+#         修法：cursor job 构建 dist + upload-artifact，manager job needs cursor + download-artifact
+# 9/27 加 shell job：run tests/shell/check.sh（zero-dep CJK-safe 本机 15/15 绿，bats 无 bats 时的官方回退门禁）
+name: P0 Security Gate
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  codex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: codex-proxy/package-lock.json
+      - name: P0 gate + full
+        run: |
+          cd codex-proxy
+          npm ci
+          npx jest tests/config-leak-gate.test.js --verbose --forceExit
+          npx jest --silent --forceExit
+
+  cursor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: cursor-proxy/package-lock.json
+      - name: P0-E drift + build dist + upload artifact
+        run: |
+          cd cursor-proxy
+          npm ci
+          NODE_OPTIONS=--experimental-vm-modules npx jest tests/unit/pricing-cache-drift.test.ts --verbose --forceExit
+           # 构建 dist 产物（dist/ 被 gitignore，CI 无此文件）
+           # 产物：cursor-proxy/dist/server/start.js
+          npm run build
+          test -f dist/server/start.js && echo "cursor dist start.js built ok" || { echo "FAIL: cursor dist/server/start.js missing"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cursor-dist
+          path: cursor-proxy/dist/
+          if-no-files-found: error
+
+  hermes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: pytest
+        run: |
+          pip install pytest
+          # 从 requirements.lock 装，不从 requirements.txt 装：前者钉死含传递依赖的
+          # 完整闭包，后者只列 3 个直接依赖，其余自由解析 —— 那正是 LiteLLM 投毒事件
+          # （2026-10-21）打进来的那个洞。改直依赖后要重新生成 lock：
+          #   uv pip compile hermes-proxy/requirements.txt --universal -o hermes-proxy/requirements.lock
+          pip install -r hermes-proxy/requirements.lock
+          cd hermes-proxy && python -m pytest -q
+
+  l2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: run all l2 demos
+        run: |
+          fail=0
+          n=0
+          for f in l2/*.demo.js; do
+            n=$((n+1))
+            echo "[$n] $(basename $f)"
+            node "$f" || { echo "FAIL $f"; fail=1; }
+          done
+          if [ "$fail" -eq 0 ]; then echo "$n l2 demo OK"; else echo "l2 FAIL ($n total)"; exit 1; fi
+
+  manager:
+    needs: [cursor]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # 2026-10-08 修：manager 有 2 个 ESM suite（skill-service-route / frontend.logs），
+      # 跨-suite 并行时不带 --experimental-vm-modules 会偶发挂（实测 1324/1326，
+      # 带 vmodules 则 1326/1326 恒绿）。--rerunFailsAtMost=2 压不平——是 ESM 加载
+      # 确定性失败，非网络/时序偶发。feature-matrix 早已记「manager 须 vmodules」，CI 漏带 → 假红。
+      NODE_OPTIONS: --experimental-vm-modules
+      # 2026-10-28 修：manager auth.js 的「回环免鉴权」= needsPasswordSetup()=「没配密码时回环放行」。
+      # CI 无 manager 密码 → bypass 激活 → supertest 走回环 → 无 token 也 201/200 →
+      # 12 个「无 token 应 401」测试全挂（registry/config-export/knowledge-base/im-inbound/
+      # cost-watchtower-route/e2e-scenarios/frontend-logs/error-classification 9 suite）。
+      # 本机 Jason 有密码文件，bypass 关，故本地恒绿。设非空 MANAGER_PASSWORD 即激活账号体系
+      # （auth.js:103-104 needsPasswordSetup 认 env），零改产品代码。loopback-auth.test.js 自带
+      # save/restore MANAGER_PASSWORD（per-test delete/set），全局设值不破坏它。
+      MANAGER_PASSWORD: ci-gate-test-password-not-a-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: multi-proxy-manager/package-lock.json
+      - name: download cursor dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cursor-dist
+          path: cursor-proxy/dist/
+      # 2026-10-28 修：codex-proxy-responses.test.js 住在 multi-proxy-manager/tests/unit，
+      # 却跨仓 require '../../../codex-proxy/proxy.js'，该文件 require('express')。manager job
+      # 只在 multi-proxy-manager npm ci，codex-proxy/node_modules 缺失 → express 解析不到 → 套件红。
+      # 补装 codex-proxy 侧依赖（codex job 同款 cd codex-proxy && npm ci，此处为跨仓测试补上）。
+      - name: install codex-proxy deps（codex-proxy-responses.test.js 跨仓 require proxy.js → 需 express）
+        run: cd codex-proxy && npm ci
+      - name: manager full suite
+        run: |
+          cd multi-proxy-manager
+          npm ci
+            # cursor-dist artifact 已落 cursor-proxy/dist/server/start.js
+            # → process-manager.js:41 fs.existsSync = true → PROXY_CONFIGS 含 cursor
+            # → api.test.js:106 / e2e-scenarios.test.js:36 / api.test.js:67 全绿
+            # 跨 test module-level flaky ~10%，retry 3 次压平；不碰热路径不碰门控
+          npx jest --silent --forceExit --rerunFailsAtMost=2
+      # 元守卫：MCP 边界门（GATE 1）自证。跑两遍 mcp-server 单测——
+      #   门开缺省 必须 0 失败；门关（PROXY_MCP_SCHEMA_GUARD=0）必须恰好 2 红（GATE 1 / decompose 缺 input）。
+      # 为什么：GATE 1 的用例只有在「坏参数真被拒」时才有意义。若 checkArgs 被删或断言被放宽，
+      #   单测仍会全绿——那是假绿，普通 CI 只看得见「红了」，看不见「本该红的地方变绿了」。
+      - name: meta-guard · MCP GATE 1 自证（门开必绿 / 门关必红）
+        run: node scripts/meta-guard-mcp-gate.js
+
+  shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      # 生产依赖卫生（2026-11-09 加）：抓「开发工具混进 dependencies」与「没人用的孤儿包」。
+      # 这类问题本机永远测不出来 —— node_modules 早装好了、UI-AUDIT 也在，
+      # 代价全部落在外部用户身上（多下载 + 可能失败的 postinstall）。
+      # 实案：playwright 长期在 manager 的 dependencies 里，唯一引用者是一个入库的
+      # 一次性目检脚本，每个新用户 `npm install --omit=dev` 多下 18MB。
+      - name: production dependency hygiene (dev tools / orphans)
+        run: node scripts/check-prod-deps.js
+      - name: shell script gate (check.sh + bats)
+        run: |
+          bash tests/shell/check.sh
+          npm install -g bats >/dev/null 2>&1 || true
+          if command -v bats >/dev/null 2>&1; then
+            bats tests/shell/manage.sh.test.bats
+            bats tests/shell/prod-deps.test.bats
+          else
+            echo "bats unavailable; check.sh already validated above"
+          fi
+
+  # 内部资产 push 闸门（2026-09-28 维护者拍板升级）：
+  # 与 .gitignore「内部资产：永不提交」段同源。该段每加一条规则，本 job 自动多查一类。
+  # 防 `git add -f` / 手工夹带 / 规则新增后漏 untrack 的存量文件进公开树。
+  internal-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: push-gate check (internal assets must not be tracked)
+        run: bash scripts/push-gate-check.sh HEAD
+
+  # 版权头闸门（2026-10-09 加）：确保所有公开树源码/文档都带 AGPL+商业双许可头。
+  # 与 scripts/add-copyright-header.sh 同源；该脚本的 dry-run 候选数必须为 0（frontmatter 文件已跳过）。
+  license-header:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: check no missing copyright headers
+        run: |
+          out=$(bash scripts/add-copyright-header.sh)
+          echo "$out"
+          n=$(echo "$out" | grep '候选文件数:' | awk -F'[: ]+' '{print $NF}')
+          if [ "$n" -ne 0 ]; then
+            echo "FAIL: $n file(s) missing copyright header — run: DRY_RUN=false bash scripts/add-copyright-header.sh"; exit 1
+          fi
+          echo "license-header OK (0 missing)"
+
+  # 依赖供应链审计棘轮闸（2026-10-23 加）。缺口来自 LiteLLM 投毒事件复盘：
+  # 那条链是「GitHub CLI OAuth token 被偷 → 改 release pipeline → 从李鬼仓库
+  # Berri-AI/litellm 构建 → PyPI 上的 1.107.0 内置 16 模块窃密器」，本仓库
+  # 当时只有功能门禁，对「CI 里 unpinned 拉包」这一环零可见。
+  #
+  # 为什么不是清零闸、也为什么不按 total 拦——都是量出来的：
+  #   全量（含 devDependencies）实测 38 / 41 / 45 条，九成在 jest/babel/
+  #   @electron/get 的 dev 树上，不进产物。按 total 拦等于第一天全红。
+  #   生产依赖（--omit=dev）实测 1 / 3 / 3 条，其中 proxy-addr 的 critical
+  #   要等 express 5 才修得掉（4.22.2 已是最新 4.x）——清零要等升级排期，
+  #   不是加个闸门能催出来的。
+  # 所以设棘轮：高于脚本里的基线即红，等于基线不拦；存量清完把基线改 0
+  # 即自动变成清零闸。完整推导见 scripts/dep-audit.py 顶部注释。
+  #
+  # 审计只读 lockfile，不 npm ci（实测 cp package*.json 到空目录即可出报告），
+  # 所以本 job 不需要 npm cache，比 codex/cursor/manager 三个 job 快一个量级。
+  dep-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # 钉版本：审计工具自身的版本也是供应链的一环
+      - name: install pip-audit (pinned)
+        run: python3 -m pip install --quiet pip-audit==2.10.1
+      - name: dependency audit (production critical+high ratchet)
+        run: python3 scripts/dep-audit.py
+
+  gap-guard:
+    name: gap-guard (质量落差静态层预检)
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    # GAP_GUARD_TOKEN 已 provision（到期 2027-10-27；fine-grained 只读，到期前重签并 gh secret set 重注）：
+    # 跨仓 pull 已接上，gate=p0 有 P0 落差即真 fail build（硬阻断）。当前真跑 0 P0，翻转不致假 RED。
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 取跨仓 agent-infra gap-guard（静态层；无 token 则 fail-open 不阻断）
+        env:
+          GH_TOKEN: ${{ secrets.GAP_GUARD_TOKEN }}
+        run: |
+          if [ -n "$GH_TOKEN" ]; then
+            gh repo clone xiaoxianxian/agent-infra "${GITHUB_WORKSPACE:-$(pwd)}/agent-infra" \
+              || { echo "::warning::agent-infra 拉取失败，gap-guard 静态预检本轮跳过"; exit 0; }
+          else
+            echo "::warning::GAP_GUARD_TOKEN 未配，跳过跨仓拉取，gap-guard 静态预检暂不接入";
+            exit 0
+          fi
+      - name: 跑静态层预检（gate=p0,P1 仅告警；G5/G6 运行时层走各项目 e2e/ 不进此 job）
+        env:
+          GAP_GUARD_RUN: ${{ github.workspace }}/agent-infra/gap-guard/run.js
+        run: bash scripts/gap-guard-ci.sh --gate p0
+
+  # L4/L5 交付体系校验闸（2026-10-30 接入；2026-10-31 起升硬门禁，老板 signoff）：
+  #   · scripts/drift-check.js：核心交付文档「文档说还在、其实没了」的 A 类漂移自检
+  #     （38 条真漂移已于 2026-10-31 清零：前向指路 7+1 处改 doc + 历史 changelog/误报 48 条进 drift-ignore.txt；
+  #      无 --warn 时 exit(有漂移?1:0) → 0 漂移即绿，任何仓内 A 类真漂移即红、真阻断 P0 build）。
+  #   · scripts/verify-delivery.js：交付体系 6 项声明的 live 校验
+  #     （web-pages / web-serve / consent-wired / hotpath-present / update-honest / drift-integration；
+  #      无 --warn 时 exit(fail?1:0)；desktop-two-flavors 为 blk 信息项不红化，§6.1 桌面二选一未定也不卡门禁）。
+  # 硬门禁生效（2026-10-31）：步骤已去 continue-on-error + 去 --warn，fail / 有漂移即阻断 build。
+  verify-delivery:
+    name: verify-delivery (L4/L5 交付校验，硬门禁)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: L5 文档↔代码漂移自检（硬门禁）
+        run: node scripts/drift-check.js
+      - name: L4/L5 交付体系 live 校验（硬门禁）
+        run: node scripts/verify-delivery.js

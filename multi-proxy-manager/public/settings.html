@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>设置 · Multi-Proxy Manager</title>
+   <!-- 旧两 CSS 保留作别名桥（design-system.test.js 读它们），新层最后加载＝视觉默认 -->
+   <link rel="stylesheet" href="./colors_and_type.css">
+   <link rel="stylesheet" href="./shared-styles.css">
+   <link rel="stylesheet" href="./tokens.css">
+   <link rel="stylesheet" href="./components.css">
+   <script src="./theme.js"></script>
+</head>
+<body>
+   <aside class="sidebar" id="sidebar">
+     <div class="sidebar-brand"><div class="logo-icon">M</div><h1>Multi-Proxy Manager</h1></div>
+     <nav class="sidebar-nav" id="sidebarNav"></nav>
+   </aside>
+   <div id="ui-shell" data-shell></div>
+   <main class="content main">
+     <header class="page-head">
+       <h1 class="page-title">设置</h1>
+       <p class="page-subtitle">外观 · 关于 · 更新与备份</p>
+     </header>
+
+     <div class="tabs" id="settingsTabs">
+       <button class="tab active" data-tab="appearance">外观</button>
+       <button class="tab" data-tab="about">关于</button>
+       <button class="tab" data-tab="update">更新与备份</button>
+      <button class="tab" data-tab="plugins">插件</button>
+     </div>
+
+     <!-- 外观 -->
+     <section class="tab-panel active" data-panel="appearance">
+       <div class="card">
+         <h3 class="card-h">主题</h3>
+         <div class="row">
+           <div class="row-main">
+             <div class="row-title">暗色模式</div>
+             <div class="row-desc">跟随本机外观或手动固定。状态存本机 localStorage。</div>
+           </div>
+           <!-- 纯图标开关：无文字内容，必须给可访问名称；状态由 theme.js 同步 aria-checked -->
+           <button class="toggle" id="appearanceDark" type="button" role="switch" aria-checked="false" aria-label="暗色模式"></button>
+         </div>
+       </div>
+       <div class="card">
+         <h3 class="card-h">字体</h3>
+         <div class="row">
+           <div class="row-main">
+             <div class="row-title">字体族</div>
+             <div class="row-desc">无外部字体加载（v1.0 已移除 Google Fonts 依赖），使用系统字体栈。</div>
+           </div>
+           <span class="badge badge--info">系统字体</span>
+         </div>
+       </div>
+     </section>
+
+     <!-- 关于 -->
+     <section class="tab-panel" data-panel="about">
+       <div class="card">
+         <h3 class="card-h">版本信息</h3>
+         <div class="kv">
+           <div class="kv-row"><span class="kv-k">应用</span><span class="kv-v">Multi-Proxy Manager</span></div>
+           <div class="kv-row"><span class="kv-k">版本</span><span class="kv-v">1.0（v1.0 收尾）</span></div>
+           <div class="kv-row"><span class="kv-k">运行模式</span><span class="kv-v" id="aboutMode">本地管理面板（绑定 127.0.0.1）</span></div>
+           <div class="kv-row"><span class="kv-k">数据目录</span><span class="kv-v">~/.multi-proxy-manager/</span></div>
+           </div>
+           </div>
+           <div class="card">
+           <h3 class="card-h">法务</h3>
+           <div class="row">
+           <div class="row-main">
+             <div class="row-title">完整条款</div>
+             <div class="row-desc">《用户服务协议》《隐私政策》定稿文本，本地 docs/legal/ 为源，零网络、零第三方读取。可在面板内直接查阅。</div>
+           </div>
+           <a class="btn btn-ghost" href="/legal" id="goLegal">查看法务</a>
+           </div>
+           </div>
+           </section>
+
+     <!-- 更新与备份 -->
+     <section class="tab-panel" data-panel="update">
+       <div class="card">
+         <h3 class="card-h">更新</h3>
+         <div class="row">
+           <div class="row-main">
+             <div class="row-title">检查更新</div>
+             <div class="row-desc">v1.0 正式发布时接入更新源；当前为占位，点击提示「更新源待发布」。</div>
+           </div>
+           <button class="btn btn-ghost" id="chkUpdate" type="button">检查更新</button>
+         </div>
+       </div>
+       <div class="card">
+         <h3 class="card-h">备份</h3>
+         <div class="row">
+           <div class="row-main">
+             <div class="row-title">配置导出</div>
+             <div class="row-desc">导出本机 provider 注册表与价表（providers.json / pricing.json）副本，便于迁移或备份。</div>
+           </div>
+           <!-- 2026-10-24：原本是 <a href="/#/api/config-export">，全仓无此路由，
+                 点了只改 URL hash 什么都不发生（假入口）。改为真调 /api/config-export
+                 并把结果下载成文件；密钥字段后端已脱敏。 -->
+           <button class="btn btn-ghost" type="button" id="doExport">导出配置</button>
+         </div>
+       </div>
+       <div class="card">
+         <h3 class="card-h">首启授权</h3>
+         <div class="row">
+           <div class="row-main">
+             <div class="row-title">已接受首启协议</div>
+             <div class="row-desc">标记存于 ~/.multi-proxy-manager/.first-launch-consent-done，可随时撤销后重走首启同意门。</div>
+           </div>
+           <button class="btn btn-ghost" id="revConsent" type="button">撤销</button>
+         </div>
+       </div>
+     </section>
+    <!-- 插件 -->
+    <section class="tab-panel" data-panel="plugins">
+      <style>
+        #flpInstall{background:#2f6f4f;color:#fff;border:1px solid #2f6f4f}
+        #flpInstall:hover{background:#275f43}
+        #flpInstall:disabled{opacity:.5;cursor:default}
+        .flp-risks{margin:6px 0 0 18px;color:#9a3b2e;font-size:13px;line-height:1.7}
+        .flp-risks li{margin:2px 0}
+      </style>
+      <div class="card">
+        <h3 class="card-h">免费模型聚合 <span class="badge" id="flpStatus">检测中…</span></h3>
+        <p class="page-subtitle" style="margin-top:4px">把 OpenRouter / Groq / 硅基流动 / Vercel / OpenCode Zen / Kilo 匿名池 的免费模型聚合成 multi-proxy 统一入口（generic-openai-proxy 18799）。一家 429 自动切下一家。</p>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">当前已装免费源</div>
+            <div class="row-desc" id="flpProviders">—</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="flpInstall" type="button">安装 / 刷新</button>
+          <button class="btn btn-ghost" id="flpUninstall" type="button">卸载</button>
+          <span id="flpBusy" style="display:none" class="badge badge--info">执行中…</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3 class="card-h">风险提示（必读）</h3>
+        <ul class="flp-risks" id="flpRisks"><li>加载中…</li></ul>
+        <p class="row-desc" style="margin-top:8px">默认不安装。是否启用由你决定；介意上述风险的用户可始终保持卸载状态，multi-proxy 主体不受影响（18799 核心、其它 provider 均不动）。</p>
+      </div>
+    </section>
+
+   </main>
+
+   <div id="toasts" class="toasts"></div>
+
+   <script>
+     (function(){
+       function toast(msg, kind){
+         var box = document.getElementById('toasts');
+         if (!box) return;
+         var el = document.createElement('div');
+         el.className = 'toast' + (kind === 'info' ? ' toast--info' : '');
+         el.textContent = msg;
+         box.appendChild(el);
+         setTimeout(function(){ el.remove(); }, 3200);
+       }
+       // tab 切页
+       var tabs = document.querySelectorAll('#settingsTabs .tab');
+       tabs.forEach(function(t){
+         t.addEventListener('click', function(){
+           tabs.forEach(function(x){ x.classList.remove('active'); });
+           document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+           t.classList.add('active');
+           var pn = t.dataset.tab;
+           var panel = document.querySelector('.tab-panel[data-panel="' + pn + '"]');
+           if (panel) panel.classList.add('active');
+           });
+         });
+       // 暗色模式 toggle（真实，沿用 localStorage）
+       var darkBtn = document.getElementById('appearanceDark');
+       var isDark = document.body.classList.contains('theme-dark');
+       if (darkBtn) darkBtn.classList.toggle('on', isDark);
+       if (darkBtn) darkBtn.addEventListener('click', function(){
+         var d = document.body.classList.toggle('theme-dark');
+         darkBtn.classList.toggle('on', d);
+         try { localStorage.setItem('theme', d ? 'dark' : 'light'); } catch (e) {}
+         });
+     // 检查更新：v1.0 占位，诚实提示更新源待发布
+       var chk = document.getElementById('chkUpdate');
+       if (chk) chk.addEventListener('click', function(){
+         toast('应用内更新：v1.0 正式发布时接入更新源，当前为占位。', 'info');
+         });
+     // 撤销首启授权：接 /api/consent/revoke，回首启同意门
+       var rev = document.getElementById('revConsent');
+       if (rev) rev.addEventListener('click', function(){
+         rev.disabled = true;
+         fetch('/api/consent/revoke', { method: 'POST' })
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+              toast(j && j.success ? '已撤销，刷新后将回到首启同意门。' : '撤销失败：' + (j && j.error || ''), j && j.success ? 'info' : 'error');
+            })
+            .catch(function(){ toast('撤销失败：网络异常。', 'error'); })
+            .finally(function(){ rev.disabled = false; });
+         });
+
+       // ===== 配置导出（真下载，后端已脱敏密钥）=====
+       // auth token：manager 的受保护接口走 x-auth-token，缺了就是 401。
+       var exportBtn = document.getElementById('doExport');
+       if (exportBtn) exportBtn.addEventListener('click', function(){
+         exportBtn.disabled = true;
+         var token = (sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token') || '');
+         fetch('/api/config-export', { headers: { 'x-auth-token': token } })
+           .then(function(r){
+             if (!r.ok) {
+               return r.json().catch(function() { return {}; }).then(function(b) {
+                 throw new Error((b && b.error) || ('HTTP ' + r.status));
+               });
+             }
+             return r.json();
+           })
+           .then(function(j){
+             var blob = new Blob([JSON.stringify(j, null, 2)], { type: 'application/json' });
+             var a = document.createElement('a');
+             a.href = URL.createObjectURL(blob);
+             a.download = 'multi-proxy-config-' + new Date().toISOString().slice(0,10) + '.json';
+             document.body.appendChild(a); a.click(); a.remove();
+             setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+             var n = (j && j.redactedFields && j.redactedFields.length) || 0;
+             toast('已导出（密钥字段脱敏 ' + n + ' 处，恢复后需重填 key）', 'info');
+           })
+           .catch(function(e){ toast('导出失败：' + (e && e.message || '网络异常'), 'error'); })
+           .finally(function(){ exportBtn.disabled = false; });
+       });
+     })();
+    </script>
+    <script src="./icons.js"></script>
+<script src="./nav.js"></script>
+<script src="./states.js"></script>
+<script src="./gatebar.js"></script>
+  <script>if(window.renderNav){renderNav(document.getElementById('sidebarNav'),{current:'settings'});}</script>
+  <script>
+    (function(){
+      function toast(msg, kind){
+        var box = document.getElementById('toasts');
+        if (!box) return;
+        var el = document.createElement('div');
+        el.className = 'toast' + (kind === 'info' ? ' toast--info' : '');
+        el.textContent = msg;
+        box.appendChild(el);
+        setTimeout(function(){ el.remove(); }, 3600);
+      }
+      var statusEl = document.getElementById('flpStatus');
+      var provEl = document.getElementById('flpProviders');
+      var risksEl = document.getElementById('flpRisks');
+      var installBtn = document.getElementById('flpInstall');
+      var uninstallBtn = document.getElementById('flpUninstall');
+      var busy = document.getElementById('flpBusy');
+      function setBusy(b){ if(busy) busy.style.display = b ? 'inline-block' : 'none'; if(installBtn) installBtn.disabled = b; if(uninstallBtn) uninstallBtn.disabled = b; }
+      // 2026-10-24：free-llm-plugin 的 install/uninstall 后端挂了 requireAuth，
+      // 这里却从没带过 x-auth-token，也没判 res.ok —— 于是 401/500 的响应体被当正常数据读，
+      // 用户看到的是一句没有原因的「操作失败」。带上 token，并把非 2xx 明确抛成错误。
+      function authHeaders(extra){
+        var t = (sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token') || '');
+        return Object.assign({ 'x-auth-token': t }, extra || {});
+      }
+      function readJSON(r){
+        if (!r.ok) {
+          return r.json().catch(function(){ return {}; }).then(function(b){
+            var e = new Error((b && (b.error || b.message)) || ('HTTP ' + r.status));
+            e.httpStatus = r.status;
+            throw e;
+          });
+        }
+        return r.json();
+      }
+      function loadFreeLlm(){
+        fetch('/api/free-llm-plugin/status', { headers: authHeaders() })
+          .then(readJSON)
+          .then(function(j){
+          if(!j || j.error){ if(statusEl) statusEl.textContent='状态未知'; return; }
+          if(statusEl){ statusEl.textContent = j.installed ? '已安装' : '未安装'; statusEl.style.background = j.installed ? '#2f6f4f' : '#b8860b'; statusEl.style.color = '#fff'; }
+          if(provEl){ provEl.innerHTML = (j.providers && j.providers.length) ? j.providers.map(function(p){ return p.name + (p.anonymous ? '（匿名）' : ''); }).join('、') : '无（默认不安装）'; }
+          if(risksEl && j.disclaimer && j.disclaimer.length){ risksEl.innerHTML = j.disclaimer.map(function(d){ return '<li>'+d+'</li>'; }).join(''); }
+        }).catch(function(){ if(statusEl) statusEl.textContent='状态未知'; });
+      }
+      function run(action){
+        setBusy(true);
+        fetch('/api/free-llm-plugin/'+action, { method:'POST', headers: authHeaders({ 'Content-Type': 'application/json' }) })
+          .then(readJSON)
+          .then(function(j){
+            var ok = j && j.success;
+            toast((ok ? (action==='install'?'安装/刷新完成':'已卸载') : '操作失败：'+((j&&j.error)||'')) + (j&&j.output?('\n'+j.output.slice(0,320)):''), ok?'info':'error');
+            loadFreeLlm();
+          })
+          .catch(function(e){
+            // 401 不是「操作失败」，是登录态过期。直说，别让用户以为是插件坏了。
+            if (e && e.httpStatus === 401) toast('登录态已失效，请刷新页面重新登录后再操作。', 'error');
+            else toast('操作失败：' + ((e && e.message) || '网络异常'), 'error');
+          })
+          .finally(function(){ setBusy(false); });
+      }
+      if(installBtn) installBtn.addEventListener('click', function(){ run('install'); });
+      if(uninstallBtn) uninstallBtn.addEventListener('click', function(){ run('uninstall'); });
+      loadFreeLlm();
+    })();
+  </script>
+</body>
+</html>

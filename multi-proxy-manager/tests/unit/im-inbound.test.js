@@ -1,0 +1,289 @@
+// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the multi-proxy project.
+
+'use strict';
+
+// L2 P4 IM 入站通道测试 — /api/im-inbound/webhook
+// 非侵入：门控 off → 403 零副作用；门控开 + 注入 mock executor → 200 + reply（不触真网络）。
+// 机器鉴权用 x-agent-token（与 cost-report 同通道），测试里设已知 token。
+const request = require('supertest');
+const express = require('express');
+
+const router = require('../../routes/im-inbound');
+
+// 已知机器 token（测试环境注入，模拟真实 agent 代理的 x-agent-token 鉴权）
+const TEST_AGENT_TOKEN = 'test-agent-token-for-im-inbound';
+
+function buildApp() {
+  const app = express();
+  app.use(express.json());
+  // 把真实 executor 替换为 mock（避免触真网络 / 真花钱）
+  app.locals.imExecutor = async (adapterId, subtask) => ({
+    adapterId,
+    model: 'mock-model',
+    content: `mock-reply:${subtask.prompt}`,
+  });
+  app.use('/api/im-inbound', router);
+  return app;
+}
+
+describe('L2 P4 IM inbound (/api/im-inbound)', () => {
+  let app;
+
+  beforeEach(() => {
+    delete process.env.PROXY_IM_INBOUND;
+    delete process.env.PROXY_EXECUTOR_BIND;
+    process.env.MANAGER_AGENT_TOKEN = TEST_AGENT_TOKEN;
+    router._resetForTest();
+    app = buildApp();
+  });
+
+  afterEach(() => {
+    delete process.env.MANAGER_AGENT_TOKEN;
+    delete process.env.IM_OUTBOUND_FEISHU_WEBHOOK;
+    delete process.env.IM_OUTBOUND_FEISHU_SECRET;
+    delete process.env.IM_OUTBOUND_TELEGRAM_TOKEN;
+  });
+
+  // ---- 门控 ----
+  test('门控关(默认)：POST /webhook → 403', async () => {
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'generic', text: 'hi', conversationId: 'c1' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('im-inbound-gate-closed');
+  });
+
+  test('门控关：无鉴权头 → 403（门控优先于鉴权）', async () => {
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .send({ channel: 'generic', text: 'hi', conversationId: 'c1' });
+    expect(res.status).toBe(403);
+  });
+
+  // ---- 鉴权 ----
+  test('门控开 + 错误 agent token → 401（写端点不 fail-open，落到 requireAuth）', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', 'wrong-token')
+      .send({ channel: 'generic', text: 'hi', conversationId: 'c1' });
+    expect(res.status).toBe(401);
+    expect(res.body.ok).toBeFalsy();
+  });
+
+  // ---- 执行 + 回投（门控开 + mock executor）----
+  test('门控开 + 归一化直连(body.text) → 200 + reply 经 mock executor', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'generic', text: 'hello', conversationId: 'c1' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.reply).toBe('mock-reply:hello');
+    expect(res.body.conversationId).toBe('c1');
+    expect(res.body.outbound).toBeNull(); // 没带 replyTo → 不回投
+  });
+
+  test('门控开 + 飞书原始 payload → 归一化后 200 + reply', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({
+        channel: 'feishu',
+        payload: { event: { message: { text: '@bot 你好', chat_id: 'oc_abc', sender_id: 'u1' } } },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('mock-reply:你好'); // @bot 前缀被去掉
+    expect(res.body.conversationId).toBe('oc_abc');
+  });
+
+  test('门控开 + Telegram 原始 payload → 归一化后 200 + reply', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({
+        channel: 'telegram',
+        payload: { message: { text: 'ping', chat: { id: 998877 }, from: { id: 554433 } } },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('mock-reply:ping');
+    expect(res.body.conversationId).toBe('998877');
+  });
+
+  test('飞书订阅握手(type=url_verification) → 回 challenge，不执行', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'feishu', payload: { type: 'url_verification', challenge: 'abc123' } });
+    expect(res.status).toBe(200);
+    expect(res.body.challenge).toBe('abc123');
+    expect(res.body.reply).toBeUndefined();
+  });
+
+  test('带 replyTo.webhookUrl → 异步回投（non-fatal，回投失败不崩）', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({
+        channel: 'generic',
+        text: 'hi',
+        conversationId: 'c1',
+        replyTo: { channel: 'webhook', webhookUrl: 'http://127.0.0.1:1/unroutable' },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('mock-reply:hi');
+    // 127.0.0.1:1 不可达 → 回投 graceful 失败，不崩
+    expect(res.body.outbound).toBeTruthy();
+    expect(res.body.outbound.ok).toBe(false);
+  });
+
+  test('带 replyTo.channel=telegram（配 token）→ 回投成功（outbound.ok=true）', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    process.env.IM_OUTBOUND_TELEGRAM_TOKEN = 'tok';
+    const f = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, status: 200 });
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'generic', text: 'hi', conversationId: '998877', replyTo: { channel: 'telegram' } });
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('mock-reply:hi');
+    expect(res.body.outbound.ok).toBe(true);
+    f.mockRestore();
+  });
+
+  test('带 replyTo.channel=feishu（缺 webhook env）→ 回投 graceful 失败（outbound.ok=false，不崩）', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    delete process.env.IM_OUTBOUND_FEISHU_WEBHOOK;
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'generic', text: 'hi', conversationId: 'oc_x', replyTo: { channel: 'feishu' } });
+    expect(res.status).toBe(200);
+    expect(res.body.reply).toBe('mock-reply:hi');
+    expect(res.body.outbound.ok).toBe(false);
+    expect(res.body.outbound.error).toMatch(/IM_OUTBOUND_FEISHU_WEBHOOK/);
+  });
+
+  // ---- 边界 ----
+  test('缺 channel → 400', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ text: 'hi' });
+    expect(res.status).toBe(400);
+    expect(res.body.ok).toBe(false);
+  });
+
+  test('空文本 → 400', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'generic', text: '   ', conversationId: 'c1' });
+    expect(res.status).toBe(400);
+  });
+
+  test('payload 与 text 都没有 → 400（形态不符）', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    const res = await request(app).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'feishu' });
+    expect(res.status).toBe(400);
+  });
+
+  // ---- executor 未绑定（真执行门控关，且无注入）----
+  test('门控开 + 无 executor 注入 + 无 PROXY_EXECUTOR_BIND → 500 明确报错（不静默）', async () => {
+    process.env.PROXY_IM_INBOUND = '1';
+    // 不注入 app.locals.imExecutor，且 PROXY_EXECUTOR_BIND 默认关 → getExecutor 返回 null
+    const appNoExec = express();
+    appNoExec.use(express.json());
+    appNoExec.use('/api/im-inbound', router);
+    const res = await request(appNoExec).post('/api/im-inbound/webhook')
+      .set('x-agent-token', TEST_AGENT_TOKEN)
+      .send({ channel: 'generic', text: 'hi', conversationId: 'c1' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/executor 未绑定/);
+  });
+
+  // ---- sendOutbound 平台分支（纯函数 + IO 隔离）----
+  describe('sendOutbound 平台分支', () => {
+    let fetchSpy;
+    beforeEach(() => {
+      delete process.env.IM_OUTBOUND_FEISHU_WEBHOOK;
+      delete process.env.IM_OUTBOUND_FEISHU_SECRET;
+      delete process.env.IM_OUTBOUND_TELEGRAM_TOKEN;
+    });
+    afterEach(() => { if (fetchSpy) { fetchSpy.mockRestore(); fetchSpy = null; } });
+
+    test('webhook 分支：缺 webhookUrl → 抛错', async () => {
+      await expect(router.sendOutbound('webhook', { text: 'hi' })).rejects.toThrow(/webhookUrl/);
+    });
+
+    test('feishu 分支：缺 IM_OUTBOUND_FEISHU_WEBHOOK → 抛错（fail loud，不静默）', async () => {
+      await expect(router.sendOutbound('feishu', { text: 'hi', target: 'oc_x' }))
+        .rejects.toThrow(/IM_OUTBOUND_FEISHU_WEBHOOK/);
+    });
+
+    test('feishu 分支：配 webhook env → POST（msg_type/text）', async () => {
+      process.env.IM_OUTBOUND_FEISHU_WEBHOOK = 'https://feishu.example/hook';
+      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, status: 200 });
+      const r = await router.sendOutbound('feishu', { text: '你好', target: 'oc_x' });
+      expect(r.ok).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledWith('https://feishu.example/hook', expect.objectContaining({ method: 'POST' }));
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(body.msg_type).toBe('text');
+      expect(body.content.text).toBe('你好');
+    });
+
+    test('feishu 分支：配 secret → 带 timestamp + sign（HMAC-SHA256 base64）', async () => {
+      process.env.IM_OUTBOUND_FEISHU_WEBHOOK = 'https://feishu.example/hook';
+      process.env.IM_OUTBOUND_FEISHU_SECRET = 'mysecret';
+      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, status: 200 });
+      const r = await router.sendOutbound('feishu', { text: 'hi', target: 'oc_x' });
+      expect(r.ok).toBe(true);
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(body.timestamp).toBeDefined();
+      expect(body.sign).toBeDefined();
+      const crypto = require('crypto');
+      const expected = crypto.createHmac('sha256', 'mysecret').update(`${body.timestamp}\nmysecret`).digest('base64');
+      expect(body.sign).toBe(expected);
+    });
+
+    test('telegram 分支：缺 token → 抛错', async () => {
+      await expect(router.sendOutbound('telegram', { text: 'hi' })).rejects.toThrow(/IM_OUTBOUND_TELEGRAM_TOKEN/);
+    });
+
+    test('telegram 分支：配 token + target → POST Bot API（chat_id=target）', async () => {
+      process.env.IM_OUTBOUND_TELEGRAM_TOKEN = 'bot-token';
+      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, status: 200 });
+      const r = await router.sendOutbound('telegram', { text: 'ping', target: '998877' });
+      expect(r.ok).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.telegram.org/botbot-token/sendMessage',
+        expect.objectContaining({ method: 'POST' })
+      );
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(body.chat_id).toBe('998877');
+      expect(body.text).toBe('ping');
+    });
+
+    test('未知 channel → 抛错（YAGNI）', async () => {
+      await expect(router.sendOutbound('whatsapp', { text: 'hi' })).rejects.toThrow(/尚未实现/);
+    });
+  });
+
+  // ---- 纯函数（归一化）----
+  test('normalizeInbound: feishu 去 @前缀 + 取 chat_id', () => {
+    const m = router.normalizeInbound('feishu', { event: { message: { text: '@bot 你好', chat_id: 'oc_x', sender_id: 'u1' } } });
+    expect(m.text).toBe('你好');
+    expect(m.conversationId).toBe('oc_x');
+    expect(m.userId).toBe('u1');
+  });
+
+  test('normalizeInbound: 未知 channel 回落 generic', () => {
+    const m = router.normalizeInbound('whatsapp-not-impl', { text: 'yo', conversationId: 'c9' });
+    expect(m.text).toBe('yo');
+    expect(m.conversationId).toBe('c9');
+  });
+
+  test('normalizeInbound: 缺 raw → 抛错', () => {
+    expect(() => router.normalizeInbound('feishu', null)).toThrow(/raw payload/);
+  });
+});

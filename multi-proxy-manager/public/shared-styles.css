@@ -1,0 +1,998 @@
+/* ============================================
+   Shared Component Styles — Unified Design System
+   Covers: D1 sidebar-brand, D2 buttons, D4 font-size,
+           D5 toast, D6 icons, D7 sidebar-width,
+           D8 variable names, D9 shadows,
+           D10 status badges, D11 nav tooltip
+   ============================================ */
+
+/* ============================================
+   Sidebar Brand (Rule D1: unified across all pages)
+   ============================================ */
+.sidebar-brand {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-brand .logo-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--color-primary);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sidebar-brand h1 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+}
+
+/* ============================================
+   Unified Button System (Rule D2)
+   ============================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.btn:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: white;
+}
+
+.btn-danger {
+  color: var(--color-error);
+  border-color: var(--color-error-light);
+  background: var(--color-bg);
+}
+
+.btn-danger:hover {
+  background: var(--color-error-light);
+  border-color: var(--color-error);
+}
+
+.btn-success {
+  color: var(--color-success);
+  border-color: var(--color-success-light);
+  background: var(--color-bg);
+}
+
+.btn-success:hover {
+  background: var(--color-success-light);
+  border-color: var(--color-success);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+
+.btn-outline:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ============================================
+   Unified Toast System (Rule D5)
+   All pages share this CSS class.
+   Light backgrounds with colored left border.
+   ============================================ */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  max-width: 360px;
+  white-space: pre-line;
+  pointer-events: auto;
+  animation: toast-in 0.3s ease;
+  border-left: 3px solid;
+  background: var(--color-bg);
+}
+
+.toast.success {
+  color: #065f46;
+  border-color: var(--color-success);
+  border-left-color: var(--color-success);
+}
+
+.toast.error {
+  color: var(--color-error-deep, #991b1b);
+  border-left-color: var(--color-error);
+}
+
+.toast.info {
+  color: var(--color-info-deep, #1e40af);
+  border-left-color: var(--color-info);
+}
+
+.toast.warning {
+  color: var(--color-warning-deep, #92400e);
+  border-left-color: var(--color-warning);
+}
+
+@keyframes toast-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toast-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+/* ============================================
+   Unified Status Badges (Rule D10)
+   Pill-shaped with dot indicator
+   ============================================ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  white-space: nowrap;
+}
+
+.status-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status-badge.online {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.status-badge.offline {
+  background: var(--color-error-light);
+  color: var(--color-error);
+}
+
+.status-badge.fault {
+  background: var(--color-warning-light);
+  color: var(--color-warning-deep, var(--color-warning));
+}
+
+/* M1 DAG 健康依赖图：降级态（进程在跑但依赖项异常，如 better-sqlite3 缺失 / 配置损坏）
+   与「故障熔断」同级视觉（橙色），但语义不同，单独 token 以便文案区分。 */
+.status-badge.degraded {
+  background: var(--color-warning-light);
+  color: var(--color-warning-deep, var(--color-warning));
+}
+
+/* ============================================
+   Unified Nav Tooltip (Rule D11: global, NOT in media query)
+   ============================================ */
+.nav-item[data-tooltip] {
+  position: relative;
+}
+
+.nav-item[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  z-index: 150;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.nav-item[data-tooltip]:hover::after,
+.nav-item[data-tooltip]:focus::after {
+  opacity: 1;
+}
+
+/* ============================================
+   Unified Form Inputs (Rule D4: 14px base)
+   ============================================ */
+.form-select {
+  font-size: 12px;
+  padding: 5px 28px 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-weight: 500;
+  min-height: 32px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+.form-input {
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-weight: 400;
+  min-height: 32px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+.form-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* ============================================
+   Unified Toggle Switch (for provider enable/disable)
+   ============================================ */
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--color-border);
+  border-radius: 24px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform var(--transition-fast);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.toggle input:checked + .toggle-slider {
+  background: var(--color-success);
+}
+
+.toggle input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+
+/* ============================================
+   Dark Mode Overrides
+   ============================================ */
+:root.dark, html[data-theme="dark"] .toggle-slider {
+  background: var(--color-border);
+}
+
+:root.dark, html[data-theme="dark"] .toggle-slider::before {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+:root.dark, html[data-theme="dark"] .btn-outline {
+  border-color: var(--color-border);
+}
+
+:root.dark, html[data-theme="dark"] .btn-outline:hover {
+  background: var(--color-bg-tertiary);
+}
+
+:root.dark, html[data-theme="dark"] .form-select,
+:root.dark, html[data-theme="dark"] .form-input {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+:root.dark, html[data-theme="dark"] .toast {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+:root.dark, html[data-theme="dark"] .toast.success {
+  color: #6ee7b7;
+}
+
+:root.dark, html[data-theme="dark"] .toast.error {
+  color: #fca5a5;
+}
+
+:root.dark, html[data-theme="dark"] .toast.info {
+  color: #93c5fd;
+}
+
+:root.dark, html[data-theme="dark"] .toast.warning {
+  color: #fcd34d;
+}
+
+/* ============================================
+   Unified Icon SVG System (Emoji Replacement)
+   All icons use inline SVG with currentColor inheritance
+   ============================================ */
+.icon-svg {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.icon-svg-sm {
+  width: 0.875em;
+  height: 0.875em;
+}
+
+.icon-svg-lg {
+  width: 1.25em;
+  height: 1.25em;
+}
+
+/* Nav icon sizing — replaces .nav-icon font-size approach */
+.nav-icon .icon-svg {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.15em;
+}
+
+/* Proxy card icon sizing */
+.proxy-icon .icon-svg {
+  width: 1.5em;
+  height: 1.5em;
+  vertical-align: -0.2em;
+}
+
+/* 告警严重度图标（原 🔴/🟡/🔵 emoji）：形状 + 颜色双通道，不靠颜色单通道传达等级。
+   颜色走语义令牌，暗色模式随主题走。 */
+.icon-svg.sev { width: 1em; height: 1em; vertical-align: -0.125em; }
+.icon-svg.sev-critical { color: var(--color-danger, var(--error, #dc2626)); }
+.icon-svg.sev-warning  { color: var(--color-warning, var(--warning, #d97706)); }
+.icon-svg.sev-info     { color: var(--color-info, var(--muted-foreground, #64748b)); }
+
+/* 门控占位图标（原 🔒 emoji）：容器从 font-size 驱动改为固定尺寸，SVG 才能撑满 */
+.gate-icon .icon-svg {
+  width: 40px;
+  height: 40px;
+  stroke-width: 1.5;
+}
+
+/* ============================================
+   Common Layout Styles (shared across all pages)
+   ============================================ */
+
+/* Reset & Base */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  line-height: 1.6;
+  display: flex;
+  min-height: 100vh;
+  overflow: auto;
+}
+
+/* Mobile Menu Button */
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 200;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+/* Sidebar Overlay (mobile) */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 90;
+}
+
+/* ============================================
+   Sidebar Layout
+   ============================================ */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+/* Sidebar Navigation */
+.sidebar-nav {
+  flex: 1;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-section-label {
+  padding: 8px 12px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  user-select: none;
+  gap: 10px;
+  position: relative;
+  text-decoration: none;
+}
+
+.nav-item:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.nav-item.active {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.nav-item .nav-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Sidebar Footer */
+.sidebar-footer {
+  padding: 16px 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-footer .version-info {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.sidebar-footer .btn-logout {
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  color: var(--color-error);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-footer .btn-logout:hover {
+  background: var(--color-error-light);
+  border-color: var(--color-error);
+}
+
+/* Sidebar Close Button */
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+/* Hamburger Button (mobile menu) */
+.hamburger-btn {
+  display: none;
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 200;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+/* Main Content */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--main-padding);
+  min-width: 0;
+}
+
+/* Page Header */
+.page-header {
+  margin-bottom: 28px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+/* Offline Banner */
+.offline-banner {
+  background: var(--color-warning-light);
+  border: 1px solid var(--color-warning-light);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-warning-deep, #92400e);
+  font-weight: 500;
+}
+
+.offline-banner.hidden { display: none; }
+.offline-banner-icon { font-size: 16px; flex-shrink: 0; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay.show {
+    display: block;
+  }
+
+  .main {
+    padding: 72px 20px 20px;
+  }
+}
+
+/* ============================================
+   Modal & Form Styles (shared across pages)
+   ============================================ */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  background: var(--color-bg);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--color-text);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+/* Form Groups (dynamically created) */
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.form-group .hint {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"],
+.form-group input[type="url"] {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-weight: 400;
+  min-height: 32px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+/* Form Check / Toggle Row */
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.form-check label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ============================================
+   Global Loading Bar (P1-4)
+   Thin animated bar at top of page during API calls
+   ============================================ */
+.loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 9999;
+  pointer-events: none;
+  display: none;
+}
+
+.loading-bar.active {
+  display: block;
+}
+
+.loading-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+  animation: loading-slide 1s ease-in-out infinite;
+}
+
+@keyframes loading-slide {
+  from { left: -40%; }
+  to { left: 100%; }
+}
+
+/* Session items */
+.session-item {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.session-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.session-proxy-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.session-age {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-left: auto;
+}
+
+.session-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 4px;
+}
+
+.session-task {
+  font-size: 13px;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.session-steps {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 6px;
+}
+
+/* ============================================
+   统一外壳底部（主题三态切换器 + 法务入口）
+   由 nav.js 注入到 #sidebar 末尾。暗色经 theme.js 的 data-theme 驱动。
+   ============================================ */
+.mp-shell-foot {
+  margin-top: auto;
+  padding: 12px 14px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mp-theme-switch {
+  display: flex;
+  gap: 4px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+}
+
+.mp-theme-switch button {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font-family);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.mp-theme-switch button:hover { color: var(--color-text); }
+
+.mp-theme-switch button.active {
+  background: var(--color-bg);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.mp-shell-foot .legal-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+  padding: 4px 2px;
+}
+
+.mp-shell-foot .legal-link:hover { color: var(--color-text); }
+.mp-shell-foot .legal-link svg { width: 15px; height: 15px; }

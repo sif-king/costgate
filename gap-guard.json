@@ -1,0 +1,7 @@
+{
+  "panelDir": "multi-proxy-manager/public",
+  "routeDir": "multi-proxy-manager/routes",
+  "serverFile": "multi-proxy-manager/server.js",
+  "testDir": "tests",
+  "ignore": ["node_modules", "dist", "UI-AUDIT"]
+}

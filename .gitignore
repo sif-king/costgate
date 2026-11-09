@@ -1,0 +1,190 @@
+node_modules/
+*.log
+*.db-wal
+*.db-shm
+cursor-proxy/data/proxy.db
+cursor-proxy/data/pricing-cache.json
+.DS_Store
+.multi-proxy-manager/
+.env
+multi-proxy-manager/public/*.png
+multi-proxy-manager/check-*.mjs
+
+# 真实密钥配置（含 api_key），切勿提交；模板见 multi-proxy-manager/providers.sample.json
+providers.json
+
+# Hermes agent 运行时产物（plans / 临时状态），非项目源码
+.hermes/
+
+# Python / pytest 产物（l2/python-middleware 实测；防 git add . 夹带缓存）
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# WorkBuddy 跨 agent 运行时 + 运行产物（非源码，且 .workbuddy/MEMORY.md 是跨 agent 共享记忆，勿进 git）
+.workbuddy/
+# 项目共享留痕区（agent 中立的时序日志，2026-10-10 立）：留项目目录是为了跨 agent 共享，
+# 但属内部过程资产，不进公开仓 —— 防 git add -A 夹带（与 .workbuddy/ 同理，见上方 push 纪律）。
+PROJECT-STATE/
+logs/
+
+# 子代理运行时 dump（的 17/17 测试结果 JSON，内容已存 IMPLEMENTATION_REPORT.md，非源码）
+l2/python-middleware/result.json
+
+# 质量层 capture 运行产物（2026-10-06 随 captureTrace 引入）：PROXY_TRACE_DIR 指向的落盘目录，
+# 非源码且含真实请求摘要；显式 ignore 防 `git add -A` 夹带（同 *.mp4 那次的教训）。
+codex-proxy/trace/
+cursor-proxy/trace/
+# 动手改源码前的人工备份（改完已进 git 即失活，不入库）
+*.bak-20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]
+
+# 2026-10-12 增补：以下为内部资产，防 git add -A 夹带（与 push 纪律一致，维护者拍板加）
+# · outputs/          —— 本地产出物（h3web 演示 mp4/html），非源码非发布物（*.mp4 已单独拦，这里补 html）
+# · docs/Gemini-agent对照研究-2026-10-10.md —— 外部调研/复盘，内部资产
+# · tools/compat-cost-ledger.js          —— 量化内部方法论的本地脚本，引用内部 initiative 文档（注意只拦这一个文件，tools/import-llm-metadata.js 仍入库）
+outputs/
+docs/Gemini-agent对照研究-2026-10-10.md
+tools/compat-cost-ledger.js
+
+# ===== 内部资产：永不提交（2026-09-28 公开化清理 + push 闸门配套）=====
+MEMORY.md
+MEMORY-*.md
+AGENTGIT-*.md
+AgentGit-*.md
+ITERATION-ROADMAP.md
+JEV-*.md
+L2-BLUEPRINT.md
+c3-blind-spot-assessment.json
+会话存档插件-*.md
+docs/04-business/
+docs/09-review/
+docs/11-lessons/
+docs/10-initiatives/
+# 2026-10-08 增补：公开化策略稿（内部资产，自己标了「不在闸门段、git add -A 会夹带上库」）
+docs/公开化计划*.md
+docs/INDEX.md
+docs/PENDING-DECISIONS.md
+docs/02-product/PRD.md
+docs/02-product/V1-SCOPE-BOUNDARY.md
+docs/02-product/bundle-design.md
+docs/02-product/deepseek-baseline.md
+docs/02-product/dsh-integration.md
+docs/02-product/m2-execution-signoff.md
+docs/02-product/m6-action-checklist.md
+docs/02-product/q1-pricing-routing-arch-v1.md
+docs/02-product/q1-todo-tracker.md
+docs/02-product/q1-ux-design-v1.md
+docs/02-product/v1-signoff.md
+l2/COMPLEXITY-MODE.md
+l2/EXTERNAL-OPTIONS-REGISTER.md
+l2/continuity-kernel-design-*.md
+l2/p3-c1-paseo-integration.md
+l2/p3-sessions-checkpoint-design.md
+l2/python-middleware/IMPLEMENTATION_REPORT.md
+
+# ===== 2026-10-03 过程资产洗史清单（结果资产 vs 过程资产 review，维护者定规：过程/内部不上 GitHub）=====
+P0-FIXES.md
+ACCEPTANCE-CHECKLIST.md
+AGENTS.md
+docs/02-product/ECOSYSTEM-LAYERS.md
+docs/02-product/PRODUCT-MINDSET-DEFENSIBLE.md
+docs/02-product/business-intro.md
+docs/02-product/v1-positioning-declared.md
+docs/05-design/DESIGN-MEMO-gaode-analysis-agent-L2.md
+docs/05-design/visual-design.md
+# 2026-10-07 增补：设计草案 / 未采纳实现规范 属内部资产，不进公开仓（方法论/证据表已迁 ~/Documents/AI项目/agent-infra/）
+docs/04-tech/savings-gateway-design.md
+docs/octop-harness-failover-middleware-spec.md
+docs/06-test/acceptance.md
+docs/06-test/test-cases.md
+docs/06-test/test-plan.md
+docs/_evidence/README.md
+docs/_templates/ADR.template.md
+docs/_templates/PRD.template.md
+docs/_templates/test-cases.template.md
+l2/CAPABILITY-MODE.md
+l2/CASES.md
+l2/L2-QUALITY-ENGINEERING.md
+l2/PERF-REPORT.md
+l2/OBSERVE-REPORT-2026-10-01.md
+l2/STEP2-CANARY-2026-10-01.md
+l2/HOT-PATH-RUNBOOK.md
+l2/savings-gateway/PHASE2-SPEC.md
+
+# 2026-10-05 对外可见性定规（维护者拍板）：alignment/ 是 agent 间【共享对齐水位】运行态，
+# 含未发文章线索 / 项目代号 / 内部待办 / 本机绝对路径，属内部数据，永不进公开仓。
+# 例外只放纯协议文档（l2/adapter-protocol.md 同列，已在上方 ! 规则放行）。
+alignment/
+# macOS 原生客户端：源码入库，构建产物不入库（build.sh 一次编译出 build/MultiProxy.app）
+client/build/
+
+# 演示/录像产物（demo 视频，约 28MB 两个文件）：非源码、非发布物，永不进 git。
+# 历史曾靠 scripts/push-gate-check.sh 兜底扫到，但那是「事后扫」不是「事前挡」；显式 ignore 才是正解
+# （2026-10-05 审计订正：之前无 mp4 规则，两个 demo 处于 untracked，`git add -A` 会夹带上库）。
+*.mp4
+# L2 协议文档例外：MEMORY-*.md 的 glob 在大小写不敏感 FS 上会误伤本文件（它不是记忆文件，是与 adapter-protocol.md 并列的 L2 协议文档，应入库）
+!l2/memory-alignment-protocol.md
+
+# 本地备份 / trash 目录（agent 或人工改动前的备份），非源码，防 git add 夹带
+**/.trash-*/
+
+# ===== 内部资产：调研/内部建议文档（2026-10-13 转公开前 untrack，工作区保留供 agent 读）=====
+docs/JEV*.md
+路由能力矩阵与开发建议-*.md
+# 2026-10-14 增补：过程资产文档（双轴审计=过程资产，维护者授权按建议清单 untrack）
+# · 状态快报 / 任务队列 / 签收单 / 运维 runbook / 跨会话交接与协同 / 验证记录（7 篇建议清单）
+# · cc-switch 逆向对照研究（与 JEV 稿同类的内部调研）/ demo 视频制作手册（非产品使用所需）
+STATUS-REPORT-*.md
+docs/QUEUE.md
+docs/M6-REAL-ROUTING-SIGNOFF.md
+docs/M6-SECOND-INSTANCE-RUNBOOK.md
+docs/04-tech/o1-cursor-18794-handoff-*.md
+docs/MULTI-SESSION-COORDINATION.md
+docs/M7-DASHBOARD-ABORT-RESUME-VERIFIED.md
+docs/cc-switch-对照研究-*.md
+scripts/工具实录-执行手册-*.md
+
+# 3.3 对外发布清理(2026-10-14 贾维斯): 运行时/测试/dev 数据不进仓库不进包
+codex-proxy/trace/
+codex-proxy/logs/
+cursor-proxy/data/
+logs/
+*.trace.jsonl
+
+# 3.4 过程资产/未定稿(2026-10-15 双轴审计结论): 内部评审稿、法务草案、设计过程稿、竞品评估——
+# 含大量内部决策表述与未拍板占位符，定稿/脱敏后再由维护者显式放行；勿 git add -A 误带
+docs/legal/
+docs/design-system/
+docs/frontend-review/
+docs/vendor-agent-bridge.md
+竞品机制评估-*.md
+
+# 5. 评测产物中的未发布内容 (2026-10-18)
+# 真稿改写任务集由 eval/*/*/real/build_real.py 从**未发布的公众号成稿**抽取正文段落生成，
+# prompt 文件与 tasks-real.json 内含 #86 未发布全文片段（#86 状态：待终审·不可发）。
+# 脚本入库保证可复现，正文不入库；运行时现跑 build_real.py 即可重建。
+eval/**/real/prompts/
+eval/**/real/tasks-real.json
+# 改写判定写出的临时文件(含模型输出正文)
+eval/**/.tmp_*.txt
+
+# 2026-10-19 增补：E2E 结果存档（03:50 老板四项拍板②「git 外存档」——留盘不入库）
+e2e-matrix-results-*/
+multi-proxy-manager/matrix-results/
+
+# graphify 本地图谱产物（agent-infra/tools/project-delta 同层工具生成，不入库）
+graphify-out/
+generic-openai-proxy/.env.pre-keypool*
+
+# 过程资产：AUDIT 截图与记忆备份不进仓（2026-11-07 收口）
+UI-AUDIT/
+multi-proxy-manager/UI-AUDIT/
+MEMORY.md.bak-*
+
+# 内部资产：审计报告与发布清单只留本地，不进公开树（2026-11-08）
+# AUDIT-*.md 含未修 P0 清单与对外部批评的逐条回应；
+# docs/RELEASE-CHECKLIST.md 含「需本人 signoff」与「生成方」这类内部协作信息。
+# 两者零代码引用（scripts/drift-check.js 的 watch 列表对缺失文件自动跳过），
+# untrack 不影响任何脚本；文件仍在磁盘上，本地照常可读。
+AUDIT-*.md
+docs/RELEASE-CHECKLIST.md

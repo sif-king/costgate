@@ -1,0 +1,186 @@
+// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the multi-proxy project.
+
+'use strict';
+
+// L2 P2 接线测试：/api/orchestration 门控 + shadow 默认 + 单例协作历史 + 环拒绝。
+// 非侵入：门控默认关 → 路由 403 零副作用；门控开 → shadow 下不触碰真实 adapter。
+
+const express = require('express');
+const request = require('supertest');
+
+describe('L2 P2 orchestration route (/api/orchestration)', () => {
+  let routerPath;
+  let app;
+  const build = () => {
+    app = express();
+    app.use(express.json());
+    const r = require(routerPath);
+    r._resetForTest && r._resetForTest();
+    app.use('/api/orchestration', r);
+    return app;
+  };
+
+  beforeEach(() => {
+     // 缓存失效：每次取干净单例，验证单例重置语义
+    delete require.cache[require.resolve('../../routes/orchestration')];
+    routerPath = '../../routes/orchestration';
+    });
+
+  afterEach(() => {
+    delete process.env.PROXY_ORCHESTRATION;
+    delete process.env.PROXY_LLM_DECOMPOSE;
+    delete process.env.PROXY_LLM_BASE_URL;
+    });
+
+  it('门控关(默认)：GET + POST 均 403，零副作用', async () => {
+    build();
+    const g = await request(app).get('/api/orchestration');
+    expect(g.status).toBe(403);
+    expect(g.body.error).toBe('orchestration-gate-closed');
+    const p = await request(app).post('/api/orchestration/run').send({ input: 'jwt' });
+    expect(p.status).toBe(403);
+   });
+
+  it('门控开 + 直供 DAG：200 + 子任务全 done + 历史记 1 条', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    build();
+    const dag = {
+      input: 'demo',
+      template: 'single',
+      subtasks: [{ id: 'a', type: 'plan', prompt: 'a', deps: [] }, { id: 'b', type: 'code', prompt: 'b', deps: ['a'] }],
+      edges: [['a', 'b']],
+      };
+    const r = await request(app).post('/api/orchestration/run').send({ dag, shadowMode: true });
+    expect(r.status).toBe(200);
+    expect(r.body.runId).toMatch(/^run_/);
+    expect(r.body.shadowMode).toBe(true);
+    expect(r.body.subtasks.map((s) => s.id).sort()).toEqual(['a', 'b']);
+    expect(r.body.subtasks.every((s) => s.status === 'done')).toBe(true);
+    // 协作历史累积
+    const hist = await request(app).get('/api/orchestration');
+    expect(hist.status).toBe(200);
+    expect(hist.body.length).toBe(1);
+   });
+
+  it('门控开 + input 拆解(内置视频模板)：200 + 子任务全 done', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    build();
+    const r = await request(app).post('/api/orchestration/run')
+      .send({ input: '做一个短片 视频创作 demo' });
+    expect(r.status).toBe(200);
+    expect(r.body.template).toBe('video-workflow');
+    expect(r.body.subtasks.length).toBe(5);
+    expect(r.body.subtasks.every((s) => s.status === 'done')).toBe(true);
+   });
+
+  it('门控开 + 环 DAG：400(不冒泡)', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    build();
+    const dag = {
+      subtasks: [
+        { id: 'x', deps: ['y'] },
+        { id: 'y', deps: ['x'] },
+      ],
+      edges: [['x', 'y'], ['y', 'x']],
+     };
+    const r = await request(app).post('/api/orchestration/run').send({ dag });
+      expect(r.status).toBe(400);              // 环被前置 hasCycle 拦截，转 400 不冒泡
+      expect(r.body.message).toMatch(/cycle|unresolvable/i);
+      });
+
+  it('门控开 + 既无 input 也无 dag：400', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    build();
+    const r = await request(app).post('/api/orchestration/run').send({});
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe('orchestration-no-input');
+   });
+
+  it('单例长寿命：两次 run 的历史累积为 2 条', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    build();
+    const dag = { input: 'd', subtasks: [{ id: 'a', type: 'plan', prompt: 'a', deps: [] }], edges: [] };
+    await request(app).post('/api/orchestration/run').send({ dag });
+    await request(app).post('/api/orchestration/run').send({ dag });
+    const hist = await request(app).get('/api/orchestration');
+    expect(hist.body.length).toBe(2);
+    });
+
+  it('LLM 拆解(默认关)：input 走内置模板，200 + template 非 llm', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';              // PROXY_LLM_DECOMPOSE 不设置 → 关
+    build();
+    const r = await request(app).post('/api/orchestration/run')
+        .send({ input: '做一个短片 视频创作 demo' });
+    expect(r.status).toBe(200);
+    expect(r.body.template).toBe('video-workflow');      // 内置模板，非 LLM
+    });
+
+  it('LLM 拆解(开)：真 http 假 LLM → 200 + template=llm + 子任务全 done', async () => {
+    const http = require('http');
+    const dagJson = JSON.stringify({
+      subtasks: [
+            { id: 'design', type: 'plan', prompt: '设计', deps: [] },
+            { id: 'impl', type: 'code', prompt: '实现', deps: ['design'] },
+          ],
+    });
+    const server = http.createServer((req, res) => {
+      let buf = '';
+      req.on('data', (c) => { buf += c; });
+      req.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ id: 'x', model: 'default',
+             choices: [{ message: { content: dagJson } }] }));
+        });
+     });
+    await new Promise((res) => server.listen(0, '127.0.0.1', res));
+    const port = server.address().port;
+
+    process.env.PROXY_ORCHESTRATION = '1';
+    process.env.PROXY_LLM_DECOMPOSE = '1';
+    process.env.PROXY_LLM_BASE_URL = `http://127.0.0.1:${port}`;
+    build();
+    try {
+       const r = await request(app).post('/api/orchestration/run').send({ input: '帮我做带设计+实现的东西' });
+      expect(r.status).toBe(200);
+      expect(r.body.template).toBe('llm');                 // 走了 LLM 拆解
+      expect(r.body.subtasks.length).toBe(2);
+      expect(r.body.subtasks.every((s) => s.status === 'done')).toBe(true);
+     } finally {
+       server.close();
+     }
+    });
+
+  it('质量层默认关：响应无 quality 字段（REST 入口零行为变更）', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    build();
+    const r = await request(app).post('/api/orchestration/run').send({ input: '做一个 jwt 认证' });
+    expect(r.status).toBe(200);
+    expect(r.body.quality).toBeUndefined();
+   });
+
+  it('质量层 per-call 开启：响应带 quality 诊断（2.2/2.3 已在 REST 入口生效）', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    build();
+    const r = await request(app).post('/api/orchestration/run')
+      .send({ input: '做一个 jwt 认证', quality: true });
+    expect(r.status).toBe(200);
+    expect(r.body.quality).toBeDefined();
+    expect(Array.isArray(r.body.quality.semanticIssues)).toBe(true);
+    expect(Array.isArray(r.body.quality.fidelityIssues)).toBe(true);
+   });
+
+  it('质量层 env 开启：PROXY_L2_QUALITY=1 → 响应带 quality 诊断', async () => {
+    process.env.PROXY_ORCHESTRATION = '1';
+    process.env.PROXY_L2_QUALITY = '1';
+    build();
+    try {
+      const r = await request(app).post('/api/orchestration/run').send({ input: '做一个 jwt 认证' });
+      expect(r.status).toBe(200);
+      expect(r.body.quality).toBeDefined();
+     } finally {
+      delete process.env.PROXY_L2_QUALITY;
+     }
+   });
+});

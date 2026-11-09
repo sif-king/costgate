@@ -1,0 +1,8 @@
+{
+  "panelDir": null,
+  "routeDir": "src/server/routes",
+  "serverFile": "src/server/app.ts",
+  "testDir": "tests",
+  "gatePrefix": "",
+  "ignore": ["node_modules", "dist"]
+}

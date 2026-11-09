@@ -1,0 +1,15 @@
+{
+  "_comment": "越界改动台账：凡改了自己以外的东西（系统目录 / 第三方 app），都必须在这里登记「失效时谁会喊」。由 gap-guard G9 校验。",
+  "entries": [
+    {
+      "date": "2026-10-11",
+      "target": "/Applications/ChatGPT.app",
+      "what": "往 Contents/MacOS/ 加 ChatGPTMP shim，并改 Info.plist 的 CFBundleExecutable 指向它",
+      "why": "让桌面端双击启动时注入 CODEX_HOME，把 ~/.codex 隔离出去",
+      "detector": "scripts/doctor.sh",
+      "rollback": "scripts/rollback-chatgpt-shim.sh",
+      "rehearsed": "2026-11-09",
+      "note": "2026-11-09 以手工等价步骤走通并验证 app 可启动（还原 Info.plist → 删 shim → 清 .cstemp → 从内到外 ad-hoc 重签 → codesign --verify 通过 → open 后进程存活），随后把该步骤固化为 scripts/rollback-chatgpt-shim.sh。代价：官方公证签名已丢失，需 app 自动更新或重装才能恢复，脚本内已注明。教训：这个雷躺了整整一个月，因为当时既没有检测能在 app 打不开时发出声音，回滚脚本也从未跑过。"
+    }
+  ]
+}

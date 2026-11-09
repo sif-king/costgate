@@ -1,0 +1,2904 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Proxy Manager - 总览</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Ctext x='16' y='24' font-size='20' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial,sans-serif'%3EP%3C/text%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="stylesheet" href="./colors_and_type.css">
+  <link rel="stylesheet" href="./shared-styles.css">
+  <!-- 设计系统 v1.0（2026-10-16 迁移）：新 token + 新组件层 + 统一壳。旧两 CSS 保留作别名桥（design-system.test.js 读它们，不删）；新层最后加载 = 视觉默认 -->
+  <link rel="stylesheet" href="./tokens.css">
+  <link rel="stylesheet" href="./components.css">
+    <script src="./icons.js"></script>
+<script src="./nav.js"></script>
+<script src="./states.js"></script>
+<script src="./gatebar.js"></script>
+  <script src="./theme.js"></script>
+</head>
+<style>
+/* ============================================
+   Apple HIG Style Overlays
+   ============================================ */
+:root {
+  --hig-card-radius: 16px;
+  --hig-nav-radius: 10px;
+  --hig-glass-bg: rgba(255, 255, 255, 0.72);
+  --hig-glass-border: rgba(255, 255, 255, 0.5);
+  --hig-section-gap: 20px;
+}
+
+:root.dark {
+  --hig-glass-bg: rgba(30, 41, 59, 0.72);
+  --hig-glass-border: rgba(255, 255, 255, 0.08);
+}
+
+/* Apple-style card */
+.hig-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--hig-card-radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  transition: box-shadow var(--transition-normal);
+}
+
+.hig-card:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.hig-card-header {
+  padding: 20px 24px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hig-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+}
+
+.hig-card-subtitle {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
+.hig-card-body {
+  padding: 16px 24px 20px;
+}
+
+/* Apple-style section label */
+.hig-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  padding: 0 4px 8px;
+  margin-top: 8px;
+}
+
+/* Stat cards - Apple style */
+.hig-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.hig-stat-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--hig-card-radius);
+  padding: 20px 22px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+  transition: all var(--transition-normal);
+}
+
+.hig-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: var(--hig-card-radius) var(--hig-card-radius) 0 0;
+}
+
+.hig-stat-card.blue::before { background: var(--color-primary); }
+.hig-stat-card.green::before { background: var(--color-success); }
+.hig-stat-card.orange::before { background: var(--color-warning); }
+.hig-stat-card.red::before { background: var(--color-error); }
+
+.hig-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* ── 修复：自动刷新面板 & toggle 溢出重叠（2026-11-01）──
+   根因：.toggle-switch 此前无任何 CSS 定义，内部 .toggle-slider（shared-styles L347：
+   position:absolute; inset:0）失去定位父级，逃逸到页面层压住下方 hero 卡。
+   补上定位父级 + 面板布局，滑块回归 44×26 几何。 */
+.auto-refresh-panel {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 20px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+.auto-refresh-label { font-size: 12px; color: var(--color-text-secondary); }
+/* 工具栏节奏：左「自动刷新 + 开关」，右「间隔 + 下拉」，治通栏左堆右空 */
+.auto-refresh-interval { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.auto-refresh-panel select {
+  padding: 4px 8px; font-size: 12px;
+  background: var(--color-bg-secondary, var(--color-bg));
+  border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text);
+}
+.toggle-switch { position: relative; display: inline-block; width: 44px; height: 26px; flex-shrink: 0; vertical-align: middle; }
+.toggle-switch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
+.toggle-switch .toggle-slider { position: absolute; inset: 0; background: var(--color-border); border-radius: 24px; transition: background 150ms ease; }
+.toggle-switch .toggle-slider::before { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: transform 150ms ease; }
+.toggle-switch input:checked + .toggle-slider { background: var(--color-success); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+/* ── 侧栏分组：三段视觉块（页面 nav / 仪表盘视图 / 代理服务），治「菜单好几套」── */
+#sidebarNav .nav-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  padding: 16px 12px 4px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 8px;
+}
+#sidebarNav .nav-label:first-child { border-top: none; margin-top: 4px; padding-top: 8px; }
+#sidebarNav .nav-item.proxy-nav-item { padding: 5px 12px; font-size: 12px; color: var(--color-text-secondary); }
+#sidebarNav .nav-item.proxy-nav-item .nav-badge {
+  margin-left: auto; font-size: 10px; font-weight: 600;
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--color-border); color: var(--color-text-tertiary); background: transparent;
+}
+#sidebarNav .nav-item.proxy-nav-item .nav-badge.running { color: var(--color-success); border-color: var(--color-success); }
+
+/* ── 卡片文字溢出：hero 卡 JS 注入的长文（账本主权 details）撑出卡边界 ── */
+.hig-card-body, .hig-card-body * { overflow-wrap: break-word; }
+
+.hig-stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.hig-stat-icon.blue { background: var(--color-primary-light); color: var(--color-primary); }
+.hig-stat-icon.green { background: var(--color-success-light); color: var(--color-success); }
+.hig-stat-icon.orange { background: var(--color-warning-light); color: var(--color-warning); }
+.hig-stat-icon.red { background: var(--color-error-light); color: var(--color-error); }
+
+.hig-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  line-height: 1;
+  margin-bottom: 4px;
+  color: var(--color-text);
+}
+
+.hig-stat-label {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+}
+
+/* Health table rows */
+.health-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.health-row:last-child {
+  border-bottom: none;
+}
+
+.health-row-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.health-provider {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 14px;
+  min-width: 120px;
+}
+
+.health-meta {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* Alert items */
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  background: var(--color-bg-secondary);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.alert-item:hover {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.alert-item:last-child {
+  margin-bottom: 0;
+}
+
+.alert-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.alert-icon.critical { background: var(--color-error-light); color: var(--color-error); }
+.alert-icon.warning { background: var(--color-warning-light); color: var(--color-warning); }
+.alert-icon.info { background: var(--color-info-light); color: var(--color-info); }
+.alert-icon.success { background: var(--color-success-light); color: var(--color-success); }
+
+.alert-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.alert-message {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.alert-time {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+/* Registry cards */
+.registry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.registry-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--hig-card-radius);
+  padding: 20px;
+  transition: all var(--transition-normal);
+  position: relative;
+}
+
+.registry-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.registry-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.registry-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+}
+
+.registry-card-type {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.registry-card-body {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.registry-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.registry-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.registry-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+/* Filter bar */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filter-bar .form-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Page container */
+.page {
+  display: none;
+  animation: page-in 0.25s ease;
+}
+
+.page.active {
+  display: block;
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .hig-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .hig-stat-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .health-row {
+    flex-wrap: wrap;
+  }
+  
+  .health-meta {
+    width: 100%;
+    padding-left: 36px;
+  }
+}
+
+/* ============================================
+   因果化动效（2026-11-01 · Stageshow 手艺：every motion has a cause /
+   change only what changed / 无因不动、不硬加动画 / 结果跟因）
+   配色走 tokens.css 的 --dur-* / --ease，与组件层一致。
+   下方全局 reduced-motion 块会把这些动画一并兜底禁用。
+   ============================================ */
+/* 状态翻转：running/fault/health 真变了的代理卡片，闪一瞬强调（result follows cause） */
+@keyframes mp-status-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+  25%  { box-shadow: 0 0 0 3px rgba(37,99,235,.28); }
+  100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+}
+@keyframes mp-badge-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.proxy-card.status-changed {
+  animation: mp-status-flash var(--dur-slow) var(--ease);
+  border-color: var(--accent);
+}
+.proxy-card.status-changed .status-badge {
+  animation: mp-badge-pop var(--dur) var(--ease);
+}
+
+/* 告警 drop-in：入场整块 fade + 轻微下沉（无 pop，180ms 快反馈档），逐条错峰 40ms */
+@keyframes mp-alert-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#alertList .alert-item { animation: mp-alert-in var(--dur) var(--ease) both; }
+#alertList .alert-item:nth-child(2) { animation-delay: 40ms; }
+#alertList .alert-item:nth-child(3) { animation-delay: 80ms; }
+#alertList .alert-item:nth-child(4) { animation-delay: 120ms; }
+#alertList .alert-item:nth-child(5) { animation-delay: 160ms; }
+#alertList .alert-item:nth-child(6) { animation-delay: 200ms; }
+#alertList .alert-item:nth-child(n+7) { animation-delay: 240ms; }
+
+/* ============================================
+   Reduced Motion
+     ============================================ */
+@media (prefers-reduced-motion: reduce) {
+ *, *::before, *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+ }
+}
+</style>
+<body>
+
+<!-- Mobile Menu Button -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
+  <svg class="icon-svg icon-svg-lg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+
+<!-- Sidebar Overlay (mobile) -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="mark logo-icon">P</div>
+    <strong>Multi-Proxy Manager</strong>
+  </div>
+
+  <nav class="sidebar-nav" id="sidebarNav"></nav>
+  <script>
+    if (window.renderNav) {
+      renderNav(document.getElementById('sidebarNav'), { current: 'dashboard', spa: true, proxyNav: true });
+    }
+  </script>
+
+  <div class="sidebar-footer sidebar-foot">
+    <div class="ver version-info" id="sidebarVersion">v1.0.0</div>
+    <button class="btn btn-ghost btn-sm" id="darkModeToggle" style="width:100%;margin-top:8px;" title="切换暗色模式">
+      <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      暗色
+    </button>
+    <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="width:100%;margin-top:6px;">登出</button>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<div class="loading-bar" id="loadingBar"></div>
+<main class="main" id="mainContent">
+  <!-- Offline Banner -->
+  <div class="offline-banner hidden" id="offlineBanner">
+    <span class="offline-banner-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+    <span>后端服务未运行，当前显示模拟数据。请确认 Manager 服务已启动。</span>
+  </div>
+
+  <!-- API Key Banner -->
+  <div class="apikey-banner hidden" id="apiKeyBanner">
+    <span class="apikey-banner-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+    <span>部分代理未配置 API Key，功能可能受限。请编辑各模块的 .env 文件。</span>
+    <button class="apikey-banner-close" onclick="dismissApiKeyBanner()" aria-label="关闭横幅">&times;</button>
+  </div>
+
+  <!-- ==================== Dashboard Page ==================== -->
+  <div class="page active" id="page-dashboard">
+    <div class="page-header">
+      <h1 class="page-title">概览</h1>
+      <p class="page-subtitle">管理所有代理服务的运行状态与控制</p>
+    </div>
+
+    <!-- 能力门控状态条：由公共模块 gatebar.js 注入（全站 9 页同一份实现，避免各处漂移）。
+         存在的理由：README 承诺的能力按非侵入铁律默认门控关闭，面板若不说，
+         用户就会把「未开启」读成「没做 / 假功能」。这一条永远直说当前开没开。 -->
+    <div id="gateBar"></div>
+
+    <!-- Auto-refresh Control Panel -->
+    <div class="auto-refresh-panel" id="autoRefreshPanel">
+      <label class="auto-refresh-label" for="autoRefreshToggle">自动刷新</label>
+      <label class="toggle-switch">
+        <input type="checkbox" id="autoRefreshToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="auto-refresh-interval">
+        <label class="auto-refresh-label">间隔</label>
+        <select id="autoRefreshInterval">
+        <option value="5">5 秒</option>
+        <option value="10" selected>10 秒</option>
+        <option value="30">30 秒</option>
+        <option value="60">60 秒</option>
+        <option value="0">关闭</option>
+      </select>
+      </span>
+    </div>
+
+    <!-- Stat Cards Row -->
+    <div class="hig-stat-grid">
+      <div class="hig-stat-card blue">
+        <div class="hig-stat-icon blue">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+        </div>
+        <div class="hig-stat-value" id="proxyStatusCount">
+          <span class="loading-spinner"></span>
+        </div>
+        <div class="hig-stat-label">代理服务</div>
+      </div>
+      <div class="hig-stat-card green">
+        <div class="hig-stat-icon green">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="hig-stat-value" id="installedCount">
+          <span class="loading-spinner"></span>
+        </div>
+        <div class="hig-stat-label">已安装代理</div>
+      </div>
+      <div class="hig-stat-card orange">
+        <div class="hig-stat-icon orange">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="hig-stat-value" id="sessionCount">0</div>
+        <div class="hig-stat-label">运行中任务</div>
+      </div>
+      <div class="hig-stat-card red">
+        <div class="hig-stat-icon red">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="hig-stat-value" id="alertCount">0</div>
+        <div class="hig-stat-label">活跃告警</div>
+      </div>
+    </div>
+
+    <!-- 账本主权 Hero（2026-10-21）：把成本 digest 提到总览首屏，差异化于 Magpie 的「模型切换」叙事 -->
+    <div class="hig-card" id="costSovereigntyCard" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">账本主权 · 上周节省</div>
+          <div class="hig-card-subtitle">多 agent 统一网关的核心差异：每一笔花销按 agent 归因、本地流量零成本、账本归你</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadCostSovereignty()">刷新</button>
+      </div>
+      <div class="hig-card-body">
+        <div id="costSovereigntyBody">
+          <div class="empty-state"><div class="empty-text">正在加载账本…</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 统一接入 Hero（2026-10-21）：单端点 18880 作为推荐接入 URL，隐藏 per-agent 端口心智 -->
+    <div class="hig-card" id="unifiedIngressCard" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">统一接入 · 单端点</div>
+          <div class="hig-card-subtitle">推荐所有 agent 指向这一个 URL，网关按协议自动分发到对应后端；各 agent 专属端口仍然可用</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <code id="unifiedIngressUrl" style="background:var(--color-bg-secondary);padding:8px 14px;border-radius:8px;font-family:'SF Mono',Menlo,monospace;font-size:14px;color:var(--color-text);">http://127.0.0.1:18880/v1</code>
+          <button class="btn btn-outline btn-sm" onclick="copyUnifiedIngressUrl()">复制</button>
+        </div>
+        <div style="font-size:13px;color:var(--color-text-secondary);line-height:1.7;">
+          <div style="margin-bottom:6px;"><b>按协议自动分发：</b></div>
+          <div style="background:var(--color-bg-secondary);border-radius:10px;padding:12px 14px;margin-top:4px;">
+            <div style="line-height:2.05;">· <code>/v1/messages</code>（Anthropic / Claude Code）→ claude 18791</div>
+            <div style="line-height:2.05;">· <code>/v1/responses</code> · <code>/v1/chat/completions</code> · <code>/v1/models</code>（OpenAI / Codex）→ codex 18790</div>
+            <div style="line-height:2.05;">· <code>/api/*</code> · <code>/health</code>（管理面）→ manager 18792</div>
+          </div>
+          <div style="margin-top:10px;color:var(--color-text-tertiary);font-size:12px;line-height:1.7;">纯转发层，不改协议语义、不合并架构。这是可选前门——你仍可直连各 agent 专属端口（18790 / 18791 / …）。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Version Info Card -->
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">版本信息</div>
+          <div class="hig-card-subtitle">系统版本和组件信息</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div class="version-list" id="versionInfo">
+          <div class="version-item">
+            <span class="ver-label">管理器版本</span>
+            <span class="ver-value"><span class="loading-spinner"></span></span>
+          </div>
+          <div class="version-item">
+            <span class="ver-label">Codex Proxy</span>
+            <span class="ver-value"><span class="loading-spinner"></span></span>
+          </div>
+          <div class="version-item">
+            <span class="ver-label">Hermes Proxy</span>
+            <span class="ver-value"><span class="loading-spinner"></span></span>
+          </div>
+          <div class="version-item">
+            <span class="ver-label">Cursor Proxy</span>
+            <span class="ver-value"><span class="loading-spinner"></span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Proxy Status Cards -->
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">代理状态</div>
+          <div class="hig-card-subtitle">管理各代理服务的运行状态</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div class="proxy-list" id="proxyStatusList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="empty-text">正在加载代理服务状态...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Running Sessions Card -->
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">运行中任务</div>
+          <div class="hig-card-subtitle">L2 编排引擎 Session 状态（自动刷新）</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="sessionsList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="empty-text">暂无运行中任务</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider Health Card -->
+    <div class="hig-card">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">Provider 健康</div>
+          <div class="hig-card-subtitle" id="phSubtitle">故障自动标记与跨 Proxy 感知（observe 模式）</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="phList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="empty-text">暂无隔离 Provider</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Health Page ==================== -->
+  <div class="page" id="page-health">
+    <div class="page-header">
+      <h1 class="page-title">健康状态</h1>
+      <p class="page-subtitle">代理与服务健康监控 · 归一化契约: ok / degraded / down</p>
+    </div>
+
+    <!-- Health Stats -->
+    <div class="hig-stat-grid">
+      <div class="hig-stat-card green">
+        <div class="hig-stat-icon green">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="hig-stat-value" id="healthOkCount">-</div>
+        <div class="hig-stat-label">健康</div>
+      </div>
+      <div class="hig-stat-card orange">
+        <div class="hig-stat-icon orange">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="hig-stat-value" id="healthDegradedCount">-</div>
+        <div class="hig-stat-label">降级</div>
+      </div>
+      <div class="hig-stat-card red">
+        <div class="hig-stat-icon red">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
+        <div class="hig-stat-value" id="healthDownCount">-</div>
+        <div class="hig-stat-label">故障</div>
+      </div>
+      <div class="hig-stat-card blue">
+        <div class="hig-stat-icon blue">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div class="hig-stat-value" id="healthHistoryCount">-</div>
+        <div class="hig-stat-label">历史记录</div>
+      </div>
+    </div>
+
+    <!-- Proxy Health Table -->
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">代理健康状态</div>
+          <div class="hig-card-subtitle">实时健康检查 · 归一化状态 (ok / degraded / down)</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadHealthPage()">
+          <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+      </div>
+      <div class="hig-card-body">
+        <div class="health-row health-row-header">
+          <span class="health-provider">代理</span>
+          <span style="flex:1;font-size:11px;color:var(--color-text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">状态</span>
+          <span style="min-width:80px;font-size:11px;color:var(--color-text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;text-align:right;">延迟</span>
+          <span style="min-width:100px;font-size:11px;color:var(--color-text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;text-align:right;">运行时间</span>
+        </div>
+        <div id="healthProxyList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="empty-text">正在加载健康状态...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider Health -->
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">Provider 健康</div>
+          <div class="hig-card-subtitle" id="healthPagePhSubtitle">故障自动标记与跨 Proxy 感知</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="healthPagePhList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="empty-text">所有 Provider 健康</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Health History -->
+    <div class="hig-card">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">健康历史</div>
+          <div class="hig-card-subtitle">最近 N 条健康记录回溯</div>
+        </div>
+        <select class="form-select" id="healthHistoryLimit" onchange="loadHealthHistory()">
+          <option value="20">20 条</option>
+          <option value="50" selected>50 条</option>
+          <option value="100">100 条</option>
+        </select>
+      </div>
+      <div class="hig-card-body">
+        <div id="healthHistoryList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div class="empty-text">暂无健康历史</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Alerts Page ==================== -->
+  <div class="page" id="page-alerts">
+    <div class="page-header">
+      <h1 class="page-title">告警中心</h1>
+      <p class="page-subtitle">实时告警事件 · 三路信号源 (provider-health / error-patterns / cost)</p>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <input type="text" class="form-input" id="alertSearch" placeholder="搜索告警..." oninput="filterAlerts()" aria-label="搜索告警...">
+      <select class="form-select" id="alertSeverity" onchange="filterAlerts()">
+        <option value="">全部级别</option>
+        <option value="critical">严重</option>
+        <option value="warning">警告</option>
+        <option value="info">信息</option>
+      </select>
+      <select class="form-select" id="alertSource" onchange="filterAlerts()">
+        <option value="">全部来源</option>
+        <option value="provider-health">Provider 健康</option>
+        <option value="error-patterns">错误模式</option>
+        <option value="cost">成本</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="collectAlerts()">
+        <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        立即采集
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="loadAlertsPage()">刷新</button>
+    </div>
+
+    <!-- Alert Stats -->
+    <div class="hig-stat-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="hig-stat-card red">
+        <div class="hig-stat-icon red">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="hig-stat-value" id="alertCriticalCount">0</div>
+        <div class="hig-stat-label">严重</div>
+      </div>
+      <div class="hig-stat-card orange">
+        <div class="hig-stat-icon orange">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="hig-stat-value" id="alertWarningCount">0</div>
+        <div class="hig-stat-label">警告</div>
+      </div>
+      <div class="hig-stat-card blue">
+        <div class="hig-stat-icon blue">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </div>
+        <div class="hig-stat-value" id="alertInfoCount">0</div>
+        <div class="hig-stat-label">信息</div>
+      </div>
+    </div>
+
+    <!-- Alert Events List -->
+    <div class="hig-card">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">告警事件</div>
+          <div class="hig-card-subtitle" id="alertCountSubtitle">共 0 条告警</div>
+        </div>
+        <div id="alertGateStatus" style="font-size:12px;color:var(--color-text-tertiary);">
+          <span class="status-badge offline">门控关闭</span>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="alertList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+            <div class="empty-text">暂无告警事件</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Registry Page ==================== -->
+  <div class="page" id="page-registry">
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <h1 class="page-title">Agent 清单</h1>
+        <p class="page-subtitle">管理 Agent Profile · 能力标签注册与查询</p>
+      </div>
+      <button class="btn btn-primary" onclick="showAddAgentModal()">
+        <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        新增 Agent
+      </button>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <input type="text" class="form-input" id="registrySearch" placeholder="搜索 Agent..." oninput="filterRegistry()" aria-label="搜索 Agent...">
+      <select class="form-select" id="registryTypeFilter" onchange="filterRegistry()">
+        <option value="">全部类型</option>
+        <option value="codex">Codex</option>
+        <option value="hermes">Hermes</option>
+        <option value="cursor">Cursor</option>
+        <option value="custom">Custom</option>
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="loadRegistryPage()">
+        <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        刷新
+      </button>
+    </div>
+
+    <!-- Registry Stats -->
+    <div class="hig-stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="hig-stat-card blue">
+        <div class="hig-stat-icon blue">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="hig-stat-value" id="registryTotalCount">0</div>
+        <div class="hig-stat-label">总计 Agent</div>
+      </div>
+      <div class="hig-stat-card green">
+        <div class="hig-stat-icon green">C</div>
+        <div class="hig-stat-value" id="registryCodexCount">0</div>
+        <div class="hig-stat-label">Codex</div>
+      </div>
+      <div class="hig-stat-card orange">
+        <div class="hig-stat-icon orange">H</div>
+        <div class="hig-stat-value" id="registryHermesCount">0</div>
+        <div class="hig-stat-label">Hermes</div>
+      </div>
+      <div class="hig-stat-card red">
+        <div class="hig-stat-icon red">Cu</div>
+        <div class="hig-stat-value" id="registryCursorCount">0</div>
+        <div class="hig-stat-label">Cursor</div>
+      </div>
+    </div>
+
+    <!-- Registry Grid -->
+    <div class="registry-grid" id="registryGrid">
+      <div class="empty-state" style="grid-column:1/-1;">
+        <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <div class="empty-text">暂无 Agent · 点击「新增 Agent」创建</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Sessions Page ==================== -->
+  <div class="page" id="page-sessions">
+    <div class="page-header">
+      <h1 class="page-title">任务管理</h1>
+      <p class="page-subtitle">L2 编排引擎 Session 状态</p>
+    </div>
+    <div class="hig-card">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">运行中任务</div>
+          <div class="hig-card-subtitle">自动刷新</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadSessions()">
+          <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+      </div>
+      <div class="hig-card-body">
+        <div id="sessionsListFull">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="empty-text">暂无运行中任务</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Cost Page ==================== -->
+  <div class="page" id="page-cost">
+    <div class="page-header">
+      <h1 class="page-title">成本</h1>
+      <p class="page-subtitle">各 provider 实时余额 · 当前周期预算判级 · 本月累计（模拟值）</p>
+    </div>
+    <details style="margin-bottom:16px;padding:8px 14px;border-radius:8px;font-size:12px;line-height:1.6;background:var(--color-bg-secondary);border:1px solid var(--color-border);color:var(--muted-foreground);">
+      <summary style="cursor:pointer;">为什么这样算？· 账本主权</summary>
+      <div style="margin-top:8px;">本页讲的是 <b>账本主权</b>，不是「怎么切便宜模型」。我们<b>不靠绕开订阅条款省钱</b>（那是 Magpie 的灰色玩法，厂商账号风控一收紧就失灵，且踩 ToS）。multi-proxy 的「省」来自：每一笔花销<b>按 agent 归因</b>、本地模型流量<b>零成本</b>、<b>账本归你</b>——可复核、可导出、不绑架你的账号。</div>
+    </details>
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">各 Provider 余额</div>
+          <div class="hig-card-subtitle">GET /api/balances</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadCostPage()">
+          <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+      </div>
+      <div class="hig-card-body">
+        <div id="costBalanceList">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="empty-text">暂无余额数据</div>
+          </div>
+        </div>
+     </div>
+   </div>
+    <div class="hig-card">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">当前周期预算判级</div>
+          <div class="hig-card-subtitle">GET /api/budget · 未配置 = 零行为变更</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="costBudgetInfo">
+          <div class="empty-state">
+            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2l7 4v12l-7 4-7-4V6z"/></svg></div>
+            <div class="empty-text">未配置预算 · 零行为变更</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 上周账单（Watchtower v1，2026-10-16）：
+         成本页此前只有「余额 + 预算判级」两张卡，账本里躺着的「花了多少 / 省了多少」
+         在面板上根本看不到。这块补上那个读数。口径与 l2/watchtower-report.js 同源：
+         算不出的一律画「—」，绝不折算成 0。 -->
+    <div class="hig-card">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">上周账单</div>
+          <div class="hig-card-subtitle">GET /api/cost/watchtower · 只读，不改任何行为</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadWatchtower()">
+          <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+      </div>
+      <div class="hig-card-body">
+        <div id="watchtowerSummary"></div>
+        <div id="watchtowerAgents" style="margin-top:14px;"></div>
+        <div id="watchtowerCaveats" style="margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Shadow (影子模式) Page ==================== -->
+  <div class="page" id="page-shadow">
+    <style>
+      #page-shadow .badge { display:inline-block; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; background:var(--color-bg-secondary); border:1px solid var(--color-border); color:var(--color-text); }
+      #page-shadow .shadow-card { padding:14px; border-radius:10px; border:1px solid var(--color-border); background:var(--color-bg); }
+      #page-shadow .shadow-card-ok { border-left:4px solid var(--color-success); }
+      #page-shadow .shadow-card-warn { border-left:4px solid var(--color-warning); }
+      #page-shadow .shadow-card-bad { border-left:4px solid #ef4444; }
+      #page-shadow .shadow-card-type { font-size:15px; font-weight:700; margin-bottom:6px; color:var(--color-text); }
+      #page-shadow .shadow-card-chosen { font-size:13px; color:var(--color-primary); font-weight:600; margin-bottom:4px; }
+      #page-shadow .shadow-card-meta { font-size:12px; color:var(--color-text-tertiary); }
+      #page-shadow .banner { padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:13px; }
+      #page-shadow .banner-warn { background:var(--color-warning-light); color:var(--color-warning-deep); border:1px solid var(--color-warning); }
+    </style>
+    <div class="page-header">
+      <h1 class="page-title">路由预演 · L2 路由能力可视化</h1>
+      <p class="page-subtitle">L2 编排引擎在 shadow 姿态下「会怎么路由」——纯决策计算，不触下游、不联网、零副作用</p>
+    </div>
+    <div class="shadow-summary" id="shadowSummary" style="display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 16px;">
+      <span class="badge" id="shadowPolicy">策略：—</span>
+      <span class="badge" id="shadowCapCount">能力标签：—</span>
+      <span class="badge" id="shadowGapCount">无候选缺口：—</span>
+    </div>
+    <div id="shadowAlert" class="banner" style="display:none;"></div>
+    <div class="shadow-grid" id="shadowGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;"></div>
+    <p class="page-subtitle" style="margin-top:18px;font-size:12px;color:var(--color-text-tertiary);">
+      说明：这是 L2 在「观察态」下的路由决策预演（同源 l2/observe-shadow-run.js）。生产默认 shadow 恒开——编排层只算决策、不发请求，翻 reject 之前据此确认每个能力标签都有 adapter 承接。
+    </p>
+  </div>
+
+  <!-- ==================== Logs Page ==================== -->
+  <!-- P0-6：原「日志」为永远为空的假 tab（静态"暂无日志"）。现导航「日志」已改为外链 /logs（真实页面），删除死分支。 -->
+</main>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Add/Edit Agent Modal -->
+<div id="agentModal" class="modal-overlay" style="display:none;">
+  <div class="modal">
+    <div class="modal-title" id="agentModalTitle">新增 Agent</div>
+    <div id="agentModalBody">
+      <div class="form-group">
+        <label>Agent ID *</label>
+        <input type="text" id="agentId" placeholder="例如: my-agent" aria-label="例如: my-agent">
+        <div class="hint">唯一标识符，创建后不可修改</div>
+      </div>
+      <div class="form-group">
+        <label>Agent 名称 *</label>
+        <input type="text" id="agentName" placeholder="例如: My AI Agent" aria-label="例如: My AI Agent">
+      </div>
+      <div class="form-group">
+        <label>类型 *</label>
+        <select class="form-select" id="agentType" style="width:100%;">
+          <option value="codex">Codex</option>
+          <option value="hermes">Hermes</option>
+          <option value="cursor">Cursor</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>能力标签 (逗号分隔)</label>
+        <input type="text" id="agentTags" placeholder="例如: coding, analysis, research" aria-label="例如: coding, analysis, research">
+        <div class="hint">用于按能力路由查询</div>
+      </div>
+      <div class="form-group">
+        <label>模型类型</label>
+        <select class="form-select" id="agentModelType" style="width:100%;">
+          <option value="text">Text</option>
+          <option value="multimodal">Multimodal</option>
+          <option value="audio">Audio</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>描述</label>
+        <input type="text" id="agentDesc" placeholder="可选描述" aria-label="可选描述">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAgentModal()">取消</button>
+      <button class="btn btn-primary" id="agentModalSave" onclick="saveAgent()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== Configuration =====
+  // 2026-10-27 收口 PROXY_CONFIGS 多副本：本对象不再硬编码，改为启动时从服务端
+  // GET /api/proxy-configs 拉取（服务端 buildProxyConfigs() 为唯一真源）。icon/iconClass 由
+  // icons.js（决策 E 全站单一图标源）的 window.MPIcons.proxies[name] 解析。见 fetchProxyConfigs()。
+  var PROXY_CONFIGS = {};
+
+  // ===== State =====
+  var proxyStatus = {};
+  var authToken = sessionStorage.getItem('auth_token');
+  var versionCache = {};
+  var alertEvents = [];
+  var registryAgents = [];
+  var editingAgentId = null;
+
+  // ===== Toast System =====
+  function showToast(message, type, duration) {
+    if (duration === undefined) duration = 3000;
+    var container = document.getElementById('toastContainer');
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + (type || 'info');
+
+    var icons = {
+      success: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>',
+      error: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+      info: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+    };
+    var iconSpan = document.createElement('span');
+    iconSpan.innerHTML = icons[type] || '';
+    var msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    toast.appendChild(iconSpan);
+    toast.appendChild(msgSpan);
+
+    container.appendChild(toast);
+
+    setTimeout(function() {
+      toast.style.animation = 'toast-out 0.3s ease forwards';
+      setTimeout(function() { toast.remove(); }, 300);
+    }, duration);
+  }
+
+  // ===== 读失败统一呈现（不猜、不装、不静默）=====
+  // 三问走查结论（2026-10-16）：面板过去的兜底只有两种，且都比报错更糟——
+  //   ① 喂 mock 假数据（getMockStatus / generateMockLogs）：用户看到 pid 12345、
+  //      uptime「2h34m」、不存在的 ERROR 日志这种「像真的」假数据，故障被伪装成正常；
+  //   ② 兜底成空数组（events:[] / agents:[]）：「暂无」和「读不到」长得一模一样。
+  // 两者都违反 multi-proxy 自己的 unknown 态对账纪律。读失败就明说读失败。
+  // 三种空必须分开：真的空 / 没开功能 / 读失败。
+  function fetchJSON(url, opts) {
+    return fetch(url, opts).then(function(res) {
+      if (!res.ok) {
+        return res.json().then(function(body) {
+          var msg = (body && body.error) ? body.error : ('HTTP ' + res.status);
+          var e = new Error(msg); e.httpStatus = res.status;
+          // 后端常在 body.hint 里给「怎么修」（如 alert-gate-closed 的
+          // 「PROXY_HEALTH_ALERT 未开启，开灰度：PROXY_HEALTH_ALERT=1 node server.js」）。
+          // 丢掉 hint 只显示机器码，等于把后端已经写好的解决方案扔了。
+          if (body && body.hint) e.hint = body.hint;
+          throw e;
+        }, function() {
+          var e = new Error('HTTP ' + res.status); e.httpStatus = res.status; throw e;
+        });
+      }
+      return res.json();
+    });
+  }
+
+  // 读失败块：视觉与 empty-state 同族（不引入新样式体系），但语义是「读不到」而非「没有」。
+  // 四参分工：title 主文案（读取失败 / 告警功能未开启）／detail 后端给的错误原因（优先显示）
+  // ／hint 排查提示。后端常在 body.hint 里写「怎么修」，丢掉它只显示机器码等于把
+  // 已经写好的解决方案扔了（见 fetchJSON 里 e.hint 的注释）。
+  // 第五参 retryFn：点击「重试」时重跑对应的读取函数。
+  // 2026-10-24：此前这里只派发 retry-read CustomEvent 却全文件无监听者 → 死按钮。
+  // 改为直接用 addEventListener 绑定 retryFn，点击即重跑，不再依赖虚无的事件链路。
+  function showReadError(containerId, title, detail, hint, retryFn) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var body = [detail, hint].filter(Boolean).join('<br>') || '未知错误';
+    el.innerHTML =
+      '<div class="empty-state" role="alert" style="grid-column:1/-1;">' +
+        '<div class="empty-icon" style="color:#d97706;">' +
+          '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+        '</div>' +
+        '<div class="empty-text" style="color:#d97706;">' + esc(title || '读取失败') + '</div>' +
+        '<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:6px;max-width:460px;line-height:1.6;">' +
+          body +
+        '</div>' +
+        (typeof retryFn === 'function'
+          ? '<button class="btn btn-outline btn-sm mp-retry-btn" type="button" style="margin-top:10px;">重试</button>'
+          : '') +
+      '</div>';
+    if (typeof retryFn === 'function') {
+      var btn = el.querySelector('.mp-retry-btn');
+      if (btn) {
+        btn.addEventListener('click', function () {
+          el.innerHTML = '';
+          retryFn();
+        });
+      }
+    }
+  }
+
+  // ===== Navigation =====
+  function switchPage(pageId) {
+    // Stop status polling when leaving dashboard
+    if (pageId !== 'dashboard' && window.__statusInterval) {
+      clearInterval(window.__statusInterval);
+      window.__statusInterval = null;
+    }
+
+    var pages = document.querySelectorAll('.page');
+    for (var i = 0; i < pages.length; i++) {
+      pages[i].classList.remove('active');
+    }
+    var navItems = document.querySelectorAll('.nav-item');
+    for (var j = 0; j < navItems.length; j++) {
+      navItems[j].classList.remove('active');
+    }
+
+    var page = document.getElementById('page-' + pageId);
+    if (page) page.classList.add('active');
+
+    var nav = document.querySelector('.nav-item[data-page="' + pageId + '"]');
+    if (nav) nav.classList.add('active');
+
+    closeMobileSidebar();
+
+    // Load page-specific data
+    if (pageId === 'health') loadHealthPage();
+    else if (pageId === 'alerts') loadAlertsPage();
+    else if (pageId === 'registry') loadRegistryPage();
+    else if (pageId === 'sessions') loadSessions();
+    else if (pageId === 'cost') { loadCostPage(); loadWatchtower(); }
+    else if (pageId === 'dashboard') loadCostSovereignty();
+    else if (pageId === 'shadow') loadShadowPage();
+  }
+
+  // ===== 影子模式页：拉 /api/l2/shadow-map 并渲染能力→adapter 路由决策 =====
+  async function loadShadowPage() {
+    var summary = document.getElementById('shadowSummary');
+    var grid = document.getElementById('shadowGrid');
+    var alert = document.getElementById('shadowAlert');
+    if (!grid) return;
+    try {
+      var res = await fetch('/api/l2/shadow-map', { headers: getAuthHeader() });
+      var data = await res.json();
+      if (data.available === false) {
+        if (alert) { alert.style.display = 'block'; alert.textContent = 'L2 模块当前不可用：' + (data.error || '未知'); }
+        return;
+      }
+      if (alert) alert.style.display = 'none';
+      document.getElementById('shadowPolicy').textContent = '无候选策略：' + (data.policy || '—');
+      document.getElementById('shadowCapCount').textContent = '能力标签：' + (data.capabilityCount || 0);
+      document.getElementById('shadowGapCount').textContent = '无候选缺口：' + (data.gapCount || 0);
+      if (data.gapCount > 0 && alert) {
+        alert.style.display = 'block';
+        alert.className = 'banner banner-warn';
+        // 原开头有个 ⚠ emoji：这里走 textContent（gaps 来自接口，不能改 innerHTML 引转义风险），
+        // 且容器已有 .banner-warn 承载视觉告警——emoji 只在不同平台渲染不一致，去掉更干净。
+        alert.textContent = '存在无 adapter 承接的能力标签：' + (data.gaps || []).join(', ') + ' —— 切 reject 前必须先补 owner。';
+      }
+      grid.innerHTML = (data.capabilities || []).map(function (c) {
+        var statusClass = c.noCandidate ? 'shadow-card-bad' : (c.rejected ? 'shadow-card-warn' : 'shadow-card-ok');
+        var chosenTxt = c.chosen ? ('→ ' + c.chosen) : (c.noCandidate ? '无候选' : '—');
+        var candTxt = (c.candidates || []).map(function (x) { return x.adapterId + (x.modelTier ? '(' + x.modelTier + ')' : ''); }).join('、') || '—';
+        return '<div class="shadow-card ' + statusClass + '">' +
+          '<div class="shadow-card-type">' + esc(c.type) + '</div>' +
+          '<div class="shadow-card-chosen">' + esc(chosenTxt) + '</div>' +
+          '<div class="shadow-card-meta">档位 ' + esc(c.expectedTier || '—') + ' · 候选 ' + esc(candTxt) + '</div>' +
+          '</div>';
+      }).join('');
+    } catch (e) {
+      if (alert) { alert.style.display = 'block'; alert.textContent = '加载失败：' + (e && e.message || e); }
+    }
+  }
+
+  document.getElementById('sidebarNav').addEventListener('click', function(e) {
+    var navItem = e.target.closest('.nav-item');
+    if (!navItem) return;
+    if (navItem.classList.contains('proxy-nav-item')) {
+      closeMobileSidebar();
+      return;
+    }
+    var pageId = navItem.dataset.page;
+    if (pageId === 'floor') {
+      window.location.href = '/floor';
+      closeMobileSidebar();
+      return;
+    }
+    if (pageId === 'knowledge') {
+      window.location.href = '/knowledge';
+      closeMobileSidebar();
+      return;
+    }
+    if (pageId === 'skills') {
+      window.location.href = '/skills';
+      closeMobileSidebar();
+      return;
+    }
+    if (pageId) {
+      switchPage(pageId);
+    }
+  });
+
+  // ===== Mobile Sidebar =====
+  var mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  var sidebar = document.getElementById('sidebar');
+  var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+  mobileMenuBtn.addEventListener('click', function() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay.classList.toggle('show');
+  });
+
+  sidebarOverlay.addEventListener('click', closeMobileSidebar);
+
+  function closeMobileSidebar() {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('show');
+  }
+
+  // ===== Escaping Utility =====
+  function esc(str) {
+    if (str === null || str === undefined) return '';
+    var d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ===== Loading Bar =====
+  function showLoading() {
+    var bar = document.getElementById('loadingBar');
+    if (bar) bar.classList.add('active');
+  }
+  function hideLoading() {
+    var bar = document.getElementById('loadingBar');
+    if (bar) bar.classList.remove('active');
+  }
+
+  // ===== Mock Data =====
+  // 说明：原 getMockStatus() / getMockVersion() 已于 2026-10-16 删除。
+  // 它们过去在 /api/status、/api/version 读失败时兜底，返回 pid 12345 / uptime「2h34m」/
+  // 假版本 '1.0.3' 这类「像真的」假数据，把故障伪装成正常。
+  // 现在的约定是读失败就明说读失败（见上方 fetchJSON / showReadError），不猜、不装、不静默。
+
+  // ===== Dashboard Rendering =====
+  function updateDashboardDisplay(versionData) {
+    var proxies = Object.entries(proxyStatus);
+    var running = proxies.filter(function(entry) { return entry[1].running; }).length;
+    var total = proxies.length;
+
+    var statusEl = document.getElementById('proxyStatusCount');
+    var installedEl = document.getElementById('installedCount');
+    var sessionEl = document.getElementById('sessionCount');
+    var alertEl = document.getElementById('alertCount');
+
+    if (statusEl) statusEl.textContent = total > 0 ? running + '/' + total : '0/0';
+    if (installedEl) installedEl.textContent = total;
+    if (sessionEl) sessionEl.textContent = document.querySelectorAll('.session-item').length;
+    if (alertEl) alertEl.textContent = alertEvents.filter(function(a) { return a.severity === 'critical' || a.severity === 'warning'; }).length;
+
+    renderProxyCards(proxies, versionData);
+    renderProxyNavItems(proxies);
+  }
+
+  function renderProxyCards(proxies, versionData) {
+    var container = document.getElementById('proxyStatusList');
+    if (!container) return;
+
+    if (proxies.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><div class="empty-text">暂无代理，请先安装代理程序</div></div>';
+      return;
+    }
+
+    container.innerHTML = proxies.map(function(entry) {
+      var name = entry[0];
+      var status = entry[1];
+      var config = PROXY_CONFIGS[name] || { name: name, icon: '', iconClass: '', port: 0, defaultVersion: '' };
+      var isRunning = status.running;
+      var isFault = !!status.fault;
+      var statusClass = isRunning ? 'running' : (isFault ? 'fault' : 'stopped');
+      var statusText = isRunning ? '运行中' : (isFault ? '故障熔断' : '未运行');
+      var btnClass = isRunning ? 'btn-danger' : 'btn-success';
+      var btnText = isRunning ? '停止' : '启动';
+      var btnIcon = isRunning ? '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>' : '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
+      var statusBadge = '<span class="status-badge ' + statusClass + '"><span class="dot"></span>' + statusText + '</span>';
+      var healthBadge = '';
+      if (status.health) {
+        var healthStatus = status.health.status;
+        var healthClass, healthText, healthReason = '';
+        var reasonsArr = Array.isArray(status.health.reasons) ? status.health.reasons : [];
+        if (reasonsArr.length > 0) healthReason = reasonsArr[0];
+
+        if (healthStatus === 'ok') { healthClass = 'status-badge online'; healthText = '健康'; }
+        else if (healthStatus === 'degraded') { healthClass = 'status-badge degraded'; healthText = '降级' + (healthReason ? '·' + healthReason : ''); }
+        else { healthClass = 'status-badge offline'; healthText = healthReason || '异常'; }
+        var titleText = (reasonsArr.length > 0 ? reasonsArr.join('；') : healthText);
+        healthBadge = '<span class="' + healthClass + '" title="' + (titleText ? esc(titleText.slice(0, 200)) : '') + '"><span class="dot"></span>' + esc(healthText.slice(0, 60)) + '</span>';
+      } else if (!isRunning) {
+        healthBadge = '<span class="status-badge offline"><span class="dot"></span>未检测</span>';
+      }
+
+      var uptimeText = status.uptime ? '运行 ' + status.uptime : '';
+      var latencyText = status.health && status.health.latency ? '延迟 ' + status.health.latency : '';
+      var versionValue = versionData && versionData.proxies && versionData.proxies[name] ? versionData.proxies[name] : (config.defaultVersion || '');
+      var versionBadge = versionValue ? '<span class="proxy-version-badge">' + esc(versionValue) + '</span>' : '';
+
+      return '<div class="proxy-card" id="proxy-card-' + name + '">' +
+        '<div class="proxy-icon ' + config.iconClass + '">' + config.icon + '</div>' +
+        '<div class="proxy-info">' +
+          '<div class="proxy-name-row">' +
+            '<span class="proxy-name">' + config.name + '</span>' +
+            '<span class="proxy-port-badge">:' + (status.port || config.port) + '</span>' +
+            versionBadge +
+          '</div>' +
+          '<div class="proxy-meta">' +
+            statusBadge +
+            (uptimeText ? '<span>' + esc(uptimeText) + '</span>' : '') +
+            (latencyText ? '<span>' + esc(latencyText) + '</span>' : '') +
+            healthBadge +
+          '</div>' +
+        '</div>' +
+        '<div class="proxy-actions">' +
+          '<button class="btn ' + btnClass + ' btn-sm" id="btn-toggle-' + name + '" onclick="toggleProxy(\'' + name + '\')">' + btnIcon + ' ' + btnText + '</button>' +
+          '<button class="btn btn-outline btn-sm" onclick="window.location.href=\'proxy-config.html?proxy=' + name + '\'">配置</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // 与 proxy-config 同一处时序竞争：/api/status 可能先于 nav.js 建好 #proxyNavItems 返回，
+  // 早到那次若直接 return，9 个代理就时有时无。改为暂存 + 等容器就绪事件补画。
+  var pendingProxyNavEntries = null;
+
+  function renderProxyNavItems(proxies) {
+    if (proxies) pendingProxyNavEntries = proxies;
+    var container = document.getElementById('proxyNavItems');
+    if (!container) return;
+    var entries = pendingProxyNavEntries || [];
+    container.innerHTML = entries.map(function(entry) {
+      var name = entry[0];
+      var status = entry[1];
+      var config = PROXY_CONFIGS[name] || { name: name, icon: '' };
+      var badgeClass = status.running ? 'running' : 'stopped';
+      var badgeText = status.running ? 'ON' : 'OFF';
+      return '<a href="proxy-config.html?proxy=' + name + '" class="nav-item proxy-nav-item" data-proxy="' + esc(name) + '" data-tooltip="' + esc(config.name) + '" tabindex="0">' +
+        '<span class="nav-icon">' + config.icon + '</span>' +
+        config.name +
+        '<span class="nav-badge ' + badgeClass + '">' + badgeText + '</span>' +
+        '</a>';
+    }).join('');
+  }
+
+  document.addEventListener('mp-nav-rendered', function () {
+    if (pendingProxyNavEntries) renderProxyNavItems(pendingProxyNavEntries);
+  });
+
+  // ===== Version Info =====
+  function updateVersionDisplay(versionData) {
+    var container = document.getElementById('versionInfo');
+    var sidebarVer = document.getElementById('sidebarVersion');
+
+    if (container) {
+      if (versionData) {
+        var rows = [];
+        if (versionData.version) rows.push({ label: '管理器版本', value: versionData.version });
+        if (versionData.proxies) {
+          Object.keys(versionData.proxies).forEach(function(key) {
+            var ver = versionData.proxies[key];
+            var config = PROXY_CONFIGS[key];
+            rows.push({ label: config ? config.name : key, value: ver });
+          });
+        }
+        container.innerHTML = rows.map(function(row) {
+          return '<div class="version-item"><span class="ver-label">' + row.label + '</span><span class="ver-value">' + row.value + '</span></div>';
+        }).join('');
+      } else {
+        // null = 读失败。不能保留上一次成功的值——那会让用户以为版本没变，
+        // 从而放弃一次本该做的升级。也不能显示空（那像「没有版本信息」）。
+        container.innerHTML =
+          '<div class="version-item"><span class="ver-label">管理器版本</span>' +
+          '<span class="ver-value" style="color:#d97706;">读取失败</span></div>';
+      }
+    }
+    if (sidebarVer) {
+      sidebarVer.textContent = (versionData && versionData.version)
+        ? ('Manager ' + versionData.version)
+        : 'Manager —';
+    }
+  }
+
+  // ===== Proxy Control =====
+  window.toggleProxy = function(name) {
+    var btn = document.getElementById('btn-toggle-' + name);
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    var originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner"></span>';
+
+    var status = proxyStatus[name];
+    var action = status && status.running ? 'stop' : 'start';
+
+    fetch('/api/' + action + '/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': authToken || '' } })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data.success) {
+          showToast((PROXY_CONFIGS[name] ? PROXY_CONFIGS[name].name : name) + ' 已' + (action === 'start' ? '启动' : '停止'), 'success');
+          proxyStatus[name] = Object.assign({}, proxyStatus[name], { running: action === 'start' });
+          updateDashboardDisplay(versionCache);
+        } else if (action === 'start' && data.conflict) {
+          showToast(data.error || '该代理被其它工具占用，无法开启', 'error', 6000);
+          btn.innerHTML = originalContent;
+          btn.disabled = false;
+        } else {
+          showToast((action === 'start' ? '启动' : '停止') + '失败: ' + (data.error || '未知错误'), 'error');
+          btn.innerHTML = originalContent;
+          btn.disabled = false;
+        }
+      })
+      .catch(function(err) {
+        showToast((action === 'start' ? '启动' : '停止') + '失败: ' + err.message, 'error');
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+      });
+  };
+
+  // ===== Health Page =====
+  // 不可达时的诊断文字。两段：出什么事（原因）+ 该干什么（处置）。
+  // 三条纪律：
+  //  1. 不再输出带「不可达」前缀的句子——外层徽章已经说了不可达，重复一次就是
+  //     「不可达 · 不可达（原因未知）」这种自己骂自己的文案（实测踩过）。
+  //  2. reason 缺失时不许写「原因未知」了事：/api/status 的 running 本身就是信息，
+  //     进程没跑就是最有用的一句话。缺字段只可能发生在面板与 manager 版本不一致时。
+  //  3. 不认识的码原样露出——宁可显示一个陌生字符串，也不要替它编解释。
+  function reasonText(r, running) {
+    if (r === 'timeout') {
+      return running ? '探测超时 · 进程在跑但 2s 内没回 /health，去看日志'
+                     : '探测超时 · 进程记录里没在跑，先启动再看';
+    }
+    if (r === 'ECONNREFUSED') {
+      return running ? '连接被拒 · 进程记录说有跑，但端口没人监听，八成启动即崩，去看日志'
+                     : '连接被拒 · 该代理未启动（端口没人监听）';
+    }
+    if (r === 'EHOSTUNREACH' || r === 'ENETUNREACH') return '网络不可达 · 检查本机网络或监听地址';
+    if (r) return '原因码 ' + String(r);
+    // reason 缺失（未升级的 manager）：仍然给出可执行判断，并标明信息不完整。
+    return running ? '进程在跑但探测不通 · 原因字段缺失（面板与 manager 版本不一致，重启面板）'
+                   : '该代理未运行';
+  }
+
+  function loadHealthPage() {
+    showLoading();
+    // 三个请求各自标记读失败：一个挂了不让另外两个也跟着变空白，
+    // 但绝不喂 mock 假数据——挂掉的那段必须显示「读不到」。
+    Promise.all([
+      fetchJSON('/api/status').catch(function(e) { return { __readError: e }; }),
+      fetchJSON('/api/provider-health').catch(function(e) { return { __readError: e }; }),
+      fetchJSON('/api/health-history?limit=50').catch(function(e) { return { __readError: e }; }),
+      // /api/readyz 会对每个代理真发一次 /health 请求（不是看端口在不在听）。
+      // /api/status 的 health 可能是缓存或推断，两者冲突时以 readyz 为准。
+      fetchJSON('/api/readyz').catch(function(e) { return { __readError: e }; })
+    ]).then(function(results) {
+      var statusResult = results[0] || {};
+      var phResult = results[1] || {};
+      var historyResult = results[2] || {};
+      var readyzResult = results[3] || {};
+      var statusFailed = !!statusResult.__readError;
+      proxyStatus = statusFailed ? {} : (statusResult.proxies || statusResult);
+      var phData = phResult.__readError ? { isolated: [] } : phResult;
+      var historyData = historyResult.__readError ? { history: [] } : historyResult;
+      // 名 → 真实探测结果。readyz 读不到时留空，渲染侧会退回 /api/status 的推断。
+      var readyMap = {};
+      if (!readyzResult.__readError && readyzResult.proxies && readyzResult.proxies.details) {
+        readyzResult.proxies.details.forEach(function(d) { if (d && d.name) readyMap[d.name] = d; });
+      }
+
+      // Update stats（同一套判据：readyz 真探测优先，缺数据才退回 /api/status 推断）
+      var okCount = 0, degradedCount = 0, downCount = 0;
+      Object.keys(proxyStatus).forEach(function(name) {
+        var s = proxyStatus[name] || {};
+        var rz = readyMap[name];
+        var reachable = rz ? !!rz.reachable : (!!s.health && s.health.status !== 'down' && !!s.running);
+        var degraded = !!s.health && s.health.status === 'degraded';
+        if (!reachable) downCount++;
+        else if (degraded) degradedCount++;
+        else okCount++;
+      });
+
+      var el = function(id) { return document.getElementById(id); };
+      if (el('healthOkCount')) el('healthOkCount').textContent = okCount;
+      if (el('healthDegradedCount')) el('healthDegradedCount').textContent = degradedCount;
+      if (el('healthDownCount')) el('healthDownCount').textContent = downCount;
+      if (el('healthHistoryCount')) el('healthHistoryCount').textContent = (historyData.history || []).length;
+
+      // Render proxy health list
+      var healthList = el('healthProxyList');
+      if (healthList) {
+        if (statusFailed) {
+          // 读不到 ≠ 没有代理。过去这里兜底成 mock 三代理（pid 12345 / uptime 2h34m），
+          // 故障被伪装成「三个代理都在跑」——这是本轮修掉的最危险一处。
+          showReadError('healthProxyList', '读取失败',
+            statusResult.__readError.message || '未知错误',
+            'manager 的 /api/status 没返回。若 manager 本身没起来，先看 logs 页的启动日志。', loadHealthPage);
+        } else {
+          var entries = Object.entries(proxyStatus);
+          if (entries.length === 0) {
+            healthList.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="empty-text">暂无代理数据</div></div>';
+          } else {
+          healthList.innerHTML = entries.map(function(entry) {
+            var name = entry[0], status = entry[1];
+            var config = PROXY_CONFIGS[name] || { name: name, iconClass: '' };
+            var health = status.health;
+            var rz = readyMap[name];   // /api/readyz 的真实探测结果（可能缺此项）
+            var statusClass = status.running ? 'running' : 'stopped';
+            var statusText = status.running ? '运行中' : '未运行';
+            // 可达性以 readyz 的真探测为准；没有 readyz 数据才退回 /api/status 的 health 推断。
+            var reachable = rz ? !!rz.reachable : (!!health && health.status !== 'down');
+            var degraded = !!health && health.status === 'degraded';
+            var hClass = reachable ? (degraded ? 'status-badge degraded' : 'status-badge online') : 'status-badge offline';
+            var hText;
+            if (!reachable) {
+              // 只说「不可达」等于什么都没说：用户分不清「没启动」和「起来了但卡住」，
+              // 这两种处置完全相反（去 start vs 去看日志）。原因 + 处置必须一起给。
+              // 外层徽章已经写了「未运行/运行中」，这里不再重复「不可达」三个字。
+              hText = reasonText(rz && rz.reason, !!status.running);
+            } else {
+              hText = degraded ? '降级' : '健康';
+            }
+            var latency = health && health.latency ? health.latency : '-';
+            var uptime = status.uptime || '-';
+
+            return '<div class="health-row">' +
+              '<span class="health-provider"><span class="proxy-icon ' + config.iconClass + '" style="width:28px;height:28px;font-size:14px;">' + (config.icon || '') + '</span> ' + config.name + '</span>' +
+              '<span><span class="status-badge ' + statusClass + '"><span class="dot"></span>' + statusText + '</span> <span class="' + hClass + '"><span class="dot"></span>' + hText + '</span></span>' +
+              '<span style="min-width:80px;text-align:right;font-family:var(--font-mono);font-size:13px;color:var(--color-text-secondary);">' + esc(latency) + '</span>' +
+              '<span style="min-width:100px;text-align:right;font-size:13px;color:var(--color-text-tertiary);">' + esc(uptime) + '</span>' +
+            '</div>';
+          }).join('');
+          // 全都没跑时，满屏红色不构成信息。把「这不是故障，是代理还没启动」说明白，
+          // 否则第一次打开面板的人只会看到九行红字，以为整机坏了。
+          if (downCount === entries.length) {
+            healthList.innerHTML =
+              '<div style="padding:10px 12px;margin:0 0 10px;border-radius:8px;background:rgba(127,127,127,.10);font-size:13px;line-height:1.6;color:var(--color-text-secondary);">' +
+              '没有任何代理在运行 —— 这是「只装了管理器、还没启动代理」的常态，不是故障。' +
+              '起法：<code>bash manage.sh start all</code>，或逐个启动需要的代理。' +
+              '</div>' + healthList.innerHTML;
+          }
+          }
+        }
+      }
+
+      // Render provider health
+      var phList = el('healthPagePhList');
+      var phSub = el('healthPagePhSubtitle');
+      if (phList) {
+        if (phResult.__readError) {
+          // 「所有 Provider 健康」这句话只有在真读到「无隔离项」时才配说。
+          // 读失败时说它，等于替一个没查过的系统开健康证明。
+          if (phSub) phSub.textContent = '—';
+          showReadError('healthPagePhList', '读取失败',
+            phResult.__readError.message || '未知错误',
+            'provider 隔离状态读不到，不代表 Provider 都健康。', loadHealthPage);
+        } else {
+        if (phSub) phSub.textContent = (phData.isolateEnabled ? '自动隔离已开启（live）' : 'observe 模式');
+        var list = phData.isolated || [];
+        if (list.length === 0) {
+          phList.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="empty-text">所有 Provider 健康</div></div>';
+        } else {
+          phList.innerHTML = list.map(function(p) {
+            var remainMs = (p.unhealthyUntil || 0) - Date.now();
+            var remainMin = Math.max(0, Math.round(remainMs / 60000));
+            var corr = p.correlation || {};
+            var verdictText = corr.verdict === 'network-wide' ? '全网故障' : '单 Proxy 抖动';
+            var verdictClass = corr.verdict === 'network-wide' ? 'badge-error' : 'badge-warning';
+            var sources = (corr.sources || []).join(', ') || '—';
+            return '<div class="session-item">' +
+              '<div class="session-header">' +
+                '<span class="session-proxy-badge badge-' + esc(p.providerId) + '">' + esc(p.providerId) + '</span>' +
+                '<span class="' + verdictClass + '">' + verdictText + '</span>' +
+                '<span class="session-age">⏱ ' + remainMin + 'min 后恢复</span>' +
+              '</div>' +
+              '<div class="session-id">连续失败 ' + (p.consecutiveFailures || 0) + ' 次 · 来源：' + esc(sources) + '</div>' +
+            '</div>';
+          }).join('');
+        }
+        }
+      }
+
+      // Render health history
+      var historyList = el('healthHistoryList');
+      if (historyList) {
+        if (historyResult.__readError) {
+          showReadError('healthHistoryList', '读取失败',
+            historyResult.__readError.message || '未知错误',
+            '读不到健康历史，不代表期间没有发生故障。', loadHealthPage);
+        } else {
+        var history = historyData.history || [];
+        if (history.length === 0) {
+          historyList.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="empty-text">暂无健康历史</div></div>';
+        } else {
+          historyList.innerHTML = history.slice(0, 50).map(function(h) {
+            var hClass = h.status === 'ok' ? 'status-badge online' : h.status === 'degraded' ? 'status-badge degraded' : 'status-badge offline';
+            var hText = h.status === 'ok' ? '健康' : h.status === 'degraded' ? '降级' : '故障';
+            var time = h.timestamp ? new Date(h.timestamp).toLocaleString('zh-CN') : '-';
+            return '<div class="health-row">' +
+              '<span class="health-provider">' + esc(h.proxy || h.name || 'unknown') + '</span>' +
+              '<span><span class="' + hClass + '"><span class="dot"></span>' + hText + '</span></span>' +
+              '<span style="flex:1;font-size:12px;color:var(--color-text-tertiary);">' + esc(h.reason || '-') + '</span>' +
+              '<span style="font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono);">' + esc(time) + '</span>' +
+            '</div>';
+          }).join('');
+        }
+        }
+      }
+
+      hideOfflineBanner();
+      hideLoading();
+    }).catch(function(err) {
+      // 整页读失败：说清楚是哪一路挂了，不要静默 hideLoading 后留一片空白。
+      hideOfflineBanner();
+      showReadError('healthProxyList', '读取失败', err && err.message || '未知错误',
+        'manager 不可达或 /api/status 异常。可点上方「重试」。', loadHealthPage);
+      hideLoading();
+    });
+  }
+
+  // ===== Alerts Page =====
+  function loadAlertsPage() {
+    showLoading();
+
+    // 读失败分别标记：告警页最忌「API 挂了 → 显示暂无告警」，
+    // 那等于在真出事的时候告诉用户「没事」。两个请求各自判定，不互相顶包。
+    Promise.all([
+      fetchJSON('/api/alert').catch(function(e) { return { __readError: e }; }),
+      fetchJSON('/api/alert/config').catch(function(e) { return { __readError: e }; })
+    ]).then(function(results) {
+      var alertResult = results[0] || {};
+      var configResult = results[1] || {};
+      var alertData = alertResult.__readError ? { events: [], count: 0 } : alertResult;
+      var configData = configResult.__readError ? { gateOpen: false } : configResult;
+
+      alertEvents = alertData.events || [];
+
+      // Update gate status
+      var gateEl = document.getElementById('alertGateStatus');
+      if (gateEl) {
+        if (configResult.__readError) {
+          // 读不到门控配置时不显示「门控关闭」——那是把一个未知状态说成已知。
+          gateEl.innerHTML = '<span class="status-badge offline"><span class="dot"></span>读取失败</span>';
+        } else {
+          var gateClass = configData.gateOpen ? 'status-badge online' : 'status-badge offline';
+          var gateText = configData.gateOpen ? '门控开启' : '门控关闭';
+          gateEl.innerHTML = '<span class="' + gateClass + '"><span class="dot"></span>' + gateText + '</span>';
+        }
+      }
+
+      // Update stats
+      var critical = alertEvents.filter(function(a) { return a.severity === 'critical'; }).length;
+      var warning = alertEvents.filter(function(a) { return a.severity === 'warning'; }).length;
+      var info = alertEvents.filter(function(a) { return a.severity === 'info'; }).length;
+
+      var el = function(id) { return document.getElementById(id); };
+      if (el('alertCriticalCount')) el('alertCriticalCount').textContent = critical;
+      if (el('alertWarningCount')) el('alertWarningCount').textContent = warning;
+      if (el('alertInfoCount')) el('alertInfoCount').textContent = info;
+      if (el('alertCountSubtitle')) el('alertCountSubtitle').textContent = '共 ' + alertEvents.length + ' 条告警';
+
+      // Render alert list
+      if (alertResult.__readError) {
+        // 「暂无告警事件」只有在真读到空列表时才配说。
+        // API 挂掉时显示它，等于在真出事的时候告诉用户「没事」。
+        // 403 alert-gate-closed 是默认态（PROXY_HEALTH_ALERT 默认 off），
+        // 这时后端的 hint 就是「怎么开」——必须显示出来，否则用户只会看到机器码。
+        var err = alertResult.__readError;
+        var isGate = (err.httpStatus === 403 || (err.message || '').indexOf('alert-gate') !== -1);
+        showReadError('alertList',
+          isGate ? '告警功能未开启' : '读取失败',
+          err.hint || err.message || '未知错误',
+          isGate ? null : '告警数据读不到。管理端恢复后点「采集告警」或刷新本页。', loadAlertsPage);
+        if (el('alertCountSubtitle')) {
+          el('alertCountSubtitle').textContent = isGate ? '告警功能未开启' : '读取失败';
+        }
+      } else {
+        renderAlertList(alertEvents);
+      }
+      hideOfflineBanner();
+      hideLoading();
+    }).catch(function(err) {
+      showReadError('alertList', '读取失败', err && err.message || '未知错误', 'manager 不可达。', loadAlertsPage);
+      hideLoading();
+    });
+  }
+
+  function renderAlertList(events) {
+    var container = document.getElementById('alertList');
+    if (!container) return;
+
+    if (!events || events.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="empty-text">暂无告警事件</div></div>';
+      return;
+    }
+
+    var sorted = events.slice().sort(function(a, b) {
+      return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+    });
+
+    container.innerHTML = sorted.map(function(a) {
+      var iconClass = a.severity === 'critical' ? 'critical' : a.severity === 'warning' ? 'warning' : 'info';
+      // 严重度原来用 🔴/🟡/🔵 emoji：跨平台渲染不一致，读屏器只会读出一串颜色名。
+      // 换成统一 SVG；等级同时由「形状 + 颜色 + 可读标签」三个通道传达，不靠颜色单通道。
+      var sevLabel = { critical: '严重告警', warning: '警告', info: '提示' }[iconClass] || '提示';
+      var icon = (window.MPIcons && MPIcons.severity)
+        ? MPIcons.severity(a.severity)
+        : '<svg class="icon-svg sev sev-' + iconClass + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/></svg>';
+      var time = a.timestamp ? new Date(a.timestamp).toLocaleString('zh-CN') : '-';
+      var title = a.rule || a.message || '告警';
+      var message = a.message || a.detail || '';
+
+      return '<div class="alert-item">' +
+        '<div class="alert-icon ' + iconClass + '" role="img" aria-label="' + sevLabel + '">' + icon + '</div>' +
+        '<div class="alert-content">' +
+          '<div class="alert-title">' + esc(title) + '</div>' +
+          '<div class="alert-message">' + esc(message) + '</div>' +
+        '</div>' +
+        '<div class="alert-time">' + esc(time) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function filterAlerts() {
+    var search = (document.getElementById('alertSearch') || {}).value || '';
+    var severity = (document.getElementById('alertSeverity') || {}).value || '';
+    var source = (document.getElementById('alertSource') || {}).value || '';
+
+    var filtered = alertEvents.filter(function(a) {
+      if (severity && a.severity !== severity) return false;
+      if (source && a.source !== source) return false;
+      if (search) {
+        var hay = (a.message + ' ' + a.rule + ' ' + a.providerId).toLowerCase();
+        if (hay.indexOf(search.toLowerCase()) === -1) return false;
+      }
+      return true;
+    });
+
+    renderAlertList(filtered);
+  }
+
+  window.collectAlerts = function() {
+    showToast('正在采集告警信号...', 'info');
+    fetchJSON('/api/alert/collect', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': authToken || '' } })
+      .then(function(data) {
+        if (data.ok) {
+          showToast('采集完成，新产生 ' + data.collected + ' 条告警', 'success');
+          loadAlertsPage();
+        } else {
+          // 无 else 时：后端返回 200 但 ok:false，用户点了按钮什么都不发生，
+          // 只会反复点。采集类操作必须给出「采了但没结果」的原因。
+          showToast(data.error || '采集未执行', 'error');
+        }
+      })
+      .catch(function(err) {
+        showToast('采集失败：' + ((err && err.message) || '未知错误'), 'error');
+      });
+  };
+
+  // ===== Registry Page =====
+  function loadRegistryPage() {
+    showLoading();
+    fetchJSON('/api/registry/agents')
+      .then(function(data) {
+        registryAgents = data.agents || [];
+        renderRegistryGrid(registryAgents);
+        updateRegistryStats(registryAgents);
+        hideOfflineBanner();
+        hideLoading();
+      })
+      .catch(function(err) {
+        // 过去这里 catch 成空列表 → 显示「暂无 Agent · 点击新增创建」。
+        // 那是把「读不到」说成「一个都没有」，会让刚注册的 agent 像凭空消失。
+        registryAgents = [];
+        renderRegistryGrid([]);
+        updateRegistryStats([]);
+        showReadError('registryGrid', '读取失败', err && err.message || '未知错误',
+          'Agent 清单读不到，不代表清单是空的。', loadRegistryPage);
+        hideLoading();
+      });
+  }
+
+  function renderRegistryGrid(agents) {
+    var grid = document.getElementById('registryGrid');
+    if (!grid) return;
+
+    if (agents.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><div class="empty-text">暂无 Agent · 点击「新增 Agent」创建</div></div>';
+      return;
+    }
+
+    grid.innerHTML = agents.map(function(a) {
+      var tags = (a.capabilityTags || []).map(function(t) { return '<span class="registry-tag">' + esc(t) + '</span>'; }).join('');
+      var created = a.createdAt ? new Date(a.createdAt).toLocaleDateString('zh-CN') : '-';
+      var updated = a.updatedAt ? new Date(a.updatedAt).toLocaleDateString('zh-CN') : '-';
+
+      return '<div class="registry-card" id="registry-card-' + esc(a.id) + '">' +
+        '<div class="registry-card-header">' +
+          '<div class="registry-card-title">' + esc(a.name) + '</div>' +
+          '<span class="registry-card-type">' + esc(a.type) + '</span>' +
+        '</div>' +
+        '<div class="registry-card-body">' +
+          '<div style="font-size:12px;color:var(--color-text-tertiary);margin-bottom:8px;"><strong>ID:</strong> ' + esc(a.id) + '</div>' +
+          (a.description ? '<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px;">' + esc(a.description) + '</div>' : '') +
+          '<div style="font-size:11px;color:var(--color-text-tertiary);">创建: ' + esc(created) + ' · 更新: ' + esc(updated) + '</div>' +
+        '</div>' +
+        '<div class="registry-card-tags">' + tags + '</div>' +
+        '<div class="registry-card-actions">' +
+          '<button class="btn btn-outline btn-sm" onclick="editAgent(\'' + esc(a.id) + '\')">编辑</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="deleteAgent(\'' + esc(a.id) + '\')">删除</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function updateRegistryStats(agents) {
+    var el = function(id) { return document.getElementById(id); };
+    if (el('registryTotalCount')) el('registryTotalCount').textContent = agents.length;
+    if (el('registryCodexCount')) el('registryCodexCount').textContent = agents.filter(function(a) { return a.type === 'codex'; }).length;
+    if (el('registryHermesCount')) el('registryHermesCount').textContent = agents.filter(function(a) { return a.type === 'hermes'; }).length;
+    if (el('registryCursorCount')) el('registryCursorCount').textContent = agents.filter(function(a) { return a.type === 'cursor'; }).length;
+  }
+
+  function filterRegistry() {
+    var search = (document.getElementById('registrySearch') || {}).value || '';
+    var typeFilter = (document.getElementById('registryTypeFilter') || {}).value || '';
+
+    var filtered = registryAgents.filter(function(a) {
+      if (typeFilter && a.type !== typeFilter) return false;
+      if (search) {
+        var hay = (a.name + ' ' + a.id + ' ' + (a.capabilityTags || []).join(' ')).toLowerCase();
+        if (hay.indexOf(search.toLowerCase()) === -1) return false;
+      }
+      return true;
+    });
+
+    renderRegistryGrid(filtered);
+  }
+
+  window.showAddAgentModal = function() {
+    editingAgentId = null;
+    document.getElementById('agentModalTitle').textContent = '新增 Agent';
+    document.getElementById('agentModalSave').textContent = '创建';
+    document.getElementById('agentId').value = '';
+    document.getElementById('agentId').disabled = false;
+    document.getElementById('agentName').value = '';
+    document.getElementById('agentType').value = 'custom';
+    document.getElementById('agentTags').value = '';
+    document.getElementById('agentModelType').value = 'text';
+    document.getElementById('agentDesc').value = '';
+    document.getElementById('agentModal').style.display = 'flex';
+  };
+
+  window.editAgent = function(id) {
+    var agent = registryAgents.find(function(a) { return a.id === id; });
+    if (!agent) return;
+
+    editingAgentId = id;
+    document.getElementById('agentModalTitle').textContent = '编辑 Agent';
+    document.getElementById('agentModalSave').textContent = '保存';
+    document.getElementById('agentId').value = agent.id;
+    document.getElementById('agentId').disabled = true;
+    document.getElementById('agentName').value = agent.name || '';
+    document.getElementById('agentType').value = agent.type || 'custom';
+    document.getElementById('agentTags').value = (agent.capabilityTags || []).join(', ');
+    document.getElementById('agentModelType').value = agent.modelType || 'text';
+    document.getElementById('agentDesc').value = agent.description || '';
+    document.getElementById('agentModal').style.display = 'flex';
+  };
+
+  window.closeAgentModal = function() {
+    document.getElementById('agentModal').style.display = 'none';
+  };
+
+  window.saveAgent = function() {
+    var id = document.getElementById('agentId').value.trim();
+    var name = document.getElementById('agentName').value.trim();
+    var type = document.getElementById('agentType').value;
+    var tagsStr = document.getElementById('agentTags').value.trim();
+    var modelType = document.getElementById('agentModelType').value;
+    var description = document.getElementById('agentDesc').value.trim();
+
+    if (!id || !name) {
+      showToast('ID 和名称为必填项', 'error');
+      return;
+    }
+
+    var tags = tagsStr ? tagsStr.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
+
+    var payload = {
+      id: id,
+      name: name,
+      type: type,
+      capabilityTags: tags,
+      modelType: modelType,
+      description: description
+    };
+
+    var url = '/api/registry/agents' + (editingAgentId ? '/' + encodeURIComponent(editingAgentId) : '');
+    var method = editingAgentId ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': authToken || '' },
+      body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.id || data.success) {
+        showToast(editingAgentId ? 'Agent 已更新' : 'Agent 已创建', 'success');
+        closeAgentModal();
+        loadRegistryPage();
+      } else {
+        showToast(data.error || '操作失败', 'error');
+      }
+    })
+    .catch(function(err) {
+      showToast('操作失败: ' + err.message, 'error');
+    });
+  };
+
+  window.deleteAgent = function(id) {
+    if (!confirm('确认删除 Agent "' + id + '"？')) return;
+    fetch('/api/registry/agents/' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: { 'x-auth-token': authToken || '' }
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.success) {
+        showToast('Agent 已删除', 'success');
+        loadRegistryPage();
+      } else {
+        showToast(data.error || '删除失败', 'error');
+      }
+    })
+    .catch(function(err) {
+      showToast('删除失败: ' + err.message, 'error');
+    });
+  };
+
+  // ===== Sessions Loading =====
+  function loadSessions() {
+    fetchJSON('/api/sessions/running', { headers: { 'x-auth-token': authToken || '' } })
+       .then(function(data) {
+        var sessions = data.sessions || [];
+        renderSessionsList(sessions, 'sessionsList');
+        renderSessionsList(sessions, 'sessionsListFull');
+       })
+       .catch(function(err) {
+        // 过去这里是 `.catch(function() { /* 静默失败 */ })`：API 一挂，会话列表停在旧内容，
+        // 用户以为「没有任务在跑」——而真相可能是「有三个任务在跑但没显示出来」。
+        // 中止一个你看不见的任务，比没有中止按钮更危险。
+        renderSessionsList([], 'sessionsList');
+        renderSessionsList([], 'sessionsListFull');
+        showReadError('sessionsListFull', '读取失败', err && err.message || '未知错误',
+          '会话列表读不到，不代表没有任务在跑。中止操作前请先确认本页能正常加载。', loadSessions);
+        showToast('会话列表读取失败', 'error');
+       });
+   }
+
+   // ---- P5 成本页：各 provider 余额 + 当前周期预算判级 ----
+  function loadCostPage() {
+    var balList = document.getElementById('costBalanceList');
+    var budInfo = document.getElementById('costBudgetInfo');
+    var hdr = document.getElementById('costPageSubtitle') || document.querySelector('div#page-cost .page-subtitle');
+    var authHdr = { 'x-auth-token': authToken || '' };
+
+    // /api/balances — 各 provider 实时余额
+    // 2026-10-24：原先裸 fetch + 不判 res.ok，后端 500 时响应体被当正常数据读，
+    // items 为空 → 渲染「暂无余额数据」。「读不到」被显示成「没有」，正是本项目
+    // unknown 态对账纪律明令禁止的那种混淆。改用 fetchJSON + 三态。
+    fetchJSON('/api/balances', { headers: authHdr })
+      .then(function(data) {
+        var items = Array.isArray(data) ? data : (data.balances || []);
+        if (items.length === 0) {
+          balList.innerHTML = MPStates.empty({ title: '暂无余额数据', hint: '配置 provider 并完成一次请求后这里才会出数。' });
+        } else {
+          balList.innerHTML = items.map(function(item) {
+            // 支持两种格式: {name, amount} 数组 或 {providerName: value} 对象
+            var name = item.name || item.provider || 'unknown';
+            var amount = item.amount != null ? item.amount : (typeof item === 'object' ? item[Object.keys(item)[0]] : item);
+            var amountStr = typeof amount === 'number' ? '\u00a5' + amount.toFixed(2) : String(amount);
+            return '<div class="proxy-card-item" style="padding:10px 14px;border-bottom:1px solid var(--border,#eef2f7);">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+              '<span style="font-weight:600;color:var(--foreground);">' + name + '</span>' +
+              '<span style="font-size:14px;color:var(--muted-foreground);">' + amountStr + '</span>' +
+              '</div></div>';
+          }).join('');
+        }
+      })
+      .catch(function(e) {
+        MPStates.registerRetry('dashboard:balances', loadCostPage);
+        balList.innerHTML = MPStates.error({
+          title: '余额读取失败',
+          detail: (e && e.message) || '未知错误',
+          hint: '这是「读不到」，不是「没有余额」。',
+          retryKey: 'dashboard:balances'
+        });
+      });
+
+    // /api/budget — 当前周期预算判级快照（P7-2 起含 prices/caps/configHash）
+    // 同 balances：原先不判 res.ok，后端 500 时 b.level 缺失 → 显示「未配置预算」，
+    // 把「读不到」显示成「你没配」。
+    fetchJSON('/api/budget', { headers: authHdr })
+      .then(function(b) {
+        // P0 修：后端 /api/budget 返回的是 level（ok|warn|blocked），不是 status；
+        // 读 status 恒为 undefined ⇒ 配了预算也永远显示"未配置"。
+        // 2026-11-07 修两处落差（D7）：
+        // ① 原 hint 让用户去设 PROXY_COST_BUDGET 再重启——那个变量只喂 alert 阈值
+        //    (routes/alert.js:69)，对本路由零影响；/api/budget 只认 budget.json 且 hardCap>0
+        //    (routes/budget.js:64)。照原提示做，卡片永远停在「未配置」＝声明态≠运行态。
+        // ② 原判断把「配置畸形/读失败」与「没配」并成同一个空态＝unknown 降级成 negative。
+        //    现按返回的 reason 分开：只有 no-budget-config 才是真的没配。
+        if (!b || !b.level) {
+          var budReason = (b && b.reason) || '';
+          var budUnconfigured = !!(b && b.enabled === false &&
+            (budReason === 'no-budget-config' || budReason === ''));
+          if (budUnconfigured) {
+            budInfo.innerHTML = MPStates.empty({
+              title: '未配置预算 · 零行为变更',
+              hint: '建 ~/.multi-proxy-manager/budget.json（hardCap > 0）后刷新即可看到判级；该文件只负责显示，是否真拦截由 PROXY_BUDGET_GUARD 控制（默认关）。'
+            });
+          } else {
+            budInfo.innerHTML = MPStates.error({
+              title: '预算读不到 · 不是「没配预算」',
+              detail: budReason || '返回里既无 level 也无 reason',
+              hint: '修好 ~/.multi-proxy-manager/budget.json 后刷新重试。'
+            });
+          }
+          return;
+        }
+        var levelClass = b.level === 'ok' ? 'green' : b.level === 'warn' ? 'orange' : 'red';
+        var levelText = b.level === 'ok' ? '正常' : b.level === 'warn' ? '警告' : '越限';
+        var caps = b.caps || {};
+        var priceCount = b.prices ? Object.keys(b.prices).length : 0;
+        budInfo.innerHTML =
+          '<div style="display:flex;gap:16px;flex-wrap:wrap;">' +
+          '<div style="flex:1;min-width:160px;padding:14px;background:var(--border);border-radius:8px;">' +
+            '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:4px;">当前判级</div>' +
+            '<div style="font-size:20px;font-weight:700;color:var(--' + levelClass + '-accent,#' + (b.level==='ok'?'10b981':b.level==='warn'?'f59e0b':'ef4444') + ');">' +
+              levelText + '</div>' +
+            '</div>' +
+          '<div style="flex:1;min-width:160px;padding:14px;background:var(--border);border-radius:8px;">' +
+            '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:4px;">价表模型数</div>' +
+            '<div style="font-size:20px;font-weight:700;color:var(--foreground);">' + priceCount + '</div>' +
+            '</div>' +
+          '<div style="flex:1;min-width:160px;padding:14px;background:var(--border);border-radius:8px;">' +
+            '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:4px;">总上限</div>' +
+            '<div style="font-size:20px;font-weight:700;color:var(--foreground);">' +
+              (caps.total ? '\u00a5' + caps.total : '不限制') +
+            '</div>' +
+            '</div>' +
+          '</div>' +
+          (b.configHash ?
+            '<div style="margin-top:10px;font-size:11px;color:var(--muted-foreground);">configHash: ' + b.configHash.slice(0,16) + ' ...</div>' : '');
+      })
+      .catch(function() { budInfo.innerHTML = '<div class="empty-state"><div class="empty-text">无法获取预算数据</div></div>'; });
+   }
+
+  // ---- 上周账单（Watchtower v1，2026-10-16）----
+  // 口径纪律（与 l2/watchtower-report.js 同一套，改一处必须改两处）：
+  //   - 算不出的一律画「—」，**绝不折算成 0**。0 会被读成「没花钱 / 没省下」。
+  //   - 不知道币种就不印货币符号（report.spend.currency 为 null 时）。
+  //   - 「已省金额」是反事实重算（对标花费 − 实际花费），负值如实显示，
+  //     意思是「路由帮你多花了钱」——截断成 0 会把这个信号藏掉。
+  function wtMoney(v, cur) {
+    if (v === null || v === undefined || !isFinite(v)) return '—';
+    var s = (cur ? cur + ' ' : '') + (Math.round(v * 10000) / 10000);
+    return s;
+  }
+  function wtEsc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function loadWatchtower() {
+    var sum = document.getElementById('watchtowerSummary');
+    var ags = document.getElementById('watchtowerAgents');
+    var cav = document.getElementById('watchtowerCaveats');
+    var authHdr = { 'x-auth-token': authToken || '' };
+
+    fetch('/api/cost/watchtower?days=7', { headers: authHdr })
+      .then(function(r) { return r.json(); })
+      .then(function(w) {
+        if (!w || w.ok !== true) {
+          // 读失败必须带出后端原因：只说「周报读取失败」不说为什么，
+          // 读者无法判断是 manager 挂了、账本被锁，还是自己没开记账。
+          sum.innerHTML = '<div class="empty-state">' +
+            '<div class="empty-text" style="color:#d97706;">周报读取失败</div>' +
+            '<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:6px;max-width:420px;">' +
+            wtEsc((w && w.error) || '未知错误') + '</div></div>';
+          ags.innerHTML = ''; cav.innerHTML = '';
+          return;
+        }
+        var cur = (w.spend && w.spend.currency) || null;
+        var win = (w.window && w.window.fromDay && w.window.toDay)
+          ? (w.window.fromDay + ' ~ ' + w.window.toDay) : '—';
+        // 门控提示条：PROXY_COST_TRACK 默认关，「没开记账」和「开了但没流量」
+        // 在面板上长得一模一样（都是空），读者会默认前者是工具坏了。
+        // 所以 hint 必须比卡片先出现——先解释为什么空，再给数字。
+        var hintHtml = '';
+        if (w.tracking && w.tracking.hint) {
+          var warn = !w.tracking.enabled;
+          hintHtml =
+            '<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.6;' +
+            'background:' + (warn ? 'rgba(239,68,68,0.08)' : 'var(--color-bg-secondary)') + ';' +
+            'border:1px solid ' + (warn ? 'rgba(239,68,68,0.35)' : 'var(--color-border)') + ';' +
+            'color:' + (warn ? '#ef4444' : 'var(--muted-foreground)') + ';">' +
+            (warn ? '未开启记账 · ' : '') + wtEsc(w.tracking.hint) + '</div>';
+        }
+        var cards = [
+          { label: '实际花费', value: wtMoney(w.spend && w.spend.actualCost, cur),
+            sub: ((w.spend && w.spend.requestCount) || 0) + ' 次请求' },
+          { label: '模型重写已省', value: w.saved && w.saved.computable ? wtMoney(w.saved.byRouting, cur) : '—',
+            sub: w.saved && w.saved.computable
+              ? ('对标花费 ' + wtMoney(w.saved.baselineCost, cur))
+              : ('算不出：' + wtEsc(w.saved && w.saved.reason)) },
+          { label: '零花费请求占比', value: (w.zeroCost && w.zeroCost.ratio !== null && w.zeroCost.ratio !== undefined)
+              ? Math.round(w.zeroCost.ratio * 100) + '%' : '—',
+            sub: ((w.zeroCost && w.zeroCost.requestCount) || 0) + ' / ' + ((w.spend && w.spend.requestCount) || 0) },
+          // 账本完整度：字段缺失比例高时，上面三个数都别太当真。
+          { label: '账本完整度', value: (w.dataQuality && w.dataQuality.unknownModelRatio !== null && w.dataQuality.unknownModelRatio !== undefined)
+              ? Math.round((1 - w.dataQuality.unknownModelRatio) * 100) + '%' : '—',
+            sub: (w.dataQuality
+                ? ('缺模型名 ' + w.dataQuality.unknownModelCount + '/' + w.dataQuality.entryCount + ' 条'
+                   + (w.dataQuality.unknownAgentCount > 0 ? ' · 缺 agent ' + w.dataQuality.unknownAgentCount + ' 条' : ''))
+                : '—') }
+        ];
+        sum.innerHTML = hintHtml +
+          '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:10px;">窗口 ' + wtEsc(win) + '</div>' +
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;">' +
+          cards.map(function(c) {
+            var neg = (c.value.indexOf('-') === 0);
+            return '<div style="flex:1;min-width:150px;padding:14px;background:var(--color-bg-secondary);border-radius:8px;">' +
+              '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:4px;">' + c.label + '</div>' +
+              '<div style="font-size:20px;font-weight:700;color:' + (neg ? '#ef4444' : 'var(--foreground)') + ';">' + wtEsc(c.value) + '</div>' +
+              '<div style="font-size:11px;color:var(--muted-foreground);margin-top:4px;">' + c.sub + '</div>' +
+            '</div>';
+          }).join('') +
+          '</div>';
+
+        if (!w.byAgent || w.byAgent.length === 0) {
+          ags.innerHTML = '<div class="empty-state"><div class="empty-text">本窗口没有账本记录（门控未开 / 代理未上报 / 无流量）</div></div>';
+        } else {
+          ags.innerHTML =
+            '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:6px;">按 agent</div>' +
+            w.byAgent.map(function(a) {
+              return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+                '<span style="font-weight:600;">' + wtEsc(a.agent) + '</span>' +
+                '<span style="color:var(--muted-foreground);">' + wtMoney(a.actualCost, cur) +
+                ' · ' + a.requests + ' 次 · ' + wtEsc(a.topModel || '—') + '</span>' +
+              '</div>';
+            }).join('');
+        }
+
+        cav.innerHTML = (w.caveats && w.caveats.length)
+          ? '<div style="font-size:11px;color:var(--muted-foreground);line-height:1.6;">口径说明：<br>' +
+            w.caveats.map(function(c) { return '· ' + wtEsc(c); }).join('<br>') + '</div>'
+          : '';
+      })
+      .catch(function() {
+        sum.innerHTML = '<div class="empty-state"><div class="empty-text">无法获取周报（manager 未运行或未登录）</div></div>';
+        ags.innerHTML = ''; cav.innerHTML = '';
+      });
+  }
+
+  // ---- 账本主权 Hero（2026-10-21）----
+  // 与 loadWatchtower 同源（/api/cost/watchtower），但只取首屏最该被看见的三数 + 一条差异化宣言。
+  // 口径纪律同 loadWatchtower：算不出一律画「—」，绝不折算成 0。
+  function loadCostSovereignty() {
+    var body = document.getElementById('costSovereigntyBody');
+    if (!body) return;
+    fetch('/api/cost/watchtower?days=7', { headers: { 'x-auth-token': authToken || '' } })
+      .then(function(r) { return r.json(); })
+      .then(function(w) {
+        if (!w || w.ok !== true) {
+          // 读失败必须带出后端原因（同 loadWatchtower 纪律），不要只说「读取失败」。
+          body.innerHTML = '<div class="empty-state"><div class="empty-text" style="color:#d97706;">账本读取失败</div>' +
+            '<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:6px;">' + wtEsc((w && w.error) || '未知错误') + '</div></div>';
+          return;
+        }
+        var cur = (w.spend && w.spend.currency) || null;
+        var cards = [
+          { label: '实际花费', value: wtMoney(w.spend && w.spend.actualCost, cur), sub: ((w.spend && w.spend.requestCount) || 0) + ' 次请求' },
+          { label: '模型重写已省', value: w.saved && w.saved.computable ? wtMoney(w.saved.byRouting, cur) : '—',
+            sub: w.saved && w.saved.computable ? ('对标 ' + wtMoney(w.saved.baselineCost, cur)) : (w.saved && w.saved.reason ? wtEsc(w.saved.reason) : '算不出') },
+          { label: '零花费请求占比', value: (w.zeroCost && w.zeroCost.ratio !== null && w.zeroCost.ratio !== undefined) ? Math.round(w.zeroCost.ratio * 100) + '%' : '—',
+            sub: ((w.zeroCost && w.zeroCost.requestCount) || 0) + ' / ' + ((w.spend && w.spend.requestCount) || 0) }
+        ];
+        body.innerHTML =
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">' +
+          cards.map(function(c) {
+            var neg = (typeof c.value === 'string' && c.value.indexOf('-') === 0);
+            return '<div style="flex:1;min-width:140px;padding:14px;background:var(--color-bg-secondary);border-radius:8px;">' +
+              '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:4px;">' + c.label + '</div>' +
+              '<div style="font-size:20px;font-weight:700;color:' + (neg ? '#ef4444' : 'var(--foreground)') + ';">' + wtEsc(c.value) + '</div>' +
+              '<div style="font-size:11px;color:var(--muted-foreground);margin-top:4px;">' + c.sub + '</div></div>';
+          }).join('') + '</div>' +
+          '<details style="font-size:12px;line-height:1.6;color:var(--muted-foreground);padding:8px 12px;border-radius:8px;background:var(--color-bg-secondary);border:1px solid var(--color-border);">' +
+          '<summary style="cursor:pointer;">为什么这样算？· 账本主权</summary>' +
+          '<div style="margin-top:6px;"><b>不拼「切模型」，拼账本主权。</b>我们不做绕订阅条款省钱的灰色玩法（Magpie 那套，账号风控一收紧就失灵）。multi-proxy 的「省」来自：每一笔花销<b>按 agent 归因</b>、本地模型流量<b>零成本</b>、<b>账本归你</b>——可复核、可导出、不绑架你的账号。</div>' +
+          '</details>';
+      })
+      .catch(function() {
+        body.innerHTML = '<div class="empty-state"><div class="empty-text">无法获取账本（manager 未运行或未登录）</div></div>';
+      });
+  }
+
+  // ---- 统一接入 Hero（2026-10-21）：复制推荐单端点 URL ----
+  function copyUnifiedIngressUrl() {
+    var url = 'http://127.0.0.1:18880/v1';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() { showToast('已复制接入 URL', 'success', 1500); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = url; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showToast('已复制接入 URL', 'success', 1500); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  }
+
+  function renderSessionsList(sessions, containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!sessions || sessions.length === 0) {
+      var emptyText = containerId === 'sessionsListFull' ? '暂无运行中任务' : '暂无运行中任务';
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-text">' + emptyText + '</div></div>';
+      return;
+    }
+
+    container.innerHTML = sessions.map(function(s) {
+      var ageMs = Date.now() - new Date(s.createdAt).getTime();
+      var ageMin = Math.floor(ageMs / 60000);
+      var ageSec = Math.floor((ageMs % 60000) / 1000);
+      var ageStr = ageMin > 0 ? ageMin + 'm' + ageSec + 's' : ageSec + 's';
+      var statusBadge = s.status === 'running' ? 'badge-success' : 'badge-warning';
+      var statusText = s.status === 'running' ? '运行中' : '待处理';
+      var stepsHtml = (s.steps || []).length > 0 ? '<div class="session-steps"><svg class="icon-svg icon-svg-xs" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="9 11 12 14 22 4"/></svg> ' + s.steps.length + ' 步</div>' : '';
+      var abortBtn = '<button class="btn btn-danger btn-sm" onclick="abortSessionFromDashboard(\'' + esc(s.sessionId) + '\')">中止</button>';
+      return '<div class="session-item">' +
+        '<div class="session-header">' +
+          '<span class="session-proxy-badge badge-' + esc(s.proxy) + '">' + esc(s.proxy) + '</span>' +
+          '<span class="' + statusBadge + '">' + statusText + '</span>' +
+          '<span class="session-age">⏱ ' + ageStr + '</span>' +
+          abortBtn +
+        '</div>' +
+        '<div class="session-id">' + esc(s.sessionId) + '</div>' +
+        '<div class="session-task">' + esc((s.task || {}).title || '无标题') + '</div>' +
+        stepsHtml +
+      '</div>';
+    }).join('');
+  }
+
+  window.abortSessionFromDashboard = function(id) {
+    if (!confirm('确认中止此任务？')) return;
+    fetchJSON('/api/sessions/' + id + '/abort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': authToken || '' },
+      body: JSON.stringify({ by: 'user' })
+    })
+    .then(function(data) {
+      if (data.ok) {
+        showToast('任务已中止', 'success');
+        loadSessions();
+      } else {
+        // 无 else 时：任务没被中止，但界面毫无变化。
+        // 用户会以为中止成功而关掉页面，任务继续在后台跑——这是最坏的一种「无反馈」。
+        showToast(data.error || '中止未生效', 'error');
+      }
+    })
+    .catch(function(err) {
+      showToast('中止失败：' + ((err && err.message) || '未知错误'), 'error');
+    });
+  };
+
+  // ===== Provider Health Loading =====
+  function loadProviderHealth() {
+    fetchJSON('/api/provider-health', { headers: { 'x-auth-token': authToken || '' } })
+      .then(function(data) {
+        var list = data.isolated || [];
+        renderProviderHealth(list, data.isolateEnabled, data.threshold);
+      })
+      .catch(function(err) {
+        // 「所有 Provider 健康」这句话不能靠读失败来说。总览卡读不到时显示读失败，
+        // 否则一次网络抖动就会被渲染成「全网健康」的假证明。
+        renderProviderHealth([], null, null);
+        var sub = document.getElementById('phSubtitle');
+        if (sub) sub.innerHTML = '<span style="color:#d97706;">读取失败：' + esc((err && err.message) || '未知错误') + '</span>';
+      });
+  }
+
+  function renderProviderHealth(list, isolateEnabled, threshold) {
+    var container = document.getElementById('phList');
+    if (!container) return;
+
+    var sub = document.getElementById('phSubtitle');
+    if (sub) sub.textContent = (isolateEnabled ? '自动隔离已开启（live）' : 'observe 模式（仅建议，不改路由）');
+
+    if (!list || list.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="empty-text">所有 Provider 健康</div></div>';
+      return;
+    }
+
+    container.innerHTML = list.map(function(p) {
+      var remainMs = (p.unhealthyUntil || 0) - Date.now();
+      var remainMin = Math.max(0, Math.round(remainMs / 60000));
+      var corr = p.correlation || {};
+      var verdictText = corr.verdict === 'network-wide' ? '全网故障' : '单 Proxy 抖动';
+      var verdictClass = corr.verdict === 'network-wide' ? 'badge-error' : 'badge-warning';
+      var sources = (corr.sources || []).join(', ') || '—';
+      var fails = p.consecutiveFailures || 0;
+      return '<div class="session-item">' +
+        '<div class="session-header">' +
+          '<span class="session-proxy-badge badge-' + esc(p.providerId) + '">' + esc(p.providerId) + '</span>' +
+          '<span class="' + verdictClass + '">' + verdictText + '</span>' +
+          '<span class="session-age">⏱ ' + remainMin + 'min 后恢复</span>' +
+        '</div>' +
+        '<div class="session-id">连续失败 ' + fails + ' 次 · 来源：' + esc(sources) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ===== Data Loading =====
+  // 因果动效（2026-11-01 · Stageshow「every motion has a cause / change only
+  // what changed」）：状态翻转前快照，重渲染后只对 running/fault/health 真变了的
+  // 代理卡片加一瞬强调（result follows cause），没变的不动；reduced-motion 直接不闪。
+  var prevStatusSnapshot = null;
+
+  function highlightStatusChanges(prev, next) {
+    if (!prev || !next) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    for (var name in next) {
+      if (!next.hasOwnProperty(name)) continue;
+      var p = prev[name] || {};
+      var n = next[name] || {};
+      var nHealth = (n.health && n.health.status) || '';
+      var changed = (p.running !== n.running) || (p.fault !== n.fault) || (p.health !== nHealth);
+      if (!changed) continue;
+      var card = document.getElementById('proxy-card-' + name);
+      if (!card) continue;
+      card.classList.add('status-changed');
+      (function(el) { setTimeout(function() { el.classList.remove('status-changed'); }, 900); })(card);
+    }
+  }
+
+  function loadStatus() {
+    showLoading();
+    prevStatusSnapshot = {};
+    for (var pk in proxyStatus) {
+      if (!proxyStatus.hasOwnProperty(pk)) continue;
+      var ps = proxyStatus[pk] || {};
+      prevStatusSnapshot[pk] = {
+        running: !!ps.running,
+        fault: !!ps.fault,
+        health: (ps.health && ps.health.status) || ''
+      };
+    }
+    fetchJSON('/api/status')
+      .then(function(data) {
+        Object.assign(proxyStatus, data);
+        updateDashboardDisplay(versionCache);
+        highlightStatusChanges(prevStatusSnapshot, proxyStatus);
+        prevStatusSnapshot = null;
+        hideOfflineBanner();
+        hideDemoBanner();
+      })
+      .catch(function(err) {
+        // 过去这里在 proxyStatus 为空时喂 getMockStatus()——三个假代理，
+        // codex「运行中 pid 12345 uptime 2h34m 延迟 45ms」。
+        // 总览页是用户第一眼看到的地方，在这里显示「像真的」假数据最危险：
+        // 他会以为代理都在跑，直到真的调不通才发现。宁可显示「读不到」。
+        if (Object.keys(proxyStatus).length === 0) {
+          // 读失败 ≠ 没有代理：给独立错误态 + 重试，而不是渲染「暂无代理」空态
+          MPStates.registerRetry('dashboard:status', loadStatus);
+          var box = document.getElementById('proxyStatusList');
+          if (box) box.innerHTML = MPStates.error({
+            title: '读取失败',
+            detail: (err && err.message) || 'manager 不可达',
+            hint: '代理状态读不到，不代表没有安装代理程序。可点重试，或检查 manager 是否在运行。',
+            retryKey: 'dashboard:status'
+          });
+          showOfflineBanner();
+          showToast('代理状态读取失败：' + ((err && err.message) || 'manager 不可达'), 'error', 6000);
+        }
+      })
+      .finally(hideLoading);
+  }
+
+  function checkProxyConflicts() {
+    // 2026-10-24：原先裸 fetch + 不判 res.ok。/api/conflicts 500 时 body 没有 conflicts
+    // 字段 → occupied 为空 → 直接 return，界面显示「没冲突」。冲突检测失败被显示成
+    // 检测通过，是这段里最危险的一种静默。改成读失败就明说。
+    fetchJSON('/api/conflicts', { headers: { 'x-auth-token': authToken || '' } })
+      .then(function(data) {
+        var conflicts = data.conflicts || {};
+        var occupied = Object.keys(conflicts).filter(function(k) { return conflicts[k] && conflicts[k].occupied; });
+        if (occupied.length === 0) return;
+        var names = occupied.map(function(k) {
+          var c = conflicts[k];
+          var label = PROXY_CONFIGS[k] ? PROXY_CONFIGS[k].name : k;
+          return label + '（base_url → ' + (c.baseUrl || c.by) + '）';
+        });
+        var msg = '检测到以下代理被其它工具占用，本服务无法接管：\n' + names.join('\n') +
+                  '\n请先关闭占用工具（如 cc-switch）对这些代理的代理，再开启本服务开关。';
+        showToast(msg, 'error', 8000);
+      })
+      .catch(function(e) {
+        // 不阻断主界面，但必须说出来：静默 = 把「检测失败」显示成「没冲突」。
+        showToast('端口冲突检测读取失败（' + ((e && e.message) || '未知错误') +
+                  '）——未检测到冲突 ≠ 没有冲突，请手动确认。', 'error', 8000);
+      });
+  }
+
+  function loadVersion() {
+    showLoading();
+    fetchJSON('/api/version')
+      .then(function(data) {
+        versionCache = data;
+        updateVersionDisplay(data);
+        hideOfflineBanner();
+        hideDemoBanner();
+      })
+      .catch(function(err) {
+        // 过去这里兜底 getMockVersion()——假的 '1.0.3' + 三个假子版本号。
+        // 版本号是「我装的是不是最新」的判断依据，喂假值会让用户放弃升级。
+        versionCache = null;
+        updateVersionDisplay(null);
+        showOfflineBanner();
+        showToast('版本信息读取失败：' + ((err && err.message) || 'manager 不可达'), 'error', 6000);
+      })
+      .finally(hideLoading);
+  }
+
+  // ===== Offline Banner =====
+  function showOfflineBanner() {
+    var banner = document.getElementById('offlineBanner');
+    if (banner) banner.classList.remove('hidden');
+  }
+  function hideOfflineBanner() {
+    var banner = document.getElementById('offlineBanner');
+    if (banner) banner.classList.add('hidden');
+  }
+  function showDemoBanner() {
+    var banner = document.getElementById('demoBanner');
+    if (banner) banner.classList.remove('hidden');
+  }
+  function hideDemoBanner() {
+    var banner = document.getElementById('demoBanner');
+    if (banner) banner.classList.add('hidden');
+  }
+  function dismissDemoBanner() { hideDemoBanner(); }
+  function dismissApiKeyBanner() {
+    hideApiKeyBanner();
+    try { localStorage.setItem('apiKeyBannerDismissed', String(Date.now())); } catch (e) {}
+  }
+  function isApiKeyBannerDismissed() {
+    try {
+      var ts = localStorage.getItem('apiKeyBannerDismissed');
+      if (ts === null) return false;
+      return (Date.now() - parseInt(ts, 10)) < 24 * 60 * 60 * 1000;
+    } catch (e) { return false; }
+  }
+
+  // ===== API Key Banner =====
+  function showApiKeyBanner() {
+    var banner = document.getElementById('apiKeyBanner');
+    if (banner) banner.classList.remove('hidden');
+  }
+  function hideApiKeyBanner() {
+    var banner = document.getElementById('apiKeyBanner');
+    if (banner) banner.classList.add('hidden');
+  }
+
+  // ===== Auth Check =====
+  function checkAuth() {
+    return fetch('/api/auth/status')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data.needsSetup && !authToken) {
+          showLoginRequired();
+          return false;
+        }
+        return true;
+      })
+      .catch(function() {
+        showOfflineBanner();
+        return true;
+      });
+  }
+
+  function showLoginRequired() {
+    var main = document.getElementById('mainContent');
+    main.innerHTML =
+      '<div class="login-required-container">' +
+        '<div class="login-required-card">' +
+          '<div class="login-required-icon"><svg class="icon-svg" style="width:36px;height:36px;" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>' +
+          '<h2 class="login-required-title">需要登录</h2>' +
+          '<p class="login-required-desc">请先配置认证密码后访问管理面板</p>' +
+          '<a href="login.html" class="btn btn-primary" style="text-decoration:none;display:inline-block;">去设置密码</a>' +
+        '</div>' +
+      '</div>';
+  }
+
+  // ===== Intercept fetch for auth token =====
+  var _origFetch = window.fetch;
+  window.fetch = function(url, options) {
+    if (options === undefined) options = {};
+    if (typeof url === 'string' && url.indexOf('/api/') === 0 && authToken) {
+      if (!options.headers) options.headers = {};
+      if (typeof options.headers === 'object') {
+        options.headers['x-auth-token'] = authToken;
+      }
+    }
+    var p = _origFetch(url, options);
+    if (typeof url === 'string' && url.indexOf('/api/') === 0 && url.indexOf('/api/auth/') !== 0) {
+      p.then(function(res) {
+        if (res.status === 401) {
+          sessionStorage.removeItem('auth_token');
+          window.location.href = 'login.html';
+        }
+      }).catch(function() {});
+    }
+    return p;
+  };
+
+  // ===== Auto-refresh Control =====
+  function getRefreshInterval() {
+    var saved = localStorage.getItem('autoRefreshInterval');
+    if (saved !== null) return parseInt(saved, 10);
+    return 10;
+  }
+  function saveRefreshInterval(val) {
+    localStorage.setItem('autoRefreshInterval', String(val));
+  }
+  function applyRefreshInterval() {
+    var val = parseInt(document.getElementById('autoRefreshInterval').value, 10);
+    var toggle = document.getElementById('autoRefreshToggle');
+
+    if (val === 0 || !toggle.checked) {
+      if (window.__statusInterval) {
+        clearInterval(window.__statusInterval);
+        window.__statusInterval = null;
+      }
+      toggle.checked = false;
+      return;
+    }
+
+    if (window.__statusInterval) {
+      clearInterval(window.__statusInterval);
+    }
+    window.__statusInterval = setInterval(function() {
+        loadStatus();
+        loadSessions();
+        loadProviderHealth();
+      }, val * 1000);
+    toggle.checked = true;
+  }
+
+  // ===== Dynamic Proxy Nav =====
+  function loadInstalledProxies() {
+    return fetch('/api/installed')
+      .then(function(res) {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then(function(names) {
+        if (names && names.length > 0) return names;
+        throw new Error();
+      })
+      .catch(function() {
+        return Object.keys(PROXY_CONFIGS);
+      });
+  }
+
+  function renderDynamicProxyNav(proxyNames) {
+    var container = document.getElementById('proxyNavItems');
+    if (!container) return;
+    var label = document.getElementById('proxySectionLabel');
+    if (label) label.style.display = proxyNames.length > 0 ? '' : 'none';
+
+    if (proxyNames.length === 0) {
+      container.innerHTML = '<div class="nav-item" style="color:var(--color-text-tertiary);font-size:12px;padding:4px 12px;">暂无代理</div>';
+      return;
+    }
+
+    container.innerHTML = proxyNames.map(function(name) {
+      var config = PROXY_CONFIGS[name] || { name: name, icon: '' };
+      var status = proxyStatus[name];
+      var badgeClass = status && status.running ? 'running' : 'stopped';
+      var badgeText = status && status.running ? 'ON' : 'OFF';
+      return '<a href="proxy-config.html?proxy=' + name + '" class="nav-item proxy-nav-item" data-proxy="' + esc(name) + '" data-tooltip="' + esc(config.name) + '" tabindex="0">' +
+        '<span class="nav-icon">' + config.icon + '</span>' +
+        esc(config.name) +
+        '<span class="nav-badge ' + badgeClass + '">' + badgeText + '</span>' +
+        '</a>';
+    }).join('');
+  }
+
+  // ===== Cross-tab status sync via BroadcastChannel =====
+  try {
+    window.__statusChannel = new BroadcastChannel('proxy-status');
+    window.__statusChannel.onmessage = function(e) {
+      if (e.data && e.data.type === 'proxy-status-changed') {
+        loadStatus();
+        loadSessions();
+      }
+    };
+  } catch {}
+
+  // ===== Logout =====
+  window.handleLogout = function() {
+    sessionStorage.removeItem('auth_token');
+    window.location.href = 'login.html';
+  };
+
+  // ===== Dark Mode Toggle =====
+  function initDarkMode() {
+    var toggle = document.getElementById('darkModeToggle');
+    var isDark = localStorage.getItem('darkMode') === 'true';
+    var sunSvg = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+    var moonSvg = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      if (toggle) toggle.innerHTML = moonSvg + ' 亮色模式';
+    }
+    if (toggle) {
+      toggle.addEventListener('click', function() {
+        var html = document.documentElement;
+        var isNowDark = html.classList.contains('dark');
+        if (isNowDark) {
+          html.classList.remove('dark');
+          html.classList.add('light');
+          localStorage.setItem('darkMode', 'false');
+          toggle.innerHTML = sunSvg + ' 暗色模式';
+        } else {
+          html.classList.add('dark');
+          html.classList.remove('light');
+          localStorage.setItem('darkMode', 'true');
+          toggle.innerHTML = moonSvg + ' 亮色模式';
+        }
+      });
+    }
+  }
+
+  // ===== Initialize =====
+  // 2026-10-27 收口 PROXY_CONFIGS 多副本：从服务端单一真源拉取，替代硬编码副本。
+  // 服务端 GET /api/proxy-configs 返回状态字段（name/port/defaultVersion），
+  // 图标由 icons.js（决策 E 全站单一图标源）的 window.MPIcons.proxies[name] 解析。
+  function fetchProxyConfigs() {
+    return fetch('/api/proxy-configs')
+      .then(function (res) { return res.json(); })
+      .then(function (serverCfg) {
+        PROXY_CONFIGS = {};
+        var proxyIcons = (window.MPIcons && window.MPIcons.proxies) || {};
+        for (var name in serverCfg) {
+          if (!serverCfg.hasOwnProperty(name)) continue;
+          var s = serverCfg[name];
+          var pi = proxyIcons[name] || {};
+          PROXY_CONFIGS[name] = {
+            name: s.name,
+            port: s.port,
+            defaultVersion: s.defaultVersion,
+            icon: pi.icon || '',
+            iconClass: pi.iconClass || name
+          };
+        }
+      })
+      .catch(function () { /* 拉取失败不阻塞：导航回退 /api/installed 仍可工作 */ });
+  }
+
+  function init() {
+    initDarkMode();
+    checkAuth().then(function(authOk) {
+      if (!authOk) return;
+      return fetchProxyConfigs().then(function() {
+
+      loadInstalledProxies().then(function(installedNames) {
+        renderDynamicProxyNav(installedNames);
+      });
+
+      // Restore saved interval setting
+      var savedVal = getRefreshInterval();
+      var intervalSelect = document.getElementById('autoRefreshInterval');
+      if (intervalSelect) intervalSelect.value = String(savedVal);
+
+      // Load data
+      Promise.all([
+        new Promise(function(resolve) { loadStatus(); resolve(); }),
+        new Promise(function(resolve) { loadVersion(); resolve(); })
+       ]).then(function() {
+       loadSessions();
+       loadProviderHealth();
+       loadCostSovereignty();
+       // 门控状态条已由公共模块 gatebar.js 自动挂载（全站 9 页一致），此处不再单独调用。
+       // Check API Key completeness
+       fetch('/api/env-check')
+          .then(function(res) { return res.json(); })
+          .then(function(envData) {
+            if (envData.totalCount > 0 && !isApiKeyBannerDismissed()) {
+              showApiKeyBanner();
+            }
+          })
+          .catch(function() { /* skip */ });
+
+        // Check proxy conflicts
+        checkProxyConflicts();
+      });
+
+      // Start auto-refresh
+      applyRefreshInterval();
+
+      // Wire up controls
+      var intervalSelectCtrl = document.getElementById('autoRefreshInterval');
+      if (intervalSelectCtrl) {
+        intervalSelectCtrl.addEventListener('change', function() {
+          saveRefreshInterval(parseInt(this.value, 10));
+          applyRefreshInterval();
+        });
+      }
+      var toggleCheck = document.getElementById('autoRefreshToggle');
+      if (toggleCheck) {
+        toggleCheck.addEventListener('change', function() {
+          applyRefreshInterval();
+        });
+      }
+      });
+    });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

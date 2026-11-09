@@ -1,0 +1,595 @@
+// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the multi-proxy project.
+
+'use strict';
+
+// 省钱网关内核（task1 一期 · l2/savings-gateway/）
+// OpenAI 兼容网关：agent 用 dummy key 指向本网关，网关按 route-engine 难度路由
+// 把请求打到「最便宜够强」的档位；并产出「省钱账」：若照默认大模型打会花 X，
+// 实际路由到档位 Y 省了 Z。
+//
+// 五决策拍板（savings-gateway 内部设计文档 §四·§五，2026-09-21 维护者授权，不进公开树）：
+//   ① 形态 B：独立模块 l2/savings-gateway/，不碰热路径（forward.js / codex-proxy/proxy.js 零触碰）
+//   ② 端口 18795（独立 thin server，见同目录 server.js；内核本身不监听）
+//   ③ dummy key：网关签发/校验（前缀 gw_），命中即映射真 provider key（真 key 由调用方注入，
+//      内核不持有任何真 key 材料、不暴露给 agent）
+//   ④ 一期 shadow：只算「模拟 delta」（planned=large 基线 − actual=实际档位），接 alert.js cost 信号；
+//      省钱排行榜留二期
+//   ⑤ 先按难度档位（复用 route-engine 的 complexity→tier 路由），价格不进 route 排序（二期）
+//
+// 非侵入铁律（l2/ 统一范式，与 alert.js / cost.js 同构）：
+//   - 门控 PROXY_SAVINGS_GATEWAY 默认关 = observe（决策/省账进内存、绝不落盘）；开 = 可落盘
+//     savings-log.jsonl（目录可注入，不默认写 home 以外）
+//   - shadow 默认开：不真调上游；executor 注入缝预留（二期切换真路由时接真实 dispatch）
+//   - 内核默认不往 process.env 注入任何键
+//
+// 复用（不新造）：route-engine（难度路由）+ agent-registry + mcp-default-seed 三档 tier profile
+// （agnes=small 免费 / deepseek=medium / qwen=large）+ alert.js cost 规则契约。
+//
+// 价格表：DEFAULT_PRICING 是「若照默认大模型直连云端」的每百万 token CNY 基线，
+// 用于模拟 delta 记账；small=0（本地/免费档），medium=deepseek 项目基线（§13.11a ¥1/¥4），
+// large 为云端大模型量级估算（32/128，可经 opts.pricing 或 PROXY_PRICING_LARGE 覆盖）——
+// 估算值非实测，文档已标注，定价决策归维护者。
+
+const { RouteEngine } = require('../route-engine.js');
+const { AgentRegistry } = require('../agent-registry.js');
+const { seedDefaultProfiles } = require('../mcp-default-seed.js');
+const { RECOMMENDED_CONFIG, createRecommendedBreaker } = require('../circuit-breaker.js');
+
+const DUMMY_KEY_PREFIX = 'gw_';
+const GATE_ENV = 'PROXY_SAVINGS_GATEWAY';
+const SHADOW_ENV = 'PROXY_SAVINGS_SHADOW';
+
+// 档位 → 每百万 token CNY（input/output），模拟 delta 记账用
+const DEFAULT_PRICING = {
+    small:  { input: 0, output: 0 },    // 本地 qwen3.8:27b-mlx / agnes 免费档
+    medium: { input: 1, output: 4 },    // deepseek-v4-pro 项目基线（PROVIDERS-README pricing）
+    large:  { input: 32, output: 128 }, // 云端大模型量级估算（可覆盖，非实测）
+};
+const PLANNED_TIER = 'large'; // 设计稿 §3：原计划成本 = 大模型基线
+
+// ---- C6：per-model 价表（取代「只有三档 tier」的粗粒度）----
+//
+// 为什么需要：三档 tier 是「量级估算」，同一个 tier 里不同模型价差可达数倍，
+// 拿 tier 价算出来的「省了多少」是量级数不是账目数。
+//
+// 默认空：没有 per-model 数据时一律回落 tier，**绝不拿 tier 估算冒充 model 实测价**。
+// 价表由调用方注入（opts.pricing），内核不读 manager lib（非侵入铁律）。
+
+/** per-model 表挂在 pricing.models 下，形状 { '<model>': { input, output } }（CNY / 百万 token）。 */
+const DEFAULT_MODEL_PRICING = Object.freeze({});
+
+/**
+ * 解析单价：per-model 优先 → 回落 tier → 都没有返回 null（不炸、不猜）。
+ * @param {object} pricing 价表；兼容现有扁平形状 { small, medium, large } 与新形状 { tiers, models }
+ * @param {string} [model] 具体模型名
+ * @param {string} [tier]  档位
+ * @returns {{input:number, output:number, source:'model'|'tier', key:string}|null}
+ */
+function resolvePricing(pricing, model, tier) {
+    const p = pricing && typeof pricing === 'object' ? pricing : DEFAULT_PRICING;
+    if (model && p.models && p.models[model]) {
+        const m = p.models[model];
+        if (Number.isFinite(m.input) && Number.isFinite(m.output)) {
+            const hit = { input: m.input, output: m.output, source: 'model', key: model };
+            // 价可能是「查出来的」也可能是「人说的」：agnes-3.0-flash 的 0 元来自维护者口述
+            // （免费档，只有并发/次数限制），不是网关方价格文档。元字段原样带出去，
+            // 免得零价被人当成实价ookup 去推导别的结论。
+            if (m.priceSource) hit.declared = m.priceSource;
+            return hit;
+        }
+    }
+    // C0-3 假成本数字：调用方**已登记 model 级价表**（p.models 非空）却拿不到这个 model 的
+    // 有效价（压根没它 / 条目残缺）⇒ 单价未知，返回 source:'unknown'。
+    // 绝不在此处回落 tier —— 那是用一个「像样的数」冒充实测价：
+    // 典型就是 agnes-3.0-flash（旧口径里 providers.json 只登记了 agnes-2.0-flash），
+    // 被 tier small 算成 ¥0，看起来「免费」其实是推导出来的，不是查出来的。
+    // 🔴 2026-10-02：small 档模型已改 agnes-3.0-flash，若价表**没有**这一条（而不是只有 2.0）
+    // 仍要判 unknown —— 上面的 `m.input` 有限数判定已经覆盖，这里只是别再拿老型号当对照。
+    // 例外：p.models 为空表 = 压根没有 model 级信息，此时允许 tier 估算并标注 source（向后兼容）。
+    if (model && p.models && Object.keys(p.models).length > 0) {
+        return { input: null, output: null, source: 'unknown', key: model };
+    }
+    // 兼容扁平形状：新形状优先取 p.tiers[tier]
+    const t = p.tiers && p.tiers[tier] ? p.tiers[tier] : p[tier];
+    if (t && Number.isFinite(t.input) && Number.isFinite(t.output)) {
+        return { input: t.input, output: t.output, source: 'tier', key: tier };
+    }
+    return null;
+}
+
+// 粗估 prompt tokens：CJK/通用文本按 3 字符 ≈ 1 token（启发式，shadow 模拟用；
+// 真实 usage 由调用方传 reqBody.usage 覆盖）
+function estimatePromptTokens(messages) {
+    let chars = 0;
+    if (Array.isArray(messages)) {
+        for (const m of messages) {
+            const c = m && m.content;
+            if (typeof c === 'string') chars += c.length;
+        }
+    }
+    return Math.max(1, Math.ceil(chars / 3));
+}
+
+function gateOpen() {
+    const v = String(process.env[GATE_ENV] ?? '').trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'on';
+}
+
+function shadowDefault() {
+    const v = String(process.env[SHADOW_ENV] ?? '1').trim().toLowerCase();
+    return !(v === '0' || v === 'false' || v === 'off');
+}
+
+const round6 = (n) => Math.round(n * 1e6) / 1e6;
+const coerceNum = (n) => { const v = parseFloat(n); return Number.isFinite(v) ? v : 0; };
+
+// 工厂：每实例独立 store（测试隔离），与 l2 其它内核同构
+function createSavingsGateway(opts = {}) {
+    const pricing = { ...DEFAULT_PRICING, ...(opts.pricing || {}) };
+    // PROXY_PRICING_LARGE env 可覆盖 large 基线（镜像 cost-track 的 pricing 注入约定）
+    if (process.env.PROXY_PRICING_LARGE) {
+        try {
+            const p = JSON.parse(process.env.PROXY_PRICING_LARGE);
+            pricing.large = {
+                input: coerceNum(p.input),
+                output: coerceNum(p.output),
+            };
+        } catch { /* 非法 JSON → 保持默认，静默容错 */ }
+    }
+
+    const registry = new AgentRegistry();
+    seedDefaultProfiles(registry);   // 三档 tier：agnes(small)/deepseek(medium)/qwen(large)
+    const shadow = opts.shadow !== undefined ? !!opts.shadow : shadowDefault();
+    const engine = new RouteEngine({ registry, shadowMode: shadow });
+    const executor = typeof opts.executor === 'function' ? opts.executor : null;
+    // P1-b（cc-switch 借鉴 2026-10-08）：可选 per-provider 熔断查询缝。
+    // 默认 null = 不查熔断、零行为变更（非侵入；shadow 默认开，观测缝不阻塞）。
+    // 传入一个 CircuitBreaker 实例（或 'recommended' 哨兵）后，handleChatCompletions 按实际路由档位
+    // actualAdapter 查 allowRequest：该 provider 熔断 OPEN → 由 circuitMode 决定动作
+    // （observe=只记账 circuitOpen；failover=改路由到健康候选；block=直接拒 503）。
+    // 真实执行（非 shadow）后把 executor 返回的显式 status 喂回 breaker（recordSuccess/recordFailure），
+    // 熔断才会真 OPEN——shadow 不记 outcome，避免对模拟调用记假成功/失败。
+    // 注入点增强（2026-10-08）：opts.circuitBreaker 支持字符串 'recommended' 哨兵 →
+    //   自动用 cc-switch 派生推荐配置（RECOMMENDED_CONFIG）构造 breaker，免去调用方手拼。
+    let circuitBreaker = null;
+    if (opts.circuitBreaker === 'recommended') {
+      circuitBreaker = createRecommendedBreaker();
+    } else if (opts.circuitBreaker && typeof opts.circuitBreaker.allowRequest === 'function') {
+      circuitBreaker = opts.circuitBreaker;
+    }
+    // 收费确认闸门（MPT 契约落地 2026-10-12）：可选注入缝，默认 null = 零行为变更（非侵入）。
+    // 与 breaker 同构——只在调用方显式注入（server.js 的 PROXY_SAVINGS_CHARGE_CONFIRM=1 门控）后才介入。
+    // evaluate({ adapterId, estimatedCost, confirmed, shadow }) → { required, confirmed, reason }：
+    //   required=true && confirmed=false → handleChatCompletions 抛 httpStatus=402 charge_confirmation_required；
+    //   required=true && confirmed=true → 放行；required=false（免费/shadow）→ 直接放行。
+    // 设计要点：只在「真实执行」(非 shadow) 才拦——shadow 模拟不真花钱，与 MPT「模拟=免费」一致。
+    const chargeConfirm = opts.chargeConfirm && typeof opts.chargeConfirm.evaluate === 'function'
+        ? opts.chargeConfirm : null;
+    // 熔断动作模式（2026-10-08 二期缝）：observe(默认·仅记账·零行为变更) / failover(改路由到健康候选) / block(OPEN 即拒 503)。
+    // 仅当 circuitBreaker 已注入才有意义；不设 breaker 时 circuitMode 不参与任何路径。
+    const circuitMode = ['failover', 'block'].includes(opts.circuitMode) ? opts.circuitMode : 'observe';
+    // dummy key 表：{ '<gw_…>': '<intentTier>' }。真 provider key 映射由调用方在
+    // executor/dispatch 层注入（内核不持真 key）；此处只存「档位意图」。
+    const dummyKeys = opts.dummyKeys && typeof opts.dummyKeys === 'object' ? { ...opts.dummyKeys } : {};
+    // 签一个默认 key（可预测形式，便于 E2E；生产经 opts.dummyKeys 注入自定义）
+    if (Object.keys(dummyKeys).length === 0) {
+        dummyKeys[`${DUMMY_KEY_PREFIX}default-large`] = PLANNED_TIER;
+    }
+    const logCapacity = Number.isFinite(opts.logCapacity) ? opts.logCapacity : 1000;
+    const savingsLog = [];
+
+    // 记一笔省账（环形裁剪保最近 logCapacity）
+    function pushSavings(entry) {
+        savingsLog.push(entry);
+        if (savingsLog.length > logCapacity) savingsLog = savingsLog.slice(-logCapacity);
+    }
+
+    // 鉴权 + 映射：dummy key 必须命中签发表；返回 intentTier 或抛 401 语义错误
+    function resolveKey(key) {
+        if (typeof key !== 'string' || !key.startsWith(DUMMY_KEY_PREFIX)) {
+            const e = new Error('invalid_api_key');
+            e.httpStatus = 401;
+            throw e;
+        }
+        const tier = dummyKeys[key];
+        if (!tier) {
+            const e = new Error('unknown_api_key');
+            e.httpStatus = 401;
+            throw e;
+        }
+        return tier;
+    }
+
+    // 主入口：处理一次 /v1/chat/completions（shadow 模拟或 executor 真执行）
+    // reqBody: { messages, complexity?, usage?, model? }
+    // opts2:    { key, now? }
+    function handleChatCompletions(reqBody, io = {}) {
+        const intentTier = resolveKey(io.key);
+        const complexity = reqBody && ['low', 'medium', 'high'].includes(reqBody.complexity)
+            ? reqBody.complexity : 'medium';
+        // 难度路由（决策⑤：按档位，价格不进排序）
+        const decision = engine.route({ type: 'text', complexity, prompt: '(savings-gateway)' });
+        const chosen = decision.chosen;
+        let actualTier = chosen ? (chosen.modelTier || DEFAULT_TIER_NAME(chosen)) : 'medium';
+        let actualAdapter = chosen ? chosen.adapterId : 'qwen';
+        let failover = false;
+         // P1-b（二期缝 2026-10-08）：按实际路由档位查 per-provider 熔断（仅当注入了 breaker）；
+         // 无 breaker → circuitOpen=undefined（不查、不记账，老行为不变）。
+        const circuitOpen = circuitBreaker
+            ? !circuitBreaker.allowRequest(actualAdapter)
+            : undefined;
+
+        // 二期缝（2026-10-08）：熔断动作。仅当注入了 breaker 且当前 chosen 熔断 OPEN 才介入路由决策；
+        //   observe（默认）= 只记账 circuitOpen，不改动路由（零行为变更）；
+        //   failover = 把 actualAdapter 改到候选里第一个健康的（真实切流，不在观测位留假成功）；
+        //   block   = 直接抛 503 circuit_breaker_open，拒绝本轮请求。
+        // circuitOpen 反映「初选 provider 是否 OPEN」——failover 后仍保留 true 并置 failover 标记，
+        // 以便账目区分「主路由熔断但已切换」与「主路由正常」。
+        if (circuitBreaker && circuitOpen) {
+            if (circuitMode === 'block') {
+                const e = new Error('circuit_breaker_open');
+                e.httpStatus = 503;
+                throw e;
+            }
+            if (circuitMode === 'failover') {
+                const healthy = (decision.candidates || [])
+                    .map((c) => c.adapterId)
+                    .filter((id) => id !== actualAdapter)
+                    .find((id) => circuitBreaker.allowRequest(id));
+                if (healthy) {
+                    const cand = (decision.candidates || []).find((c) => c.adapterId === healthy);
+                    actualAdapter = healthy;
+                    actualTier = (cand && cand.modelTier) ? cand.modelTier : DEFAULT_TIER_NAME({ adapterId: healthy });
+                    failover = true;
+                } else {
+                    const e = new Error('circuit_breaker_open_no_fallback');
+                    e.httpStatus = 503;
+                    throw e;
+                }
+            }
+            // observe：保持 circuitOpen=true，不改动路由（老行为）
+        }
+
+        // tokens：优先真实 usage（调用方透传），否则启发式估算（模拟，诚实标 estimated）
+        const est = estimatePromptTokens(reqBody && reqBody.messages);
+        const promptTokens = reqBody && reqBody.usage && Number.isFinite(reqBody.usage.prompt_tokens)
+            ? reqBody.usage.prompt_tokens : est;
+        const completionTokens = reqBody && reqBody.usage && Number.isFinite(reqBody.usage.completion_tokens)
+            ? reqBody.usage.completion_tokens : 0;
+
+        // 模拟 delta（决策④）：planned=large 基线，actual=实际档位；无真实上游调用。
+        // 真实上游调用（executor）移到 server 层异步执行——handleChatCompletions 保持同步，
+        // 不破坏 demo / manager 测试的同步契约；server 异步转发后把 outcome 喂回 breaker。
+        let content = null;
+        let execInfo = null;
+        // C6：per-model 优先，回落 tier，兜底内置表（不炸）。
+        // pricingSource 必须落账——原来 `|| pricing.medium` 是静默回落，
+        // 档位/模型对不上时会拿 medium 的价算出个像样的数，那是假数字。
+        const model = reqBody && reqBody.model ? reqBody.model : null;
+        const resolvedAct = resolvePricing(pricing, model, actualTier);
+        // 单价未知 ⇒ 这笔成本就是「未知」，不拿 medium 的价凑个数。账面上标 unknownCostCount，
+        // 宁可少一个数字，不要一个看起来体面的假数字（C0-3）。
+        const unknownPrice = !!resolvedAct && resolvedAct.source === 'unknown';
+        const pAct = (resolvedAct && !unknownPrice)
+            ? resolvedAct
+            : (resolvePricing(pricing, null, 'medium') || DEFAULT_PRICING.medium);
+        const pricingSource = resolvedAct ? resolvedAct.source : 'fallback';
+        const pricingKey = resolvedAct ? resolvedAct.key : 'medium';
+        const pricingDeclared = resolvedAct ? (resolvedAct.declared || null) : null;
+        const pPlan = resolvePricing(pricing, null, PLANNED_TIER) || DEFAULT_PRICING[PLANNED_TIER];
+        const actualCost = unknownPrice
+            ? null
+            : round6(promptTokens / 1e6 * pAct.input + completionTokens / 1e6 * pAct.output);
+        const plannedCost = round6(promptTokens / 1e6 * pPlan.input + completionTokens / 1e6 * pPlan.output);
+        const saved = round6(Math.max(0, plannedCost - actualCost));
+
+        // 收费确认闸门（MPT 契约 2026-10-12）：仅当注入了 chargeConfirm 且「真实执行」(非 shadow) 才拦。
+        // 未注入（默认）→ 整段跳过，零行为变更。拦在记账/执行前，未确认直接 402，不产生省账也不打上游。
+        if (chargeConfirm && !engine.shadowMode) {
+            const verdict = chargeConfirm.evaluate({
+                adapterId: actualAdapter,
+                estimatedCost: unknownPrice ? null : actualCost,
+                confirmed: io.chargeConfirm === true,
+                shadow: engine.shadowMode,
+            });
+            if (verdict.required && !verdict.confirmed) {
+                const e = new Error('charge_confirmation_required');
+                e.httpStatus = 402;
+                e.chargeConfirm = verdict;   // 结构化结论随错误带出，server 层据此回 402 + 说明缺哪个确认
+                throw e;
+            }
+            // required && confirmed → 放行；required=false（免费/名单外）→ 放行
+        }
+
+        // 省账落内存（门控关=不落盘；一期不落盘，落盘/排行榜列二期——YAGNI 诚实边界）
+        pushSavings({
+            ts: io.now != null ? io.now : Date.now(),
+            intentTier,
+            complexity,
+            plannedTier: PLANNED_TIER,
+            actualTier,
+            actualAdapter,
+            promptTokens,
+            completionTokens,
+            plannedCost,
+            actualCost,
+            saved,
+            pricingSource,   // 'model' = per-model 实价；'tier' = 档位估算；'fallback' = 连档位都没对上，兜底 medium；'unknown' = 该 model 单价查不到（actualCost 为 null，不凑数）
+            pricingKey,
+            pricingDeclared: resolvedAct ? (resolvedAct.declared || null) : null,   // 价是谁给的（model 条目 priceSource），0 元也得分清是查的还是说的
+            shadow: engine.shadowMode,
+            tokensEstimated: !(reqBody && reqBody.usage),
+            circuitOpen,    // P1-b：per-provider 熔断观测位（无 breaker=undefined，不阻塞 shadow）
+            circuitMode: circuitBreaker ? circuitMode : undefined,   // 二期缝：本次生效的熔断动作模式
+            failover,       // 二期缝：本次是否因主路由熔断而切到健康候选
+        });
+
+        const response = {
+            id: `sgw-${io.now != null ? io.now : Date.now()}`,
+            object: 'chat.completion',
+            model: actualAdapter,
+            choices: [{
+                index: 0,
+                message: {
+                    role: 'assistant',
+                    content: content
+                        != null ? content
+                        : `[savings-gateway shadow] routed ${PLANNED_TIER}→${actualTier} (${actualAdapter}), simulated`,
+                },
+                finish_reason: 'stop',
+            }],
+            usage: {
+                prompt_tokens: promptTokens,
+                completion_tokens: completionTokens,
+                total_tokens: promptTokens + completionTokens,
+            },
+            x_savings: {
+                plannedTier: PLANNED_TIER,
+                actualTier,
+                actualAdapter,
+                plannedCost,
+                actualCost,
+                saved,
+                circuitOpen,    // 初选 provider 是否熔断 OPEN（failover 后仍保留 true，配合 failover 标记区分「已切换」）
+                failover,       // 二期缝：是否因熔断切到健康候选
+                circuitMode: circuitBreaker ? circuitMode : undefined,   // 二期缝：生效的熔断动作模式
+                // 定价来源一并向调用方暴露：看到 actualCost 的人必须同时知道它是实价、
+                // 档位估的还是「未知」。只有数字不看来源 = 假数字照发不误（C0-3）。
+                pricingSource,
+                pricingKey,
+                pricingDeclared,
+                shadow: engine.shadowMode,
+                estimated: !(reqBody && reqBody.usage),
+            },
+        };
+        if (execInfo && execInfo.content != null) {
+            response.choices[0].message.content = execInfo.content;
+            response.x_savings.simulated = false;
+        }
+        return response;
+    }
+
+    // 省钱报告（一期账目 API；排行榜留二期）
+    function savingsReport(windowMs) {
+        const cutoff = (windowMs != null && Number.isFinite(windowMs))
+            ? (savingsLog.length ? Math.max(...savingsLog.map((e) => e.ts)) : 0) - windowMs
+            : 0;
+        const rows = windowMs != null ? savingsLog.filter((e) => e.ts >= cutoff) : savingsLog;
+        let totalSaved = 0, totalActual = 0, totalPlanned = 0, reqCount = 0, unknownCostCount = 0;
+        const perTier = {};
+        for (const e of rows) {
+            totalSaved += e.saved; totalPlanned += e.plannedCost;
+            // 单价未知的笔不进合计（否则 null 会把总和冲成 NaN，或被迫填 0 冒充「没花钱」）
+            if (Number.isFinite(e.actualCost)) totalActual += e.actualCost; else unknownCostCount += 1;
+            reqCount += 1;
+            perTier[e.actualTier] = perTier[e.actualTier] || { requestCount: 0, saved: 0 };
+            perTier[e.actualTier].requestCount += 1;
+            perTier[e.actualTier].saved = round6(perTier[e.actualTier].saved + e.saved);
+        }
+        return {
+            windowMs: windowMs != null ? windowMs : 0,
+            requestCount: reqCount,
+            totalSaved: round6(totalSaved),
+            totalActualCost: round6(totalActual),
+            totalPlannedCost: round6(totalPlanned),
+            // 「有多少笔压根没价」必须能跟总笔数对照看，否则 unknown 会被当成 0 一样读过去
+            unknownCostCount,
+            perTier,
+            shadow: engine.shadowMode,
+        };
+    }
+
+    // 喂 alert.js 的 cost 信号（决策④：接 alert.js cost）。形状与 cost.js/alert.js
+    // cost-budget-exceeded 契约一致：{ source:'cost', providerId, cost, budget? }；
+    // budget 未设则不带（alert 规则要求 budget 为 number 才触发——诚实：不设预算不告警）。
+    function produceCostSignal(opts2 = {}) {
+        const rep = savingsReport(opts2.windowMs);
+        const sig = {
+            source: 'cost',
+            providerId: 'savings-gateway',
+            cost: rep.totalActualCost,
+        };
+        if (typeof opts2.budget === 'number') sig.budget = opts2.budget;
+        return sig;
+    }
+
+    return {
+        handleChatCompletions,
+        resolveKey,
+        savingsReport,
+        produceCostSignal,
+        setShadowMode: (on) => { engine.setShadowMode(on); },
+        isShadow: () => engine.shadowMode,
+        // 二期缝（2026-10-08）：暴露 breaker 实例，供 server 层异步真实转发后喂 outcome
+        // （handleChatCompletions 保持同步，不破坏 demo / manager 测试契约）。
+        getCircuitBreaker: () => circuitBreaker,
+        getExecutor: () => executor,
+        getDummyKeys: () => ({ ...dummyKeys }),
+        setExecutor: (fn) => { /* 二期缝 */ if (typeof fn === 'function') executor = fn; },
+        // 测试/演示
+        getDecisionLog: (n) => engine.getLogs(n),
+        getSavingsLog: () => savingsLog.slice(),
+        _engine: engine,
+        _registry: registry,
+        _pricing: pricing,
+        _dummyKeys: dummyKeys,
+    };
+}
+
+// 真实执行器（二期缝使能件，2026-10-08）：把请求透传到上游（默认 18790 = codex-proxy），
+// 由上游做真实 per-provider 路由。照抄 token-policy-bridge 的 fetch 转发 + auth 透传，JSON-only。
+// 仅当 server 层 PROXY_SAVINGS_EXECUTOR=forward 且 shadow=off 时才启用（默认不启用 → 零行为变更）。
+//
+// ⚠️ forward 模式下 savings-gateway 是「带省账+熔断的透明前端」：客户端须用对上游有效的真 key
+// （dummy key 仅供 shadow 模拟，forward 到 18790 会被拒）。上游走 SSE 流式时本执行器降级为
+// failed（savings-gateway 内核不 pipe 流式），避免静默记成成功。
+function createForwardExecutor(upstreamBase, opts2 = {}) {
+    const base = String(upstreamBase || 'http://127.0.0.1:18790').replace(/\/+$/, '');
+    const timeoutMs = Number.isFinite(opts2.timeoutMs) ? opts2.timeoutMs : 120000;
+    return async function forwardExecutor(adapterId, body, meta = {}) {
+        const auth = meta && meta.auth;
+        const headers = { 'Content-Type': 'application/json' };
+        if (auth) headers['Authorization'] = auth;
+        const url = `${base}/v1/chat/completions`;
+        let res;
+        try {
+            res = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(timeoutMs),
+            });
+        } catch (e) {
+            return { status: 'failed', error: `upstream unreachable: ${e.message}` };
+        }
+        const ctype = res.headers.get('content-type') || '';
+        if (/text\/event-stream/i.test(ctype)) {
+            // 上游是健康的，只是本执行器不支持流式 → 不是 provider 故障，不喂熔断
+            return { status: 'unsupported', statusCode: res.status, error: 'upstream stream unsupported by savings-gateway forward executor' };
+        }
+        const text = await res.text();
+        if (res.status >= 200 && res.status < 300) {
+            let parsed = null;
+            try { parsed = JSON.parse(text); } catch { /* 非 JSON 成功体，content 留空 */ }
+            const usage = parsed && parsed.usage ? parsed.usage : null;
+            const content = parsed && parsed.choices && parsed.choices[0] && parsed.choices[0].message
+                ? parsed.choices[0].message.content : null;
+            return { status: 'done', usage, content, raw: parsed };
+        }
+        // 4xx（429/408 除外）是客户端侧的错（坏 key、参数错），不代表上游不健康 →
+        // 单列 'client_error'，不喂熔断：否则一个用错 key 的客户端就能把熔断器打 OPEN、连累所有流量。
+        if (res.status >= 400 && res.status < 500 && res.status !== 429 && res.status !== 408) {
+            return { status: 'client_error', statusCode: res.status, error: text.slice(0, 200), raw: text };
+        }
+        // 5xx / 429 / 408 = 上游自身故障 → 喂熔断
+        return { status: 'failed', statusCode: res.status, error: text.slice(0, 200), raw: text };
+    };
+}
+
+// SSE 透传给上游的执行器（2026-10-13 补）。
+//
+// 为什么非补不可：18796 要接的真实客户端（dsh 桌面端、Cursor、以及任何 OpenAI 兼容
+// agent）**默认走流式**，`stream:true` 是常态不是边角。JSON-only 执行器撞上上游
+// text/event-stream 只能判 unsupported ⇒ 现场现象是「连得上、每个请求 501」——
+// 比连不上更糟：客户端看得到服务端，但一条都用不了。
+//
+// 契约与 createForwardExecutor 完全对齐（done / failed / client_error / unsupported），
+// 只多一个 'streamed'：表示响应头已写给客户端、字节已 pipe 完，**调用方不得再写 res**。
+// 🔴 只有 body.stream 为真时才可能被调用 —— 非流式路径与今天逐字节一致（零行为变更）。
+//
+// ⚠️ 已知取舍（如实记，别以后当成 bug）：流式这条省钱账是**估算**的 —— 拿不到上游
+//   真实 usage（除非客户端带 stream_options.include_usage 且上游回传）。所以流的账
+//   只能回答「路由到哪个档位」，不能当账单用。要真账请走非流式。
+function createStreamForwardExecutor(upstreamBase, opts2 = {}) {
+    const base = String(upstreamBase || 'http://127.0.0.1:18790').replace(/\/+$/, '');
+    const timeoutMs = Number.isFinite(opts2.timeoutMs) ? opts2.timeoutMs : 120000;
+    return async function streamForwardExecutor(adapterId, body, meta = {}, res = null) {
+        const auth = meta && meta.auth;
+        const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
+        if (auth) headers.Authorization = auth;
+        let upstream;
+        try {
+            upstream = await fetch(`${base}/v1/chat/completions`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(timeoutMs),
+            });
+        } catch (e) {
+            return { status: 'failed', error: `upstream unreachable: ${e.message}` };
+        }
+        const ctype = upstream.headers.get('content-type') || '';
+        // 上游没给事件流（含 4xx/5xx 的 JSON 错误体）⇒ 退回与非流式同一套状态机，
+        // 让 server 层照原样回 JSON 错误；这里一个字节都还没写给客户端，安全。
+        if (!upstream.ok || !/text\/event-stream/i.test(ctype)) {
+            const text = await upstream.text().catch(() => '');
+            if (upstream.status >= 400 && upstream.status < 500 && upstream.status !== 429 && upstream.status !== 408) {
+                return { status: 'client_error', statusCode: upstream.status, error: text.slice(0, 200), raw: text };
+            }
+            return { status: 'failed', statusCode: upstream.status, error: text.slice(0, 200) || 'upstream returned non-stream response', raw: text };
+        }
+        if (!res || typeof res.writeHead !== 'function') {
+            return { status: 'unsupported', statusCode: upstream.status, error: 'no writable response to pipe stream into' };
+        }
+        res.writeHead(upstream.status, {
+            'Content-Type': ctype,
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+            // 关掉中间层缓冲（nginx 之类），否则流式会攒成一坨最后一次性到
+            'X-Accel-Buffering': 'no',
+        });
+        try {
+            const reader = upstream.body.getReader();
+            try {
+                for (;;) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    res.write(value);
+                }
+            } finally {
+                if (typeof reader.releaseLock === 'function') reader.releaseLock();
+            }
+        } catch (e) {
+            // 半途断流：头已写、不能再改状态码，只能尽力收尾并如实回报
+            try { res.end(); } catch { /* 客户端已断开 */ }
+            return { status: 'stream_error', error: `stream pipe failed: ${e.message}` };
+        }
+        res.end();
+        return { status: 'streamed' };
+    };
+}
+
+// chosen.modelTier 缺失时的兜底（seed 的三档都显式声明了 modelTier，此处防御未知 profile）
+function DEFAULT_TIER_NAME(chosen) {
+    if (chosen.adapterId === 'agnes') return 'small';
+    if (chosen.adapterId === 'qwen') return 'large';
+    return 'medium';
+}
+
+// ---- 模块级单例（持久账目）----
+const _gw = createSavingsGateway();
+module.exports = {
+    DUMMY_KEY_PREFIX,
+    GATE_ENV,
+    SHADOW_ENV,
+    DEFAULT_PRICING,
+    DEFAULT_MODEL_PRICING,
+    PLANNED_TIER,
+    resolvePricing,
+    estimatePromptTokens,
+    createSavingsGateway,
+    // P1-b 增强（2026-10-08）：导出推荐熔断配置，供调用方/门控注入点取用
+    RECOMMENDED_CIRCUIT_CONFIG: RECOMMENDED_CONFIG,
+    // 二期缝（2026-10-08）：真实执行器工厂，server 层 PROXY_SAVINGS_EXECUTOR=forward 时启用
+    createForwardExecutor,
+    // SSE 透传执行器（2026-10-13）：同上，只在 body.stream 为真时被调用，非流式零变更
+    createStreamForwardExecutor,
+    // 单例转发
+    handleChatCompletions: _gw.handleChatCompletions,
+    savingsReport: _gw.savingsReport,
+    produceCostSignal: _gw.produceCostSignal,
+    gateOpen,
+    shadowDefault,
+};

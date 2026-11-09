@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Multi-Proxy Manager · 原型</title>
+<style>
+/* ===== Design tokens (对齐 tokens.css) ===== */
+:root{
+  color-scheme:light;
+  --accent:#2563eb; --accent-strong:#1d4ed8; --accent-soft-bg:#eef4ff; --accent-soft-fg:#1e40af;
+  --ok:#16a34a; --ok-soft-bg:#eaf7ee; --ok-soft-fg:#0f7a3d;
+  --warn:#d97706; --warn-soft-bg:#fff4e2; --warn-soft-fg:#9a5a06;
+  --danger:#dc2626; --danger-soft-bg:#fdecec; --danger-soft-fg:#a11d1d;
+  --info:#2563eb; --idle:#667085;
+  --bg:#ffffff; --surface:#ffffff; --surface-2:#f6f7f8; --surface-3:#eef0f3;
+  --border:#e4e7ec; --border-strong:#d0d5dd;
+  --fg:#101828; --muted:#475467; --subtle:#5f6c7d; --faint:#78818f;
+  --prov-codex:#7c3aed;--prov-hermes:#d97706;--prov-cursor:#6366f1;--prov-generic:#0d9488;
+  --prov-opencode:#0891b2;--prov-dsh:#db2777;--prov-claude:#475569;
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --fs-xs:12px;--fs-sm:13px;--fs-base:14px;--fs-lg:16px;--fs-xl:18px;--fs-2xl:20px;--fs-kpi:28px;--fw-semi:600;
+  --sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
+  --main-pad:32px; --sidebar-w:240px;
+  --r-md:8px;--r-lg:12px;--r-pill:999px;
+  --shadow-md:0 1px 3px rgba(16,24,40,.10),0 8px 24px rgba(16,24,40,.06);
+  --dur:180ms; --ease:cubic-bezier(.2,.8,.2,1);
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --accent:#4d8dff;--accent-strong:#7aabff;--accent-soft-bg:#1a2b4a;--accent-soft-fg:#cddfff;
+  --ok:#4ade80;--ok-soft-bg:#0d2a1c;--ok-soft-fg:#86efac;
+  --warn:#fbbf24;--warn-soft-bg:#3a2708;--warn-soft-fg:#fde68a;
+  --danger:#f87171;--danger-soft-bg:#3a1414;--danger-soft-fg:#fca5a5;
+  --info:#4d8dff;--idle:#98a2b3;
+  --bg:#141619;--surface:#1d1f24;--surface-2:#26292f;--surface-3:#33363d;
+  --border:#34383f;--border-strong:#454a54;
+  --fg:#f5f6f8;--muted:#c3c8d0;--subtle:#9aa1ad;--faint:#8b93a0;
+  --prov-codex:#a78bfa;--prov-hermes:#fbbf24;--prov-cursor:#818cf8;--prov-generic:#2dd4bf;
+  --prov-opencode:#22d3ee;--prov-dsh:#f472b6;--prov-claude:#94a3b8;
+  --shadow-md:0 1px 3px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --accent:#4d8dff;--accent-strong:#7aabff;--accent-soft-bg:#1a2b4a;--accent-soft-fg:#cddfff;
+    --ok:#4ade80;--ok-soft-bg:#0d2a1c;--ok-soft-fg:#86efac;
+    --warn:#fbbf24;--warn-soft-bg:#3a2708;--warn-soft-fg:#fde68a;
+    --danger:#f87171;--danger-soft-bg:#3a1414;--danger-soft-fg:#fca5a5;
+    --info:#4d8dff;--idle:#98a2b3;
+    --bg:#141619;--surface:#1d1f24;--surface-2:#26292f;--surface-3:#33363d;
+    --border:#34383f;--border-strong:#454a54;
+    --fg:#f5f6f8;--muted:#c3c8d0;--subtle:#9aa1ad;--faint:#8b93a0;
+    --prov-codex:#a78bfa;--prov-hermes:#fbbf24;--prov-cursor:#818cf8;--prov-generic:#2dd4bf;
+    --prov-opencode:#22d3ee;--prov-dsh:#f472b6;--prov-claude:#94a3b8;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font-sans);font-size:var(--fs-base);color:var(--fg);
+  background:var(--bg);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+a{color:var(--accent);text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ===== Layout shell ===== */
+.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh}
+.sidebar{background:var(--surface-2);border-right:1px solid var(--border);padding:var(--sp-4);display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:var(--fw-semi);font-size:var(--fs-lg);padding:6px 4px 14px}
+.brand svg{color:var(--accent)}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-md);color:var(--muted);cursor:pointer;font-size:var(--fs-base)}
+.nav-item:hover{background:var(--surface-3);color:var(--fg)}
+.nav-item.active{background:var(--accent-soft-bg);color:var(--accent-soft-fg);font-weight:var(--fw-semi)}
+.nav-item.active svg{color:var(--accent)}
+.nav-item svg{flex:none;color:inherit}
+.sidebar .spacer{flex:1}
+.foot-links{padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm)}
+.foot-links a{color:var(--muted)}
+.foot-links a:hover{color:var(--accent)}
+
+.main{display:flex;flex-direction:column;min-width:0}
+.topbar{display:flex;align-items:center;gap:12px;padding:14px var(--main-pad);border-bottom:1px solid var(--border);background:var(--surface)}
+.topbar h1{font-size:var(--fs-xl);margin:0;flex:1}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-pill);overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--muted);padding:6px 14px;cursor:pointer;font-size:var(--fs-sm)}
+.seg button.on{background:var(--accent);color:#fff}
+.content{padding:var(--main-pad);max-width:1200px;width:100%}
+.view{display:none}
+.view.active{display:block}
+
+/* ===== Cards / grid ===== */
+.grid-kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-4);margin-bottom:var(--sp-6)}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-4);box-shadow:var(--shadow-md)}
+.kpi .n{font-size:var(--fs-kpi);font-weight:var(--fw-semi)}
+.kpi .l{color:var(--muted);font-size:var(--fs-sm);margin-top:4px}
+.row2{display:grid;grid-template-columns:1.4fr 1fr;gap:var(--sp-4)}
+@media(max-width:900px){.row2{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-5);box-shadow:var(--shadow-md)}
+.panel h2{font-size:var(--fs-lg);margin:0 0 12px}
+
+/* ===== Proxy list ===== */
+.px{border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;background:var(--surface)}
+.px .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.px .nm{font-weight:var(--fw-semi);min-width:140px}
+.px .badge{font-size:var(--fs-xs);padding:2px 8px;border-radius:var(--r-pill)}
+.b-ok{background:var(--ok-soft-bg);color:var(--ok-soft-fg)}
+.b-idle{background:var(--surface-3);color:var(--idle)}
+.b-warn{background:var(--warn-soft-bg);color:var(--warn-soft-fg)}
+.b-info{background:var(--accent-soft-bg);color:var(--accent-soft-fg)}
+.px .grow{flex:1}
+.btn{border:1px solid var(--border-strong);background:var(--surface);color:var(--fg);border-radius:var(--r-md);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm)}
+.btn:hover{background:var(--surface-3)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.page-sub{color:var(--muted);margin:0 0 16px}
+
+/* ===== states ===== */
+.skeleton{height:14px;border-radius:6px;background:linear-gradient(90deg,var(--surface-3),var(--surface-2),var(--surface-3));background-size:200% 100%;animation:sh 1.2s infinite}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.empty,.error{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty svg,.error svg{color:var(--faint);margin-bottom:12px}
+.error{color:var(--danger-soft-fg)}
+.demo-bar{display:flex;gap:8px;margin-bottom:16px;align-items:center}
+.demo-bar span{color:var(--faint);font-size:var(--fs-sm)}
+@media (prefers-reduced-motion:reduce){.skeleton{animation:none}}
+
+/* tabs */
+.tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border)}
+.tab{border:0;background:transparent;color:var(--muted);padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:var(--fw-semi)}
+.tabpanel{display:none}.tabpanel.active{display:block}
+.legend{display:flex;gap:16px;font-size:var(--fs-sm);color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 4"/></svg>
+      Multi-Proxy Manager
+    </div>
+    <div class="nav-item active" data-view="dashboard"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>概览</div>
+    <div class="nav-item" data-view="floor"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 4"/></svg>盘面</div>
+    <div class="nav-item" data-view="proxy-config"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="1.4" fill="currentColor"/><circle cx="14" cy="12" r="1.4" fill="currentColor"/><circle cx="10" cy="18" r="1.4" fill="currentColor"/></svg>代理配置</div>
+    <div class="nav-item" data-view="tasks"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h10"/><path d="M17 16l3 3 2-4" stroke-linecap="round" stroke-linejoin="round"/></svg>任务</div>
+    <div class="nav-item" data-view="knowledge"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M9 8h6M9 12h6"/></svg>知识库</div>
+    <div class="nav-item" data-view="skills"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l2.2 4.6L19 9l-3.5 3.4.8 4.9L12 15l-4.3 2.3.8-4.9L5 9l4.8-1.4z"/></svg>技能</div>
+    <div class="nav-item" data-view="context"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>上下文</div>
+    <div class="nav-item" data-view="sessions"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h6M7 14h10"/></svg>会话</div>
+    <div class="nav-item" data-view="logs"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>日志</div>
+    <div class="nav-item" data-view="settings"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.8 7.8 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4z"/></svg>设置</div>
+    <div class="spacer"></div>
+    <div class="foot-links">
+      <a href="#" data-view="legal">法务 · 用户协议 / 隐私政策</a>
+      <a href="#">关于 · v1.0</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <h1 id="pageTitle">概览</h1>
+      <span class="page-sub" style="margin:0" id="themeHint"></span>
+      <div class="seg" role="group" aria-label="主题">
+        <button data-theme-btn="auto" class="on">跟随本机</button>
+        <button data-theme-btn="light">浅色</button>
+        <button data-theme-btn="dark">深色</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- ===== Dashboard ===== -->
+      <section class="view active" data-view="dashboard">
+        <p class="page-sub">本机 9 个 OpenAI 兼容代理的统一编排与用量视图。</p>
+        <div class="demo-bar">
+          <span>原型演示状态：</span>
+          <button class="btn" id="demoNormal">正常</button>
+          <button class="btn" id="demoLoading">加载中</button>
+          <button class="btn" id="demoEmpty">空态</button>
+          <button class="btn" id="demoError">错误态</button>
+        </div>
+        <div id="dashBody">
+          <div class="grid-kpi">
+            <div class="kpi"><div class="n">9/9</div><div class="l">已安装代理</div></div>
+            <div class="kpi"><div class="n">9</div><div class="l">运行中</div></div>
+            <div class="kpi"><div class="n">128.4K</div><div class="l">本月 tokens</div></div>
+            <div class="kpi"><div class="n">¥36.20</div><div class="l">本月成本</div></div>
+          </div>
+          <div class="row2">
+            <div class="panel">
+              <h2>代理状态（9）</h2>
+              <div id="pxList"></div>
+            </div>
+            <div class="panel">
+              <h2>Provider 健康 / 运行中任务</h2>
+              <p class="page-sub">Codex / Hermes / Cursor / Claude / OpenCode / DSH / Generic 健康。</p>
+              <div class="skeleton" style="width:90%;margin-bottom:8px"></div>
+              <div class="skeleton" style="width:70%"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Floor ===== -->
+      <section class="view" data-view="floor"><div class="panel"><h2>盘面 · Provider 聚合</h2><p class="page-sub">按 Provider 维度的调用量、成本与冲突聚合视图（原型占位）。</p><div class="skeleton" style="width:100%;height:120px"></div></div></section>
+
+      <!-- ===== Proxy config ===== -->
+      <section class="view" data-view="proxy-config">
+        <p class="page-sub">9 个代理的起停与冲突所有权（数据源与概览同源）。</p>
+        <div class="panel"><h2>代理配置（9）</h2><div id="pxListCfg"></div>
+          <div class="legend"><span>● occupied 被占用</span><span>○ free 空闲</span><span>? unknown 未能探测</span></div>
+        </div>
+      </section>
+
+      <!-- ===== Tasks / Knowledge / Skills / Context / Sessions / Logs (占位区) ===== -->
+      <section class="view" data-view="tasks"><div class="panel"><h2>任务管理</h2><p class="page-sub">运行中 / 已完成任务（原型占位）。</p></div></section>
+      <section class="view" data-view="knowledge"><div class="panel"><h2>知识库</h2><p class="page-sub">本地知识检索（原型占位）。</p></div></section>
+      <section class="view" data-view="skills"><div class="panel"><h2>技能</h2><p class="page-sub">已注册技能（原型占位）。</p></div></section>
+      <section class="view" data-view="context"><div class="panel"><h2>上下文组成</h2><p class="page-sub">上下文构成分析（原型占位）。</p></div></section>
+      <section class="view" data-view="sessions"><div class="panel"><h2>会话</h2><div class="empty"><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h6M7 14h10"/></svg><p>暂无会话数据。启动任一代理后，调用记录会在此汇总。</p></div></div></section>
+      <section class="view" data-view="logs"><div class="panel"><h2>日志</h2><p class="page-sub">按标签筛选运行 / 错误日志（原型占位）。</p><div class="skeleton" style="width:100%;height:80px"></div></div></section>
+
+      <!-- ===== Settings ===== -->
+      <section class="view" data-view="settings">
+        <p class="page-sub">外观 · 关于 · 更新与备份。</p>
+        <div class="tabs">
+          <button class="tab active" data-tab="appearance">外观</button>
+          <button class="tab" data-tab="about">关于</button>
+          <button class="tab" data-tab="update">更新与备份</button>
+        </div>
+        <div class="tabpanel active" data-tab="appearance">
+          <div class="panel">
+            <h2>主题</h2>
+            <div class="px"><div class="grow"><div class="nm">暗色模式</div><div class="page-sub" style="margin:2px 0 0">跟随本机外观、或手动固定为浅色/深色。状态存本机。</div></div>
+              <div class="seg" role="group" aria-label="主题设置">
+                <button data-theme-btn="auto" class="on">跟随本机</button>
+                <button data-theme-btn="light">浅色</button>
+                <button data-theme-btn="dark">深色</button>
+              </div>
+            </div>
+            <div class="px"><div class="grow"><div class="nm">字体</div><div class="page-sub" style="margin:2px 0 0">系统字体栈，零外部加载。</div></div><span class="badge b-info">系统字体</span></div>
+          </div>
+        </div>
+        <div class="tabpanel" data-tab="about"><div class="panel"><h2>关于</h2>
+          <p>应用：Multi-Proxy Manager</p><p>版本：1.0（v1.0 收尾）</p><p>运行模式：本地管理面板（绑定 127.0.0.1）</p><p>数据目录：~/.multi-proxy-manager/</p></div></div>
+        <div class="tabpanel" data-tab="update"><div class="panel"><h2>更新与备份</h2>
+          <div class="px"><div class="grow"><div class="nm">检查更新</div><div class="page-sub" style="margin:2px 0 0">v1.0 正式发布时接入更新源；当前为占位。</div></div><button class="btn" onclick="alert('更新源待发布（占位，诚实提示）')">检查更新</button></div>
+          <div class="px"><div class="grow"><div class="nm">配置导出</div><div class="page-sub" style="margin:2px 0 0">导出 provider 注册表与价表副本。</div></div><button class="btn primary">导出配置</button></div>
+          <div class="px"><div class="grow"><div class="nm">首启授权</div><div class="page-sub" style="margin:2px 0 0">已接受首启协议，可撤销后重走同意门。</div></div><button class="btn">撤销</button></div>
+        </div></div>
+      </section>
+
+      <!-- ===== Legal ===== -->
+      <section class="view" data-view="legal">
+        <p class="page-sub">零网络、零第三方读取，本地 docs/legal/ 为源。</p>
+        <div class="tabs">
+          <button class="tab active" data-tab="toc">用户服务协议</button>
+          <button class="tab" data-tab="priv">隐私政策</button>
+        </div>
+        <div class="tabpanel active" data-tab="toc"><div class="panel"><h2>用户服务协议（摘要）</h2><p class="page-sub">本地优先、AGPL-3.0 开源内核；多租户/SSO/审计等企业能力走商业授权，不在开源内核。</p><p>本协议全文以本地 docs/legal/ 为准。</p></div></div>
+        <div class="tabpanel" data-tab="priv"><div class="panel"><h2>隐私政策（摘要）</h2><p class="page-sub">所有数据处理在本地完成，不向第三方上传对话或凭据。详见本地 docs/legal/。</p></div></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var PROXIES=[
+    {n:"codex",c:"var(--prov-codex)",s:"运行中",b:"b-ok",conf:"free"},
+    {n:"claude",c:"var(--prov-claude)",s:"运行中",b:"b-ok",conf:"free"},
+    {n:"hermes",c:"var(--prov-hermes)",s:"运行中",b:"b-ok",conf:"free"},
+    {n:"cursor",c:"var(--prov-cursor)",s:"运行中",b:"b-ok",conf:"free"},
+    {n:"opencode",c:"var(--prov-opencode)",s:"运行中",b:"b-ok",conf:"free"},
+    {n:"dsh",c:"var(--prov-dsh)",s:"运行中",b:"b-ok",conf:"occupied"},
+    {n:"generic",c:"var(--prov-generic)",s:"运行中",b:"b-ok",conf:"free"},
+    {n:"opencode-free",c:"var(--accent)",s:"已停止",b:"b-idle",conf:"unknown"},
+    {n:"workbuddy-shim",c:"var(--accent-strong)",s:"已停止",b:"b-idle",conf:"unknown"}
+  ];
+  var CONF={occupied:["●","b-warn","occupied 被占用"],free:["○","b-info","free 空闲"],unknown:["?","b-idle","unknown 未能探测"]};
+  function renderList(el){
+    el.innerHTML="";
+    PROXIES.forEach(function(p){
+      var cf=CONF[p.conf];
+      var row=document.createElement("div");row.className="px";
+      row.innerHTML='<span class="dot" style="background:'+p.c+'"></span>'+
+        '<span class="nm">'+p.n+'</span>'+
+        '<span class="badge '+p.b+'">'+p.s+'</span>'+
+        '<span class="badge '+cf[1]+'">'+cf[0]+' '+cf[2]+'</span>'+
+        '<span class="grow"></span>'+
+        (p.s==="运行中"
+          ? '<button class="btn">停止</button>'
+          : '<button class="btn primary">启动</button>')+
+        ' <button class="btn">配置</button>';
+      el.appendChild(row);
+    });
+  }
+  renderList(document.getElementById("pxList"));
+  renderList(document.getElementById("pxListCfg"));
+
+  // ---- theme ----
+  var html=document.documentElement;
+  function applyTheme(t){
+    if(t==="auto") html.removeAttribute("data-theme");
+    else html.setAttribute("data-theme",t);
+    document.querySelectorAll("[data-theme-btn]").forEach(function(b){
+      b.classList.toggle("on", b.getAttribute("data-theme-btn")===t);
+    });
+    var hint=document.getElementById("themeHint");
+    if(hint) hint.textContent = t==="auto" ? "主题：跟随本机" : ("主题：" + (t==="dark"?"深色":"浅色"));
+  }
+  var saved=localStorage.getItem("theme")||"auto";
+  applyTheme(saved);
+  document.querySelectorAll("[data-theme-btn]").forEach(function(b){
+    b.addEventListener("click",function(){
+      var t=b.getAttribute("data-theme-btn");
+      localStorage.setItem("theme",t); applyTheme(t);
+    });
+  });
+  // 跟随系统实时变化（auto 时）
+  if(window.matchMedia){
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",function(){
+      if((localStorage.getItem("theme")||"auto")==="auto") applyTheme("auto");
+    });
+  }
+
+  // ---- navigation ----
+  var titles={dashboard:"概览",floor:"盘面",proxy-config:"代理配置",tasks:"任务",knowledge:"知识库",skills:"技能",context:"上下文",sessions:"会话",logs:"日志",settings:"设置",legal:"法务"};
+  function goView(v){
+    document.querySelectorAll(".view").forEach(function(s){s.classList.toggle("active",s.getAttribute("data-view")===v);});
+    document.querySelectorAll(".nav-item").forEach(function(n){n.classList.toggle("active",n.getAttribute("data-view")===v);});
+    document.getElementById("pageTitle").textContent=titles[v]||"";
+    window.scrollTo(0,0);
+  }
+  document.querySelectorAll("[data-view]").forEach(function(el){
+    el.addEventListener("click",function(e){e.preventDefault();goView(el.getAttribute("data-view"));});
+  });
+
+  // ---- tabs ----
+  document.querySelectorAll(".tabs").forEach(function(tb){
+    tb.querySelectorAll(".tab").forEach(function(t){
+      t.addEventListener("click",function(){
+        var name=t.getAttribute("data-tab");
+        tb.querySelectorAll(".tab").forEach(function(x){x.classList.remove("active");});
+        t.classList.add("active");
+        var panel=tb.nextElementSibling;
+        while(panel && !panel.classList.contains("tabpanel")) panel=panel.nextElementSibling;
+        var scope=t.closest(".view, .panel")||document;
+        scope.querySelectorAll(".tabpanel").forEach(function(p){p.classList.toggle("active",p.getAttribute("data-tab")===name);});
+      });
+    });
+  });
+
+  // ---- dashboard demo states ----
+  var normal=document.getElementById("dashBody").innerHTML;
+  document.getElementById("demoNormal").addEventListener("click",function(){document.getElementById("dashBody").innerHTML=normal;renderList(document.getElementById("pxList"));});
+  document.getElementById("demoLoading").addEventListener("click",function(){
+    document.getElementById("dashBody").innerHTML='<div class="grid-kpi">'+'<div class="kpi"><div class="skeleton" style="height:28px;width:60%"></div><div class="skeleton" style="height:12px;width:80%;margin-top:8px"></div></div>'.repeat(4)+'</div><div class="panel"><h2>代理状态</h2>'+'<div class="skeleton" style="width:100%;height:16px;margin-bottom:8px"></div>'.repeat(9)+'</div>';
+  });
+  document.getElementById("demoEmpty").addEventListener("click",function(){
+    document.getElementById("dashBody").innerHTML='<div class="empty"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg><p>暂无用量数据。启动代理并发起调用后，这里会显示统计。</p></div>';
+  });
+  document.getElementById("demoError").addEventListener("click",function(){
+    document.getElementById("dashBody").innerHTML='<div class="error"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5" stroke-linecap="round"/></svg><p>无法获取用量数据（HTTP 500）。</p><button class="btn primary" onclick="document.getElementById(\'demoNormal\').click()">重试</button></div>';
+  });
+})();
+</script>
+</body>
+</html>

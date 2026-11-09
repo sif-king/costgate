@@ -1,0 +1,47 @@
+# E2E Tier0 PR 门禁（真实验证后写）
+#
+# 接住「声明态≠运行态」类回退：tier0 覆盖 7 个壳页真渲染 + 门控条语义/不挤塌/未开启≠缺失。
+# 这些是用户（DeepSeek 评审）最在意的「页面到底能不能用」级断言，必须进 PR 阻断。
+#
+# 设计要点：
+# - 复用 p0-security-gate.yml 的 node20 + npm ci 模式（钉版本、走 lockfile）。
+# - 用 bundled chromium（playwright.config.js 在 CI 下自动切到 chromium，
+#   本地仍是系统 Chrome），不依赖 CI 再装系统 Chrome。
+# - manager 启动会自生成 ~/.multi-proxy-jwt-secret；这里预先写入固定值并同步 JWT_SECRET，
+#   规避「webServer 就绪探测命中 /login 早于 secret 落盘」导致的 seedAuth 读空竞态。
+name: E2E Tier0 (PR Gate)
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e-tier0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: multi-proxy-manager/package-lock.json
+      - name: Seed JWT secret for E2E auth (avoid startup race)
+        run: |
+          SECRET=$(openssl rand -hex 64)
+          printf '%s' "$SECRET" > ~/.multi-proxy-jwt-secret
+          chmod 600 ~/.multi-proxy-jwt-secret
+          echo "JWT_SECRET=$SECRET" >> "$GITHUB_ENV"
+      - name: Install manager deps
+        run: |
+          cd multi-proxy-manager
+          npm ci
+      - name: Install Playwright chromium
+        run: |
+          cd multi-proxy-manager
+          npx playwright install --with-deps chromium
+      - name: Run tier0 E2E (PR gate)
+        run: |
+          cd multi-proxy-manager
+          npx playwright test --grep "@tier0"

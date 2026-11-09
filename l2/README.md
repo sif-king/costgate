@@ -1,0 +1,213 @@
+<!--
+multi-proxy — Copyright © 2026 xiaoxian (Jason)
+Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+This file is part of the multi-proxy project.
+-->
+
+# l2/ — L2 Agent 编排中枢 P0 落地
+
+> 配套文档：`L2-BLUEPRINT.md`（架构与排期）· `l2/CASES.md`（3 落地案例：编排视频 / 告警 / 成本，2026-09-16）· `l2/PERF-REPORT.md`（性能实测，2026-09-16）· `l2/memory-alignment-protocol.md`（记忆与能力对齐协议：agent 读对方记忆/配置完善自己，各写各的不合并 + 双向水位线，2026-10-02 起）。
+
+P0 第一交付物：互通性地基（决策 2）+ Agent Adapter 协议契约（决策 3）。
+P0 模块顺序：**Agent Registry → 插件运行时 → Adapter 协议**（见 MEMORY-2026-09-11「三决策已拍板」）。
+
+## specs/ — 记忆/skill 规范数据格式（决策 2）
+
+**结论：JSON 为 canonical 存储 + YAML 为人类可读视图，双向无损 + specVersion。**
+
+| 文件 | 角色 |
+|---|---|
+| `agent-memory.schema.json` | JSON Schema（draft-07）：记忆条目契约 |
+| `skill.schema.json` | JSON Schema（draft-07）：技能条目契约 |
+| `agent-memory.{json,yaml,schema.json}` | 记忆 |
+| `skill.{json,yaml,schema.json}` | 技能 |
+| `agent-profile.{json,yaml,schema.json}` | Agent Registry 条目（type=codex/hermes/cursor/custom, capabilityTags） |
+| `validate.mjs` | node 侧验证：双向无损 + ajv schema 校验 + 负例（权威） |
+| `validate.py` | python 侧验证：yaml 往返 + 结构校验（降级，无 jsonschema 时不装包） |
+
+**已现场验证（2026-09-11 实测，非纸面）**：node 侧 / python 侧三类（memory+skill+profile）全 PASS。
+- node：每类 `JSON==YAML(parsed)` + `YAML round-trip` + `JSON valid against schema` + `bad specVersion rejected`
+- python：语义相等 + 双结构校验 + 负例（每类）
+- 已知噪音：node 打印 `unknown format "date-time" ignored`——ajv 默认不带 format 校验，
+  不影响结构/类型/必填/枚举/const；要校验日期格式需装 `ajv-formats`（生产可选，零依赖策略下留钩子）。
+
+**字段草案**（详见 schema，互通性保证在规范格式上无损转换）：
+- 记忆：`{id, type, scope, key, value, tags[], source, createdAt, updatedAt, specVersion}`
+- skill：`{id, name, trigger, description, content, version, tags[], enabled, source, specVersion}`
+- profile：`{id, name, type, capabilityTags[], description?, systemPrompt?, toolsAllowed?, maxRounds?, contextLength?, costBudget?, version, createdAt, updatedAt, specVersion}`
+
+复现：`cd l2/specs && node validate.mjs && python3 validate.py`
+
+## adapter-protocol.md — Agent Adapter 协议
+
+任意 agent 接入/卸载的**最小契约**，见 `adapter-protocol.md`。示例骨架 `adapter.yaml`。
+决策 3 的端到端样例选 **h3web**（最硬 case，维护者定）；P0 只做契约验证，不碰编排/shadow。
+
+## agent-registry.js — Agent Registry 内核（P0 增量 2）
+
+Agent Profile 的 CRUD + 能力标签注册/查询，编排引擎"按能力路由"的地基。
+- **非侵入**：默认内存；文件持久化写注入的 `dir`（绝不默认写 home/agent 文件），格式同 `agent-profile.json`，原子写 .tmp→rename。
+- **零依赖**：内核仅用 node 内置（schema/校验归 validate，内核可移植）。
+- 能力查询 `byCapability(tag)` / `registerCapabilities(id, tags)`——Adapter 启动时声明能力的落点。
+- 真跑：`node l2/agent-registry.demo.js`（CRUD + 能力 + 跨实例持久化 + 负例，18 checks 全 PASS）。
+- **增量 2b（已落地）**：接 manager HTTP API（`multi-proxy-manager/routes/registry.js` + jest 12/12 + :18792 真跑探测 200/401）。
+  route 必须挂在代理 wildcard（`apiRoutes` 的 `/:proxy/*`）**之前**，否则 `/api/registry/agents` 被 `:proxy=registry`
+  误捕获并被白名单 404。registry 默认内存存储（非侵入、绝不写 home）；设 `L2_REGISTRY_DIR` 才落文件。
+
+## plugin-runtime.js — 插件运行时内核（P0 增量 3）
+
+插件动态加载 + 生命周期管理（类 DeepSeek Harness 2026-08 的"一切皆插件"）：
+- 状态机：`register → enabled → started → stopped`；`unload` 是热插拔的逆操作。
+- 热插拔：`loadFromDir(dir)` 扫描 `dir/<name>/index.js`，require 前清缓存（重载拿最新代码）。
+- 能力汇总：`listCapabilities()` 聚合所有已启插件能力，供编排引擎按能力路由。
+- **非侵入④**：插件 dir 由调用方注入（test 写 os.tmpdir，绝不默认写 home/agent 文件）；零依赖（仅 node 内置）。
+- 真跑：`node l2/plugin-runtime.demo.js`（状态机 + 热插拔 + 能力聚合 + 负例，14 checks 全 PASS）。
+- 修过 1 个 bug：`validatePlugin` 成功返 `[]` 而 `if(errs)` 对空数组为 truthy（与 registry 内核 `返 null` 不一致）→ 统一为 `errs.length ? errs : null`。
+
+## adapters/h3web-adapter.js — h3web 端到端样例（P0 增量 4 · 收口）
+
+决策 3 的 adapter 契约在真实 HTTP round-trip 下验证（**非侵入**）：
+- **协议四类接口**：能力声明 `capabilitiesDeclaration()` / 健康 `health()` / 任务接收 `submit(task)` / 结果回传 `result(taskId)`，外加便捷 `run(task)` 轮询到终态。
+- **非侵入④ 实测**：adapter 对 h3web **只读转发**（不写 h3web 任何文件）；端口**动态探测**（`probePort` 取候选中在 LISTEN 的，否则用注入端口，绝不写死）；零依赖（仅 node 内置 http）。
+- **下游替身**：用 `mock-h3web.js`（node 最小 HTTP，模拟 h3web 的 `/api/gen`+`/api/status` job 状态机 pending→running→done），零副作用——不起真 h3web、不触 Minimax 云端。**真实"起 8731 h3web + 真文生视频"属 P1**（h3web 未运行、云端费用、时长长）。
+- 真跑：`node l2/adapters/h3web-adapter.demo.js`（6 checks 全 PASS）；jest `tests/unit/h3web-adapter.test.js`（5/5 PASS，锁 HTTP round-trip 进 CI）。
+- **环境漂移记录（重要）**：实测 8732 上跑的是 `wechat-style-extractor-py` 的 `server.py`（非 h3web）——印证 adapter「必须动态探测、绝不写死端口」的铁律现实价值；故 P0 用 mock 替身验证契约，真实 h3web 接入待 P1 服务起来再做。
+
+## adapters/aigc-adapter.js — AIGC（绘境 AI 生图生视频）样例（P0 增量 5 · AIGC 缺口收口）
+
+据维护者反馈（AIGC adapter 缺口 = 本地 `~/Documents/AIGC生图生视频` = 绘境 AI / hujing-ai），把 AIGC 包成第 5 个 adapter 样例，证明「任意本地 HTTP 服务实现 4 接口即可接入 Agent Registry」：
+- **真实契约核实（非臆测）**：据 hujing-ai `backend/app/routers/tasks.py` + `schemas/task.py` + `models/task.py` —— `POST /api/v1/tasks`（`{subtype, params}`）+ `GET /api/v1/tasks/:id` + `POST /:id/cancel` + `GET /api/v1/health`；状态机 `pending → processing → 终态 completed|failed|cancelled`；7 种 subtype（text/image/matte/outpaint/bg/style/img2video）。
+- **AIGC 独有（区别于 h3web）**：① **OAuth2 Bearer 鉴权**（`_authHeaders` 注入 token；token 由调用方注入，adapter 不打印/不落盘，缺失/错误 → 401）② **任务 cancel 语义**（`cancel(taskId)` POST `/api/v1/tasks/:id/cancel`，支撑 M7 session 崩溃恢复/手动中止）③ `/api/v1` 前缀 + 原生 `/api/v1/health`（无需补桩，比 h3web 更规范）。
+- **非侵入④ 实测**：对 AIGC 只读转发（不写其文件、不改配置）；端口动态探测（候选 `[8731, 8732]`，AIGC 实测漂移）；零依赖（仅 node 内置 http）。
+- **下游替身**：`mock-aigc.js`（node 最小 HTTP，模拟 AIGC FastAPI 的 `/api/v1/tasks*` 状态机 + Bearer 鉴权 + 7 subtype），零副作用——不起真 AIGC、不触生图/生视频云端。**真实"起 AIGC 服务 + 真文生视频 round-trip"属 P1**（AIGC 当前未运行、需真实 token、需云端调用）。
+- 真跑：`node l2/adapters/aigc-adapter.demo.js`（**10 checks 全 PASS**，含鉴权 401 路径 + cancel）。
+
+## decomposer.js + orchestrator.js — 任务拆解 + 编排调度内核（P2 增量 6 · 收口）
+
+L2 P2 编排引擎（蓝图 4.2 / 5.1）的拆解层 + 调度层，P0 route-engine 之上：
+- **decomposer.js**：规则模板拆解（`fastapi-jwt` / `video-workflow` 两条内置 + 兜底单节点）+ 可注入 `llmDecompose`（接口预留，不内置 LLM）+ 可注入 `templates` 缝 + `hasCycle` 环检测。**19 checks PASS**。
+- **orchestrator.js**：拆解 DAG → 拓扑调度（无依赖子任务并行、条件分支 `when(ctx)` 跳过、重试 `retry` + 降级 `fallback`）→ 经可注入 `executor` 执行 → 聚合（JSON + Markdown 报告）→ 协作历史。
+- **非侵入④ + shadow 优先**：默认 shadow 只跑调度不触真实 adapter（executor 零调用）；协作历史默认仅内存，注入 `dir` 才原子落盘（写注入 dir，绝不写 home/agent 文件）；全程零依赖。
+- **修复 2 个调度真 bug（真跑发现，非纸面）**：① `for (const id of ready) remaining.delete(id)`——`ready` 元素是子任务对象非 id，导致 `remaining` 永不收敛；② 全 done 时误把全部子任务标 `blocked`。改用 `processed/total` 驱动终止。
+- **真跑**：`node l2/decomposer.demo.js`（19 PASS）+ `node l2/orchestrator.demo.js`（16 PASS，含 5 用例 + 条件分支 + 容错重试降级 + 环拒绝 + 非侵入落盘）。
+- **编排级总超时（2026-11-06 · 外部对照总表 #123② · 门控默认关）**：`run(dag, opts)` 的可选 `opts.deadlineMs`（真实签名 `async run(dag, opts = {})`），不传＝逐字零行为变更；传了才按「整 run 绝对 deadline、每子任务按剩余时间执行」收口，超时标 `failed/timedOut` 且跳过重试与 fallback（错误 `code='ORCH_DEADLINE'`）。⚠️ `Promise.race` **只让编排器收敛，不取消底层 executor**：超时后迟到的结果与副作用仍可能发生；父子 token 共享池留二期，本轮未做。真跑：jest `tests/unit/orchestrator-deadline.test.js` **4/4**（含「默认行为逐字一致」＋复现「executor 永不返回 ⇒ run 不收敛」）。
+- **父子共享双预算（2026-11-06 第四轮 · #123② 二期 · 默认关）**：`run(dag, opts)` 的可选 `opts.tokenBudget`，不传＝`ctx` 里连 `budget` 字段都不加（逐字零行为变更）；传了则整 run 一个 `spent` 池，每个子任务从 `ctx.budget` 读 `remaining()`、`spent()`、`remainingMs()`，`grant(want) = min(子欲, 父剩余)`。执行成功後复用既有的 `extractUsage`（本文件 `:39`）按真实 usage 记账；挖不到不记账，**不把 `null` 当 0 假装没花**。⚠️ **诚实边界**：编排器只做「剩余读数 + 耗尽停发」（预算耗尽标 `failed/budgetExceeded`、不再启动后续子任务），**不承诺中途截断单个 agent 的 token**——那是 executor 的职责；并发 ready 的最后一批启动时看到同一份剩余，可能合计超支，下一轮才停发。真跑：jest `tests/unit/orchestrator-token-budget.test.js` **4/4**。
+
+## llm-decomposer.js — LLM 拆解内核（P2.2 · 填 `llmDecompose` 预留缝）
+
+`decomposer.js` 预留的 `llmDecompose` 注入缝，由本内核填充（P2.2 落地，2026-09-15）：
+- **`makeLlmDecomposer(cfg)`**：返回 `async (input, opts) => DAG`，形状即 `decompose(input, { llmDecompose })` 缝。默认传输 = OpenAI 兼容 `/v1/chat/completions`（node 内置 http，零依赖，与 `adapters/l1-agent-adapter.js` 同构）。
+- **transport 可注入**（cfg.transport）——测试用内存替身不触网络；缺省走 http。
+- **四道纪律**：① 非侵入（只产 DAG 数据，不写盘/不改 agent 配置/不触真实上游，shadow 前置）；② **容错优先**——LLM 宕机/非法 JSON/自环 DAG/退化空，一律降级回 `templateDecompose`，绝不把异常冒泡进编排热路径；③ `hasCycle` 对 LLM 输出**复算**（幻觉出环 → 拒收降级）；④ 零 LLM 依赖为默认。
+- **`meta.source`** 标识走 `llm` 还是降级 `template(...)`；降级原因归类 `llm-down`/`llm-http-error`/`llm-bad-json`/`llm-error`。
+- 生产接线：`routes/orchestration.js` 门控 `PROXY_LLM_DECOMPOSE`（默认关→走内置模板，确定可复现；开→LLM 拆解，LLM 配置全来自 env `PROXY_LLM_BASE_URL/MODEL/TOKEN/TIMEOUT_MS`）。
+- 真跑：`node l2/llm-decomposer.demo.js`（**19 PASS**，真起 http 假 LLM + 全降级路径 + 注入 + 接 Orchestrator）；jest `tests/unit/llm-decomposer.test.js`（8 例）+ `tests/unit/orchestration-route.test.js` 扩 2 例。全 manager jest **556/556**（34 suites）。
+- **真跑教训**：默认 http 传输首版返回整个 OpenAI 信封当 `content`，致解析失败全降级；修复=传输内解信封取 `choices[0].message.content`，与注入 transport 契约（content=助手消息文本）对齐。
+
+## memory-merge.js — 记忆服务内核（P1.1a · §4.4 公共+个性 + §5.2 非侵入投影）
+
+- 内核：`merge(shared, personal, opts)`（公共+个性按 key 合并，冲突策略 `personal`（默认覆盖）/`shared`/`error`）+ `envInject(merged, opts)`（投影环境变量 `AGENT_SYSTEM_PROMPT/ERROR_PATTERNS/TOOLS_ALLOWED/CONFIG/MEMORY_CONTEXT`，type→目标可配，多同类倒序、超长截断）+ `registerAdapter/getAdapters`（可热插拔 scheme 适配器：json 规范 canonical / yaml-text 纯文本零依赖 / view 摘要）。
+- **非侵入铁律（§5.2）**：`envInject` **只产出映射对象、绝不写 `process.env`、绝不碰 `~/.codex·~/.hermes·~/.cursor`**——agent 感知不到中枢，真正注 env 是调用方 agent 启动时拿映射去做。全默认零网络零文件零 LLM。
+- 真跑：`node l2/memory-merge.demo.js`（**11 PASS**，含非侵入证明：跑完全程 process.env 不漏内核 5 个 AGENT_* 键）；jest `tests/unit/memory-merge.test.js`（14 例）。全 manager jest **570/570**（35 suites）。规范格式权威校验仍 `node l2/specs/validate.mjs`（ALL PASS）。
+- **真跑教训**：① demo 抓到 kernel bug——`merge` 的 `personal` 策略原漏替换胜出方数据字段，致"个性覆盖公共"假绿，修=胜出时用 e 覆盖 cur 全字段；② `process.exit(pass+fail===0?0:1)` 总非零致全绿 demo 在 CI 报 fail，修=`process.exit(fail===0?0:1)`。
+- **边界**：P1.1a 止于合并+适配器+投影；P1.1b（agent 启动真注 env 接线 + 持久化）暂无非侵入接入缝，列后续（YAGNI）。
+
+## skill-service.js — 技能服务内核（P1.1b · §4.5 Skill CRUD / 版本 / 市场 / 规范格式适配）
+
+- 内核：`createSkillService({ clock })` 纯内存 store——`create(raw, opts)`（id 缺省 `skill-<name-slug>`、version 缺省 `1.0.0`、enabled 默认 true）/ `get`（id 或 name 取最新 version）/ `update`（缺省 bump patch）/ `bump(key, { version })`（保留旧版本、旧版禁用新版启用）/ `rollback(key, target)`（翻启用权到旧版）/ `remove` / `list(filter)`（source/tags/enabled + 默认折叠同名最新）/ `search(q)`（case-insensitive 子串）/ `toCapabilities()`（投影最新启用版给编排器/Registry）；市场 `registerBuiltin`/`upload`（带 source 标签的 create，YAGNI 不另起）；`validateSkill` 轻量校验（必填 + 类型 + version 形如 X.Y.Z），`toEntry` 在校验前 stamp 默认值。
+- **可热插拔适配器（§4.8）**：`json`（规范 canonical）/ `yaml-text`（纯文本零依赖往返）/ `view`（摘要去 content）+ `registerAdapter(name, {toDoc, fromDoc})`。
+- **非侵入铁律**：纯内存、不写盘、不写 `process.env`、不碰 `~/.codex·~/.hermes·~/.cursor`；全默认零网络零文件零 LLM。
+- 真跑：`node l2/skill-service.demo.js`（**13 PASS**）；jest `tests/unit/skill-service.test.js`（13 例）。全 manager jest **583/583**（36 suites）。规范 `specs/skill` validate 仍 ALL PASS（未动规范）。
+- **真跑教训（本轮·3 坑）**：① `create(raw, opts)` 原忽略 `opts` → `registerBuiltin` 的 `{source:'builtin'}` 被丢弃、source 恒 fallback；修=`{...raw, ...opts}` 合并再 stamp。② jest 测试隔离假失败（`beforeEach` 全 fresh，断言了依赖跨测试的 `_store`）；修=测试自包含。③ 校验 assertion 正则过宽；修=构造缺字段 raw 精确断言 `missing content`。
+- **边界**：P1.1b 内核已落地；生产接线（API 路由 + 持久化 `~/.multi-proxy-manager/`）列后续（YAGNI，无非侵入接入缝）。
+
+## alert.js — 告警服务内核（P2 健康监控增强 · §4.6 告警机制 · 信号驱动 + 非侵入 observe）
+
+- 内核：`alert.js`（~220 行，全内存，零 manager 依赖）**信号注入式**消费健康信号——不 `require('../lib/*')`、不触 manager 热路径，信号（`provider-health.listIsolated()` / `error-patterns.getHistory()` 的产出）由调用方注入。`evaluate(signal)` 纯判定产告警数组。
+- **4 条内置规则**映射 §4.6 增强：`provider-network-wide`（跨 proxy 全网故障 → critical）/ `provider-unhealthy`（单点连续失败进隔离窗口 → warning）/ `error-pattern-frequent`（错误频次≥`errorFrequencyThreshold` 默认 5，≥4× 阈值升 critical）/ `cost-budget-exceeded`（成本≥预算 → warning，**规则就位但 `forward.js` 暂无 usage 埋点 → 不采集则不触发，YAGNI**）。`signal.source` 三态 `provider-health` / `error-patterns` / `cost`。
+- **非侵入 + 门控**：`PROXY_HEALTH_ALERT` 默认关 = **observe**（事件照常判级 + 收集进内存 `events[]` + cooldown 去重，但 sink 不真发；即使 `persist:true` 也不落盘，门控权在内核不在调用方）；开（=1/true/on）= 真 dispatch 各 sink，落盘 `alert-events.jsonl`。
+- **防告警风暴**：`cooldownMs`（默认 5min）对同 `(rule+key)` 去重，窗口内第二次 `deduped=true` 不再 dispatch，超 cooldown 重发。
+- **可插拔 sink**：`log`（默认收集型零副作用）/ `registerSink(name, fn)` 热插（邮件/Telegram/微信 sink 在此挂），`dispatch` 每 sink 包 try/catch 隔离（单个崩不影响其它/主流程，best-effort）；工厂 `createAlertService({store})` 每实例独立 events store（测试隔离）。
+- **真跑教训（本轮·3 条）**：① 信号注入式是 l2/ 内核统一范式——要消费 manager 的 provider-health/error-patterns 又不破坏内核自包含，解法不是 require manager lib，而是让调用方注入现成信号（同 memory-merge envInject 接 merged、orchestrator 接 DAG）。② 非侵入用「门控跳过落盘 + 断言 `fs.existsSync===false`」双向验证——jest 用 `setEventsFile(tmp)+emit(persist:true)+断言文件不存在` 证 observe 下即使调用方要求落盘也不落盘。③ 成本块「规则就位但不采集则不触发」是 YAGNI 正形态，未接的信号源=未触发的规则，不强行接。
+- 真跑：`node l2/alert.demo.js`（**13 PASS**）；jest `tests/unit/alert.test.js`（13 例）。全 manager jest **596/596**（37 suites，+13 零回归）+ l2 六 demo 全绿（decomposer 19 / orchestrator 16 / llm-decomposer 19 / memory-merge 11 / skill-service 13 / alert 13）。
+
+## alert-wiring — 告警生产接线（P2 · 路由 `routes/alert.js` · 门控 `PROXY_HEALTH_ALERT` · 拉式接线）
+
+把 signal-driven 的 `alert.js` 内核接到 manager 真实信号源，非侵入拉式（读现有健康/错误/成本数据，不在路由热路径 emit）。
+
+- **路由**：`routes/alert.js` — `GET /api/alert`（列事件+计数）/ `POST /api/alert/collect`（采集三源→`alertSvc.emit`）/ `GET /api/alert/config`（门控状态+sink 列表+observeOnly）。门控 `PROXY_HEALTH_ALERT` 默认 off → 全路由 403 `alert-gate-closed`（非侵入：默认零副作用、不调任何信号源）。开（=1/true/yes/on）→ 采集 emit，observeOnly=false 真落盘 `alert-events.jsonl`。挂 `server.js` 的 `/api/provider-health` 之后、`/api`(wildcard) 之前。
+- **三信号源（拉式 collectFromSources）**：① `provider-health.listIsolated()` → `provider-unhealthy`/`provider-network-wide`；② `error-patterns.getHistory()` 按 `pattern_id` 聚合频次（≥`errorFrequencyThreshold` 默认 5 触发 `error-pattern-frequent`，SEED_PATTERNS 已内置）；③ `cost.js.produceAlertSignal(name,{budget})` → `cost-budget-exceeded`（需 `PROXY_COST_TRACK=1` + `PROXY_COST_BUDGET_<name>`，YAGNI 未接 scheduler，仅 collect 时按需读 `/balances` 快照喂内核，不自动跑定时探测）。
+- **设计原则**：① 拉式——路由是「采集器」，读现成信号源，不向 `forward.js` 热路径注入 emit；② 门控——`PROXY_HEALTH_ALERT` 默认 off（与 alert.js 内核 gate 同义），关时零副作用；③ 非侵入——collect 只读、不写 providers.json/config；门控开时才经内核 persist 落盘 alert-events.jsonl（sink best-effort try/catch 隔离，单个 sink 崩不影响其它/主流程）。
+- **教训（本轮·1 条）**：jest 测试 `error-pattern-frequent` 失败——`beforeEach` 的 `ep.resetErrorPatterns()` 把 SEED_PATTERNS 清空，致 `matchError` 返 null、频次不累加。修法：测试内 `ep.loadPatterns()` 先恢复种子（生产启动时 `initErrorPatterns()` 已 seed，路由 collect 直接读 SEED，不影响真跑）。
+- 真跑：jest `tests/unit/alert-route.test.js`（**8 例**：门控 off 返 403 ×2 / 门控开 config + 空事件 / provider-unhealthy / provider-network-wide / error-pattern-frequent / 全空 0 事件 / persist 落盘）；全 manager jest **620/620**（39 suites，+8 零回归）。live 冒烟：`node server.js`（`PORT=18892`）实测 `/api/alert` 门控关 → HTTP 403 `alert-gate-closed`（GET+POST 均挡），`/api/provider-health`+`/health` 仍 200（未破坏既有序列）。
+- **边界**：P2 告警生产接线已落地（`/api/alert` 路由 + 三源拉式采集 + 门控 403 默认 + live 冒烟实证）；成本信号源 scheduler（定时 `/balances` 探测 schedule 喂 cost.js `record()`）+ A 路 token×单价 埋点改 `forward.js` 热路径列后续独立增量（YAGNI，需单独门控）。
+
+## cost.js — 成本分析内核（P2 健康监控增强 · §4.6 成本分析报告 · 信号源无关 + 非侵入 observe）
+
+- **内核**：`cost.js`（216 行，全内存，零 manager 依赖）**消费 `/balances` 账号余额快照 → 消费额/趋势/报告 + 喂 alert.js `cost-budget-exceeded`**。`createCostService({store, clock, maxSnapshots})` 独立 store（工厂隔离）；`record(name, balance, {now, providerId, budget, persist})` 追加快照算消费；`consumption(name)` / `trend(name)` / `report({windowMs})` 窗口内消费聚合；`produceAlertSignal(name, {budget})` → `{source:'cost', providerId, cost, budget}`（alert.js 契约，喂了就算）。
+- **信号源无关**：当前 B 路（`/balances` 余额趋势，零热路径）是进料；A 路（token × 单价累加，改 `forward.js` 热路径）后续接入只需把 `token×单价` 累加成"余额下降"喂进同一 `record()` 入口——内核不重写。`alert.js` 那侧 `cost-budget-exceeded` 成本规则已就位（13 checks 实证），两端对接实证。
+- **非侵入 + 门控**：`PROXY_COST_TRACK` 默认关 = **observe**（内存 snapshot 照常累积、消费/报告照常算，但 `persist:true` 也不落盘 `cost-snapshots.jsonl`——断言 `fs.existsSync(tmp)===false` 实证）；开 = 落盘 JSONL（best-effort try/catch）。
+- **教训（本轮·1 条）**：`report()` 的窗口裁剪用 `clock()` 做 `cutoff = now - windowMs`，若 demo 用确定性时间戳（1..1000ms）不注入 clock、又跑 `windowMs:5ms` 级别的窄窗口，cutoff 在 `Date.now()`（2026）附近 → 全滤。修法：demo 显式注入 `clock:()=>固定值`；`jest` 用 `setClock(()=>10000)` 保证 `cutoff` 在窗口内。
+- 真跑：`node l2/cost.demo.js`（**14 PASS**）；jest `tests/unit/cost.test.js`（**16 例**）。全 manager jest **612/612**（38 suites，+16 零回归）+ l2 七 demo 全绿（decomposer 19 / orchestrator 16 / llm-decomposer 19 / memory-merge 11 / skill-service 13 / alert 13 / **cost 14**）+ validate.mjs ALL PASS。
+- **边界**：成本分析内核 B 路（余额趋势）已落地；**A 路 token×单价 埋点已落地（见下 cost-track.js 段）**；**仅剩** 生产接线（定时 `/balances` 探测 schedule + 成本报告路由 + 报告落盘 + model 级 pricing 数据源）列独立增量（YAGNI）。
+
+## cost-track.js — A 路 token×单价 埋点（P2 成本分析 · 热路径 · 门控非侵入）
+
+- **内核**：`lib/cost-track.js`（纯内存，零 manager 依赖）。`accumulate(proxyName, usage)` 热路径主入口——门控 `PROXY_COST_TRACK` 关时零开销（仅 `enabled()` 布尔判断 + 不建 state、不写盘）；开时从 upstream `usage` 提 token 数（兼容 OpenAI `prompt_tokens/completion_tokens` + Anthropic `input_tokens/output_tokens` + `cache_read_input_tokens` 缓存折扣），按 per-proxy `pricing`（每百万 tokens）累计 `cost`。
+- **接线**：`forward.js` line 168，`res.json(response.data)` 前 `try { require('./cost-track').accumulate(proxyName, response.data.usage) } catch {}`——只读 usage、不改 response、非致命 try/catch 隔离，热路径改动 < 1 行 + 门控关零副作用。
+- **门控非侵入**：`PROXY_COST_TRACK` 默认关（与 cost.js B 路同义 observe）；pricing 由 `setPricing(name, {input,output,cacheHit?})` 注入（**幂等**：保留已累计 tokens/cost、只换 pricing）或 `loadPricingFromEnv()`（读 `PROXY_PRICING_<proxy>` JSON）；无 pricing 默认 0（本地模型 cost=0、仍累 token 数）。
+- **定价来源边界**：`pricing` 是**模型级**字段（PROVIDERS-README `pricing: {input, output, cacheHit}`，routeEngine cost-optimization 查表），不在 proxy config 上；本增量已交付「提 usage + 累计 token + 注入缝（setPricing/loadPricingFromEnv）」，**实际 model 级 pricing 数据源接 `forward.js` 仍 YAGNI**（需 model→pricing 映射，后续增量）。
+- **教训（本轮·2 条）**：① `setPricing` 幂等——原实现「`_state[name] = {…new}`」会清掉已累 tokens/cost，启动注入 pricing 后成本归零（"修好实际没改"坑）→ 改「existing ? `{...existing, 换 pricing}` : 新建」。② `getCost()` 对外快照剥离内部 `lastTs`（时间戳让确定性 `toEqual` 抖动）→ 暴露纯累计量 + 花费。
+- **真跑**：jest `tests/unit/cost-track.test.js` **15/15**；全量 manager jest **635/635（40 suites，+15 cost-track 零回归，含前序 +8 alert-route）**；live 冒烟：门控关 `getAll()={}`（非侵入）/ 门控开 3×(1000×10/1M+500×20/1M)=0.06 / Anthropic cacheHit 折扣 (1M−0.4M)×25/1M+0.1M×125/1M+0.4M×3/1M=28.7。
+
+## mcp-orchestrate-real — MCP 编排真执行 E2E demo（P3c/P3d · PROXY_ADAPTER_REAL 门控）
+
+- **内核**：`l2/mcp-orchestrate-real.demo.js`（9 PASS E2E）—— MCP `orchestrate` 工具门控真执行路径，`PROXY_ADAPTER_REAL` 默认关 = shadow（非侵入）；门控开 = 真执行（`_realExecutor` 经 `routeEngine.route` 路由选中 adapter → 委托注入 executor 或退化「仅路由」记录 `routedAdapterId`）。
+- **门控**：`PROXY_L2_MCP`（bridge 开/关）+ `PROXY_ADAPTER_REAL`（编排真执行开/关，二级门控，默认关不触下游 adapter）。
+- **真跑**：`node l2/mcp-orchestrate-real.demo.js`（**9 PASS / 0 FAIL**）；jest `tests/unit/mcp-server.test.js` **26/26**（+4 本轮真执行 E2E）+ `tests/unit/mcp-route.test.js` **10/10**。全 manager jest **701/701（44 suites / 0 fail）**。
+
+## savings-gateway/ — 省钱网关内核 + thin server（task1 一期 · P3e · shadow 模拟 delta · 门控非侵入）
+
+- **内核**：`savings-gateway/gateway.js`（~300 行，零 manager 依赖，与 alert.js/cost.js 同构工厂范式 `createSavingsGateway()`）。**OpenAI 兼容省钱路由**：agent 用 dummy key（前缀 `gw_`，默认签发 `gw_default-large`）指向网关 → 复用 `route-engine` 难度路由（complexity low/medium/high → 三档 tier）把请求路由到「最便宜够强」档位 → 产出「省钱账」`x_savings`：planned=照默认 large 大模型打（¥32/¥128 per 1M）会花 X，actual=实际路由档位（small 免费 / medium deepseek ¥1/¥4 / large qwen）花 Y，`saved = max(0, X−Y)`。
+- **五决策拍板**（savings-gateway 内部设计文档 §四·§五，2026-09-21 维护者授权，不进公开树）：① 形态 B 独立模块 `l2/savings-gateway/` **不碰热路径**（`forward.js`/`codex-proxy/proxy.js` 零触碰）；② 端口 **18795**；③ dummy key `gw_` 映射真 provider key（内核**不持有**真 key 材料，真 key 由 executor/dispatch 层注入，绝不暴露给 agent）；④ 一期 **shadow** 模拟 delta + 接 `alert.js` cost 信号（排行榜/落盘留二期）；⑤ 先按**难度档位**路由（价格进 route 排序留二期）。
+- **三档 tier 复用**（不新造）：`mcp-default-seed` 的 `agnes`(small 免费)/`deepseek`(medium)/`qwen`(large)；`DEFAULT_PRICING` 模拟 delta 记账基线，large 可经 `opts.pricing` 或 `PROXY_PRICING_LARGE` 覆盖（**估算值非实测，定价决策归维护者**）。
+- **非侵入 + 门控（与 alert.js/cost.js 统一）**：`PROXY_SAVINGS_GATEWAY` 默认关 = **observe**（路由决策/省账照常进内存，绝不落盘）；开 = 可服务。**shadow 默认开**：不真调上游，`executor` 注入缝预留（二期切真路由时接真实 dispatch）。内核默认不往 `process.env` 注入任何键。
+- **喂 alert.js（决策④）**：`produceCostSignal({budget?, windowMs?})` → `{source:'cost', providerId:'savings-gateway', cost, budget?}`（`alert.js` `cost-budget-exceeded` 契约，形状与 cost.js 一致）；budget 未设则不带（alert 规则要求 budget 为 number 才触发——不设预算不告警，YAGNI 诚实边界）。
+- **薄 HTTP**：`savings-gateway/server.js`（node 内置 http，零依赖，绑 `127.0.0.1`，可 `SAVE_GATEWAY_BIND_HOST` 覆盖）——`POST /v1/chat/completions`（门控开才服务，关时 403 `gate-closed`）/ `GET /savings/report`（省钱看板，只读）/ `GET /savings/signal`（喂 alert.js）/ `GET /health`。门控关时 `/health`+只读看板放行、`/v1/*` 全 403。
+- **真跑**：`node l2/savings-gateway/savings-gateway.demo.js`（**24 PASS**，全确定性无网络：鉴权 401×2 / 难度路由 3 档 / 模拟 delta 记账 / token 启发式估算 / 省钱报告 / cost 信号端到端喂 alert.js / 非侵入断言）；jest `tests/unit/savings-gateway.test.js`（**18 例**，含 live HTTP 起 server：门控关 403 + 门控开 200 难度路由 + 401 鉴权 + 400 缺 messages + 看板/signal 只读 + 404）。全 manager jest **719/719（45 suites / 0 fail）**。live 冒烟：真起 `127.0.0.1:18795` 门控关 health 200 + POST 403 `gate-closed`，门控开 POST 200 `low→agnes saved=0.096 shadow=true` + bad key 401 `invalid_api_key` + 看板/signal 200。
+- **边界（YAGNI 诚实标注）**：一期止于「难度档位路由 + 模拟 delta 记账 + cost 信号」；**真执行**（shadow off + 注入 executor 真打上游、拿真 key）、**价格进 route 排序**、**省钱排行榜/落盘**、**A 路 token×单价 埋点接 forward.js 热路径** 全部列二期/后续增量，非侵入未接。
+
+## charge-confirm.js — 收费确认闸门（MPT 契约落地 · 2026-10-12 · 执行层强制确认）
+
+把 MoneyPrinterTurbo `SKILL.md` 的「`*_CHARGE_CONFIRMATION_REQUIRED` 协议」落成开源网关的**协议层硬约束**：agent 绝不能静默加确认旗标，只有用户显式批准（请求带 `X-Charge-Confirm`）才放行付费路由。与 savings-gateway 现有「统计层省账」互补——统计层只记账「省了多少」，本闸门在执行层「拦截」：未确认就真打付费上游前直接 402 挡下。
+
+- **内核**：`charge-confirm.js`（零依赖，工厂 `createChargeConfirmGate({paidAdapters?, usePricingBaseline?})`）。默认付费名单 `deepseek`/`qwen`（模拟基线价 >0），`agnes`（small 免费）永远不进名单 → 不需确认。`evaluate({adapterId, estimatedCost, confirmed, shadow})` → `{required, confirmed, reason}`：
+  - `shadow` 模拟（不真花钱）→ `required=false` 放行（与 MPT「模拟=免费」一致）；
+  - 免费路由（`agnes` / 名单外且价=0）→ `required=false` 放行；
+  - 付费 + `shadow=false` + 未确认 → `required=true`（网关抛 402）；
+  - 付费 + 已确认 → `reason=approved` 放行。
+- **接入缝（非侵入，与 breaker 同构）**：`gateway.js` 新增可选 `opts.chargeConfirm` 注入缝，默认 `null` = 零行为变更；`server.js` 门控 `PROXY_SAVINGS_CHARGE_CONFIRM=1/true/on` 才构造闸门并注入（关 = 不注入 = 网关零行为变更）。付费名单可经 `PROXY_SAVINGS_PAID_ADAPTERS`（逗号分隔）覆盖默认。
+- **请求协议**：客户端显式带 `X-Charge-Confirm: 1/true/on` 头才放行付费路由；未带 → 内核在记账/执行前抛 `httpStatus=402`，server 回 `402 charge_confirmation_required` 并随响应带结构化 verdict（`reason` 明确「缺哪个确认」），且**打不到上游、不产生省账**（拦截前置，未确认的请求不记账）。
+- **真跑**：`node l2/savings-gateway/charge-confirm.demo.js`（**18 PASS**，确定性：免费放行 / shadow 不拦 / 付费未确认拦 / 付费已确认放行 / 名单兜底 / baseline 开关 / 自定义名单）；`node l2/savings-gateway/charge-confirm.e2e.test.js`（**7 PASS**，真起假上游：默认关零变更 → 开+未确认 402 打不到上游 → 开+已确认 200 真打上游 → shadow 不拦）；`run-demos.js` 全量 53 例 + forward e2e 9 例全绿（零回归）。
+- **边界（YAGNI）**：闸门只在「真实执行（非 shadow）」介入；shadow 模拟永远放行（不真花钱不需确认）。名单外 + `usePricingBaseline=true`（默认）下，只要基线价 >0 仍会拦（保守：未知价不冒充免费）；要纯白名单语义需显式 `usePricingBaseline=false`。
+
+## relay-ledger.js — agent 间接力开销账本（P2 观测件 · 2026-10-13 · 门控非侵入）
+
+把「多智能体间接力靠文本是最贵的一环」从外部论文（RecursiveMAS，arXiv 2604.25917v2 / NeurIPS 2026：r=3 时文本递归 MAS 的 output token 比隐空间交互高 75.6%）变成**自己的数**：L2 编排每一跳 agent 调用照实记 usage，回答「接力开销集中在哪一跳」。multi-proxy 不走论文路线（API 层黑盒代理无隐状态 + 铁律「不自训模型」），但先记账才谈得上优化。
+
+- **内核**：`relay-ledger.js`（零依赖）。`extractUsage(value)` 纯函数照实挖 executor 返回链（`value.raw.result.raw.usage`，executor-bind + l1-agent-adapter 真实形状）；挖不到返回 `null`——**绝不填 0 冒充没花**（同 savings-gateway C0-3 纪律）。`summarize(hops)` 出 `hopCount / usageFound / usageMissing / perAdapter / topHops / relayRatio`（全部跳 token ÷ 最后一跳，>1 的部分就是为接力多付的；单跳=1 基线；无分母=null）。
+- **接入缝（非侵入）**：`orchestrator.js` 构造项 `relayLedger`（默认 `null` = `_recordRelay` 首行守卫直接返回，**返回形状逐字不含 relay 键**）；`routes/orchestration.js` 门控 `PROXY_L2_RELAY_LEDGER=1/true/on` 才构造长寿命实例注入单例 Orchestrator，`POST /run` 响应附 `relay` sidecar、`GET /api/orchestration/relay` 出跨 run 全量报告（门控关 → 403）。
+- **诚实口径**：shadow / h3web 任务队列 / 发现调用 / 自定义 executor 的跳照记但 `usageFound=false` 单列——账本里少一个数可以，多一个假数不行。
+- **真跑**：jest `tests/unit/relay-ledger.test.js` **18/18**（extractUsage 四形态 + 垃圾输入不抛 / summarize 诚实性 + 环形裁剪 / Orchestrator 三跳记账 + 未注入零行为变更证明 + fallback 留痕 + 路由门控两侧）；相关既有套件 orchestration-route + executor-bind + mcp-route + mcp-server + provider-isolation-executor **104/104 零回归**。
+- **边界（YAGNI）**：仅内存环形缓冲，默认不落盘（落盘形态留二期，同 savings-gateway 一期纪律）；MCP 入口（`l2/mcp-server.js`）未接，留作二期。
+- **按分支/叶子归成本（2026-11-06 · #123③ · 纯函数，零运行态变更）**：新增导出 `groupBySubtask(hops)`，按 `subtaskId` 聚合 `hops / usageFound / usageMissing / tokens / viaFallback`，答「哪条分支贵」，与 `summarize()` 的 `perAdapter`（答「哪个 adapter 贵」）互补；沿用诚实口径——`usageFound=false` 只计 hops，**不把 `null` 当 0 累加**。`summarize/report` 返回形状逐字不变。用法 `groupBySubtask(ledger.getHops(runId))`；🔴 门控 `PROXY_L2_RELAY_LEDGER`／`PROXY_USAGE_ROLLUP` **仍默认关，本轮未打开**（生产默认态连原始 hop 都没在记，开门控属运行态变更须单独拍）。真跑：jest `tests/unit/relay-ledger-subtask.test.js` **4/4**。
+- **接线：从孤儿函数到真实可达路径（2026-11-06 第四轮）**：第四轮前 `groupBySubtask` 只有定义/导出/测试调用，**零生产调用**（存在性≠连通性）。现工厂新增 `reportBySubtask(runId)`，并接为 `GET /api/orchestration/relay/subtasks`（`routes/orchestration.js`）；`?runId=` 按单次 run 过滤、省略＝跨 run 全量，返回 `{ runId, subtasks }`。**不改 `/relay` 与 `/run` sidecar 的返回形状**，门控关 → 403（与 `/relay` 同纪律）。🔴 门控 `PROXY_L2_RELAY_LEDGER` 仍默认关、未打开；打开方式／验收清单／回滚见 `docs/QUEUE.md` INBOX。真跑：`tests/unit/relay-ledger.test.js` 扩 2 例（门控两侧 + runId 过滤 + `/relay` 形状不变），全量 **112/112 套件、1668/1668 测试**。
+- **第五轮：前置依赖链守卫 + 门控决策结案（2026-11-06 17:30）**：回源发现上一版 `docs/QUEUE.md` 的「一键打开 `PROXY_L2_RELAY_LEDGER=1`」是踩空指令——`routes/orchestration.js:175` `router.use(gate)` 还要求 `PROXY_ORCHESTRATION=1`，单开 relay 门控时整条 `/api/orchestration` 403，5 项验收一项都跑不了（存在性≠连通性）。`tests/unit/relay-ledger.test.js` 新增「依赖链」守卫 1 例：只开 relay → `/run`／`/relay`／`/relay/subtasks` 全 403 `orchestration-gate-closed`；补上前置门控后同一 app 立刻 200 且 `hopCount=1`（证明是 env 依赖链，不是启动期缓存）。套件实跑 **21/21**；上一行 `18/18` 与本条上一行的 `112/112·1668/1668` 均为历史轮次留痕，当前全量见 `docs/INDEX.md` #104。🔴 **评估结论＝暂不打开门控并结案**：默认 shadow ＋ `PROXY_EXECUTOR_BIND` 关时只有 `hopCount`、拿不到 token 成本（#123③ 的目标）；生效须改 plist 并重启 18792（运行态变更＋服务停机），且 `AGENTS.md:53-54` 要求「观察后再决定上线」。`PROXY_USAGE_ROLLUP` 从本决策拆出——`l2/usage-rollup.js:29` 是落盘日卷、与 `perSubtask` 用途不同，需独立的数据保留决策。完整订正清单与重开触发条件见 `docs/QUEUE.md` INBOX。
+
+## 铁律（落地前必读）
+
+- **MCP 消费入口**：想经 MCP 消费 L2 编排能力（routeTask/decompose/orchestrate），见 **`l2/MCP-integration-guide.md`**（DS2 之前唯一可消费面，门控 `PROXY_L2_MCP` 默认关）。
+- **④ 非侵入**：绝不写 agent 自身文件（`~/.codex` / `~/.hermes` / `~/.cursor`）；
+  只读 + 环境变量注入。adapter 对 h3web 也只读、端口动态探测，不改其任何文件/配置。
+- **shadow 优先**：shadow 模式永不改真实路由。
+- **互通性**：记忆/skill 在规范格式上无损转换，方案可热替换；`specVersion` 做向后兼容。

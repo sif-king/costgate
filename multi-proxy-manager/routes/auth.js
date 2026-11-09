@@ -1,0 +1,103 @@
+// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the multi-proxy project.
+
+// ==================== 路由：认证 ====================
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
+
+const {
+  getPassword,
+  setPassword,
+  needsPasswordSetup,
+  verifyPassword,
+  generateToken,
+  isLoopbackRequest,
+} = require('../lib/auth');
+
+const router = express.Router();
+
+// Strict rate limit on login endpoint: 5 attempts per minute window
+const authLimiter = rateLimit({
+  windowMs: parseInt(process.env.AUTH_RATE_WINDOW_MS || '60000', 10), // 1 minute; AUTH_RATE_WINDOW_MS env overrides (test harness)
+  max: parseInt(process.env.AUTH_RATE_MAX || '5', 10), // 5; AUTH_RATE_MAX env overrides (test harness)
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  handler: (req, res) => {
+    res.status(429).json({ success: false, error: 'Too many login attempts. Please try again later.' });
+  },
+});
+
+// Longer lockout after many rapid failures: 5 failed logins in 15 minutes
+const lockoutLimiter = rateLimit({
+  windowMs: parseInt(process.env.AUTH_LOCKOUT_WINDOW_MS || '900000', 10), // 15 minutes; AUTH_LOCKOUT_WINDOW_MS overrides (test)
+  max: parseInt(process.env.AUTH_LOCKOUT_MAX || '5', 10), // 5; AUTH_LOCKOUT_MAX overrides (test)
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  handler: (req, res) => {
+    res.status(429).json({ success: false, error: 'Account locked due to too many failed attempts. Try again in 15 minutes.' });
+  },
+});
+
+// POST /api/auth/login
+router.post('/login', lockoutLimiter, authLimiter, async function(req, res) {
+  const { password } = req.body;
+  // DoS protection: reject passwords > 1KB
+  if (password && Buffer.byteLength(password, 'utf8') > 1024) {
+    return res.status(413).json({ success: false, error: 'Password too long (max 1KB)' });
+  }
+  if (!password) {
+    return res.status(400).json({ success: false, error: 'Password required' });
+  }
+
+  const envPassword = process.env.MANAGER_PASSWORD;
+  if (envPassword && envPassword.length > 0) {
+    if (password === envPassword) {
+      return res.json({ success: true, token: generateToken(password) });
+    }
+    return res.status(401).json({ success: false, error: 'Invalid password' });
+  }
+
+  // Setup mode or verify
+  if (needsPasswordSetup()) {
+    try {
+      const hash = bcrypt.hashSync(password, 10);
+      setPassword(hash);
+      console.log('[Auth] Password set successfully');
+      return res.json({ success: true, token: generateToken(password), setup: true });
+    } catch (e) {
+      console.error('[Auth] Failed to set password:', e.message);
+      return res.status(500).json({ success: false, error: 'Failed to save password, check file permissions' });
+    }
+  }
+
+  if (await verifyPassword(password)) {
+    return res.json({ success: true, token: generateToken(password) });
+  }
+  res.status(401).json({ success: false, error: 'Invalid password' });
+});
+
+// GET /api/auth/status
+router.get('/status', (req, res) => {
+  try {
+    const envPwd = process.env.MANAGER_PASSWORD;
+    const authDisabled = !!(envPwd && envPwd.length > 0);
+    const hasPassword = getPassword() !== null || authDisabled;
+    // 2026-10-28：回环访问免鉴权 → 不再强制「首次运行设密码」引导。
+    // 面板因此可以直接进入；非回环访问仍如实上报 needsSetup，由 fail-closed 兜底。
+    const loopback = isLoopbackRequest(req);
+    res.json({
+      needsSetup: loopback ? false : needsPasswordSetup(),
+      hasPassword: hasPassword,
+      authDisabled: authDisabled,
+      loopbackBypass: loopback,
+    });
+  } catch (e) {
+    res.json({ needsSetup: true, hasPassword: false, authDisabled: false, error: 'Internal server error' });
+  }
+});
+
+module.exports = router;

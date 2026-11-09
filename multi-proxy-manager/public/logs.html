@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Proxy Manager - 日志</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='24' font-size='20' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial,sans-serif'%3EP%3C/text%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="stylesheet" href="./colors_and_type.css">
+  <link rel="stylesheet" href="./shared-styles.css">
+  <!-- 设计系统 v1.0（2026-10-16 迁移）：新 token + 新组件层；旧两 CSS 保留作别名桥；新层最后加载＝视觉默认 -->
+  <link rel="stylesheet" href="./tokens.css">
+  <link rel="stylesheet" href="./components.css">
+  <script src="./theme.js"></script>
+</head>
+<style>
+/* ============================================
+   Reset & Base
+   ============================================ */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  line-height: 1.6;
+  display: flex;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* ============================================
+   Mobile Menu Button
+   ============================================ */
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 200;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+/* ============================================
+   Sidebar Overlay (mobile)
+   ============================================ */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 90;
+}
+
+/* ============================================
+   Sidebar
+   ============================================ */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+/* Unified sidebar-brand (Rule 1) */
+.sidebar-brand {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-brand .logo-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--color-primary);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sidebar-brand h1 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+}
+
+/* Sidebar Navigation */
+.sidebar-nav {
+  flex: 1;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-label {
+  padding: 8px 12px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  user-select: none;
+  gap: 10px;
+  position: relative;
+  text-decoration: none;
+}
+
+.nav-item:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.nav-item.active {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.nav-item .nav-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Sidebar Footer */
+.sidebar-footer {
+  padding: 16px 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-footer .version-info {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.sidebar-footer .btn-logout {
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  color: var(--color-error);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-footer .btn-logout:hover {
+  background: var(--color-error-light);
+  border-color: var(--color-error);
+}
+
+/* ============================================
+   Main Content
+   ============================================ */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--main-padding);
+  min-width: 0;
+}
+
+/* ============================================
+   Page Header
+   ============================================ */
+.page-header {
+  margin-bottom: 28px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+/* ============================================
+   Banners
+   ============================================ */
+.offline-banner {
+  background: var(--color-warning-light);
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #92400e;
+  font-weight: 500;
+}
+
+.offline-banner.hidden { display: none; }
+.offline-banner-icon { font-size: 16px; flex-shrink: 0; }
+
+/* ============================================
+   Filter Bar
+   ============================================ */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-bar .filter-group {
+  display: flex;
+  align-items: center;
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+.log-count {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.time-range-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+.time-range-btn.active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.time-range-btn.active:hover {
+  background: var(--color-primary-hover);
+}
+
+/* ============================================
+   Log Viewer
+   ============================================ */
+.log-viewer {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-text-secondary);
+  min-height: 400px;
+  max-height: calc(100vh - 280px);
+}
+
+.log-viewer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-viewer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.log-viewer::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+.log-viewer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}
+
+.log-viewer .log-line {
+  display: block;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.log-viewer .log-line:hover {
+  background: var(--color-bg-secondary);
+}
+
+.log-viewer .timestamp {
+  color: var(--color-text-tertiary);
+}
+
+.log-viewer .proxy-tag {
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.log-viewer .proxy-tag.codex {
+  background: var(--color-prov-codex-bg);
+  color: var(--color-prov-codex-fg);
+}
+
+.log-viewer .proxy-tag.hermes {
+  background: var(--color-prov-hermes-bg);
+  color: var(--color-prov-hermes-fg);
+}
+
+.log-viewer .proxy-tag.cursor {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.log-viewer .proxy-tag.system {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
+.log-viewer .level-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.3px;
+}
+
+.log-viewer .level-badge.INFO {
+  background: var(--color-info-light);
+  color: var(--color-info-deep, #1e40af);
+}
+
+.log-viewer .level-badge.WARN {
+  background: var(--color-warning-light);
+  color: var(--color-warning-deep, #92400e);
+}
+
+.log-viewer .level-badge.ERROR {
+  background: var(--color-error-light);
+  color: var(--color-error-deep, #991b1b);
+}
+
+.log-viewer .log-message {
+  color: var(--color-text);
+  font-weight: 400;
+}
+
+.log-viewer .empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-family);
+  font-size: 14px;
+}
+
+.log-viewer .empty-state small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.log-viewer .loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-family);
+}
+
+/* ============================================
+   M3 常见问题面板（折叠）
+    ============================================ */
+.error-panel {
+  margin-top: 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+}
+
+.error-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.error-panel-header .panel-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
+
+.error-panel-header .panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.error-panel-header .panel-count {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-secondary);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.error-panel-header .panel-toggle {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.error-panel.collapsed .panel-toggle {
+  transform: rotate(-90deg);
+}
+
+.error-panel-body {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.error-panel.collapsed .error-panel-body {
+  display: none;
+}
+
+.error-search {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: var(--font-family);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+}
+
+.error-search:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.error-card {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--color-bg-secondary);
+}
+
+.error-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.error-card-id {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.error-card-freq {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.error-card-copy {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  transition: all var(--transition-fast);
+}
+
+.error-card-copy:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.error-card-resolution {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-panel .panel-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay.show {
+    display: block;
+  }
+
+  .main {
+    padding: 72px 20px 20px;
+  }
+
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .filter-bar .filter-group {
+    width: 100%;
+  }
+
+  .filter-bar .form-select,
+  .filter-bar .form-input {
+    width: 100% !important;
+  }
+
+  .log-viewer {
+    max-height: calc(100vh - 340px);
+  }
+}
+
+/* ============================================
+   Reduced Motion
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+<body>
+
+<!-- Mobile Menu Button -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
+    <svg class="icon-svg icon-svg-lg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+
+<!-- Sidebar Overlay (mobile) -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <!-- Rule 1: Unified sidebar-brand (NO .sidebar-brand) -->
+  <div class="sidebar-brand">
+    <div class="logo-icon">P</div>
+    <h1>Multi-Proxy Manager</h1>
+  </div>
+
+  <nav class="sidebar-nav" id="sidebarNav">
+    <div class="nav-label">总览</div>
+    <div class="nav-item" data-page="dashboard" data-tooltip="概览" tabindex="0">
+      <span class="ico nav-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+      概览
+    </div>
+
+    <div class="nav-label" id="proxySectionLabel">代理配置</div>
+    <div id="proxyNavItems"></div>
+
+    <div class="nav-label">系统</div>
+    <div class="nav-item active" data-page="logs" data-tooltip="日志" tabindex="0">
+      <span class="ico nav-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
+      日志
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="version-info" id="sidebarVersion">
+      v1.0.0
+    </div>
+    <button class="btn btn-ghost btn-sm" id="darkModeToggle" style="width:100%;margin-top:8px;" title="切换暗色模式">
+      <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> 暗色模式
+    </button>
+    <button class="btn-logout" onclick="handleLogout()" title="退出登录">&nbsp;&nbsp;登出&nbsp;&nbsp;</button>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<div class="loading-bar" id="loadingBar"></div>
+<main class="main" id="mainContent">
+  <!-- Offline Banner -->
+  <div class="offline-banner hidden" id="offlineBanner">
+    <span class="offline-banner-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+    <span>后端服务未运行，当前显示模拟数据。请确认 Manager 服务已启动。</span>
+  </div>
+
+  <!-- Page Header -->
+  <div class="page-header">
+    <h1 class="page-title">日志</h1>
+    <p class="page-subtitle">查看各代理的请求记录和系统事件</p>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <select id="proxyFilter" class="form-select" onchange="applyFilters()">
+        <option value="all">全部代理</option>
+        <option value="codex">Codex Proxy</option>
+        <option value="hermes">Hermes Proxy</option>
+        <option value="cursor">Cursor Proxy</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <select id="levelFilter" class="form-select" onchange="applyFilters()">
+        <option value="all">全部级别</option>
+        <option value="INFO">INFO</option>
+        <option value="WARN">WARN</option>
+        <option value="ERROR">ERROR</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <input type="text" id="logSearch" class="form-input" placeholder="搜索日志..." style="width:180px;" oninput="onSearchInput()" aria-label="搜索日志...">
+    </div>
+
+    <span class="time-range-label" style="font-size:12px;color:var(--color-text-tertiary);font-weight:500;margin-left:4px;">最近:</span>
+    <button class="btn btn-sm btn-outline time-range-btn" data-hours="1" onclick="setTimeRange(1)">1小时</button>
+    <button class="btn btn-sm btn-outline time-range-btn" data-hours="6" onclick="setTimeRange(6)">6小时</button>
+    <button class="btn btn-sm btn-outline time-range-btn" data-hours="24" onclick="setTimeRange(24)">24小时</button>
+    <button class="btn btn-sm btn-outline time-range-btn active" data-hours="0" onclick="setTimeRange(0)">全部</button>
+
+    <div class="filter-spacer"></div>
+
+    <button class="btn btn-sm btn-outline" onclick="loadLogs()" id="refreshBtn">
+      <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 刷新
+    </button>
+
+    <button class="btn btn-sm btn-outline" id="autoRefreshBtn" onclick="toggleAutoRefresh()">
+      <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg> 自动刷新
+    </button>
+
+    <button class="btn btn-sm btn-outline" onclick="copyLogs()" title="复制日志"><svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 复制</button>
+
+    <button class="btn btn-sm btn-outline" onclick="exportLogs('txt')" title="导出为 TXT"><svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 导出</button>
+    <button class="btn btn-sm btn-outline" onclick="exportLogs('csv')" title="导出为 CSV">CSV</button>
+
+    <span class="log-count" id="logCount"></span>
+
+    <button class="btn btn-sm btn-danger" onclick="clearLogs()">
+      <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 清空
+    </button>
+  </div>
+
+  <!-- Log Viewer -->
+  <div class="log-viewer" id="logViewer">
+    <div class="empty-state">暂无日志，点击"刷新"加载日志数据。<br><small>也可以点击"自动刷新"开始实时监控。</small></div>
+  </div>
+
+  <!-- M3 常见问题面板（折叠） -->
+  <div class="error-panel" id="errorPanel">
+    <div class="error-panel-header" id="errorPanelHeader" onclick="toggleErrorPanel()">
+      <span class="panel-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="10"/></svg></span>
+      <span class="panel-title">常见问题</span>
+      <span class="panel-count" id="errorPanelCount">0</span>
+      <span class="panel-toggle">▼ 收起</span>
+    </div>
+    <div class="error-panel-body" id="errorPanelBody">
+      <input type="text" class="error-search" id="errorSearch" placeholder="搜索错误（如 ETIMEDOUT、better-sqlite3）查看历史与修复..." oninput="onErrorSearchInput()" aria-label="搜索错误（如 ETIMEDOUT、better-sqlite3）查看历史与修复...">
+      <div class="error-list" id="errorList">
+        <div class="panel-empty">加载中...</div>
+      </div>
+    </div>
+  </div>
+  </main>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== Configuration =====
+  // 2026-10-27 收口 PROXY_CONFIGS 多副本：不再硬编码，改为启动时从服务端
+  // GET /api/proxy-configs 拉取（buildProxyConfigs() 为唯一真源）；icon/iconClass 由
+  // icons.js 的 window.MPIcons.proxies[name] 解析。见 fetchProxyConfigs()。
+  var PROXY_CONFIGS = {};
+
+  // ===== State =====
+  var autoRefreshInterval = null;
+  var allLogs = [];
+  var currentTimeRange = 0;
+  var authToken = sessionStorage.getItem('auth_token');
+  var versionCache = {};
+  var searchDebounceTimer = null;
+
+  // ===== Toast System (Rule 5: light backgrounds with colored borders) =====
+  function showToast(message, type, duration) {
+    if (duration === undefined) duration = 3000;
+    var container = document.getElementById('toastContainer');
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + (type || 'info');
+
+    var icons = { success: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>', error: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>', info: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' };
+    var iconSpan = document.createElement('span');
+    iconSpan.innerHTML = icons[type] || '';
+    var msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    toast.appendChild(iconSpan);
+    toast.appendChild(msgSpan);
+
+    container.appendChild(toast);
+
+    setTimeout(function() {
+      toast.style.animation = 'toast-out 0.3s ease forwards';
+      setTimeout(function() { toast.remove(); }, 300);
+    }, duration);
+  }
+
+  // ===== Escaping Utility =====
+  // 转义 < > & ' "（引号用于属性上下文安全，见 proxy-config.html 同名函数注释）
+  function esc(str) {
+    if (str === null || str === undefined) return '';
+    var d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ===== Loading Bar (P1-4) =====
+  function showLoading() {
+    var bar = document.getElementById('loadingBar');
+    if (bar) bar.classList.add('active');
+  }
+  function hideLoading() {
+    var bar = document.getElementById('loadingBar');
+    if (bar) bar.classList.remove('active');
+  }
+
+  // ===== Auth Header =====
+  function getAuthHeader() {
+    var token = sessionStorage.getItem('auth_token');
+    return token ? { 'x-auth-token': token } : {};
+  }
+
+  // ===== Intercept fetch for auth token =====
+  // B6: 注入 token + 全局 401 拦截（auth 端点自身的 401 不拦截）
+  (function() {
+    var origFetch = window.fetch;
+    window.fetch = function(url, options) {
+      if (options === undefined) options = {};
+      if (typeof url === 'string' && url.indexOf('/api/') === 0 && authToken) {
+        if (!options.headers) options.headers = {};
+        if (typeof options.headers === 'object') {
+          options.headers['x-auth-token'] = authToken;
+        }
+      }
+      var p = origFetch(url, options);
+      if (typeof url === 'string' && url.indexOf('/api/') === 0
+          && url.indexOf('/api/auth/') !== 0) {
+        p.then(function(res) {
+          if (res.status === 401) {
+            sessionStorage.removeItem('auth_token');
+            window.location.href = 'login.html';
+          }
+        }).catch(function() {});
+      }
+      return p;
+    };
+  })();
+
+  // ===== Offline Banner =====
+  function showOfflineBanner() {
+    var banner = document.getElementById('offlineBanner');
+    if (banner) banner.classList.remove('hidden');
+  }
+
+  function hideOfflineBanner() {
+    var banner = document.getElementById('offlineBanner');
+    if (banner) banner.classList.add('hidden');
+  }
+
+  // ===== Time Range Filter =====
+  window.setTimeRange = function(hours) {
+    currentTimeRange = hours;
+    document.querySelectorAll('.time-range-btn').forEach(function(btn) {
+      btn.classList.toggle('active', parseInt(btn.dataset.hours) === hours);
+    });
+    applyFilters();
+  };
+
+  // ===== Debounced Search Input =====
+  window.onSearchInput = function() {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(applyFilters, 250);
+  };
+
+  // ===== Fetch Logs from API =====
+  async function fetchLogs(limit) {
+    // 2026-10-16：这个函数过去 catch 后 `return []`，把「读失败」和「真的没日志」
+    // 压成同一个值。调用方于是拿 generateMockLogs() 兜底——空日志时显示一堆
+    // 不存在的 ERROR（'Upstream connection refused: codex-api service unavailable'）。
+    // 排查线上问题时看到不存在的事件，比看不到日志更糟。现在失败就抛，让调用方分开处理。
+    // 抛错要带后端原因：只说「HTTP 500」读者判断不出是 manager 挂了、登录态过期，
+    // 还是日志文件被别的进程占住。
+    var res = await fetch('/api/logs?limit=' + (limit || 500), {
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      showOfflineBanner();
+      var reason = 'HTTP ' + res.status;
+      try {
+        var body = await res.json();
+        if (body && body.error) reason = body.error;
+      } catch (e) { /* body 不是 JSON 就用状态码 */ }
+      throw new Error(reason);
+    }
+    hideOfflineBanner();
+    var data = await res.json();
+    return parseRawLogs(data.logs || '');
+  }
+
+  // ===== Parse Raw Log Lines =====
+  // 后端 appendLog 写 JSON Lines：{"ts","level"(大写),"proxy","msg","meta"}
+  // （见 server.js formatLogEntry）。旧文本格式 [ts] [LEVEL] [proxy] msg
+  // 仅作兼容回退。
+  function parseRawLogs(raw) {
+    if (!raw) return [];
+    var lines = raw.split('\n').filter(function(l) { return l.trim(); });
+    var logs = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var entry = null;
+      if (line.charAt(0) === '{') {
+        try {
+          var j = JSON.parse(line);
+          if (j && (j.ts || j.msg)) {
+            entry = {
+              timestamp: j.ts || new Date().toISOString(),
+              level: String(j.level || 'INFO').toUpperCase(),
+              proxy: String(j.proxy || 'system').toLowerCase(),
+              message: j.msg !== undefined ? String(j.msg) : ''
+            };
+          }
+        } catch (e) { /* fall through to legacy text parsing */ }
+      }
+      if (!entry) {
+        var m = line.match(/^\[([^\]]+)\]\s+\[(\w+)\]\s+\[([^\]]+)\]\s+(.*)$/);
+        if (m) {
+          entry = {
+            timestamp: m[1],
+            level: m[2],
+            proxy: m[3].toLowerCase(),
+            message: m[4]
+          };
+        } else {
+          entry = {
+            timestamp: new Date().toISOString(),
+            level: 'INFO',
+            proxy: 'system',
+            message: line
+          };
+        }
+      }
+      logs.push(entry);
+    }
+    return logs;
+  }
+  // 单行日志渲染。2026-10-16 重建：删 generateMockLogs 死代码时误删了本函数定义，
+  // 只剩 renderLogs 里的 `logsToRender.map(renderLogLine)` 调用点——日志页会直接崩
+  // （ReferenceError: renderLogLine is not defined）。类名严格对齐本文件 CSS：
+  // .log-line / .timestamp / .proxy-tag.{codex,hermes,cursor,system} /
+  // .level-badge.{INFO,WARN,ERROR} / .log-message。
+  function renderLogLine(log) {
+    var lvl = String((log && log.level) || 'INFO').toUpperCase();
+    var lvlClass = (lvl === 'ERROR' || lvl === 'WARN' || lvl === 'INFO') ? lvl : 'INFO';
+    var proxy = String((log && log.proxy) || 'system').toLowerCase();
+    var proxyClass = (proxy === 'codex' || proxy === 'hermes' || proxy === 'cursor' || proxy === 'system') ? proxy : 'system';
+    var ts = (log && log.timestamp) ? new Date(log.timestamp).toLocaleString('zh-CN') : '-';
+    return '<div class="log-line">' +
+      '<span class="timestamp">' + esc(ts) + '</span> ' +
+      '<span class="proxy-tag ' + proxyClass + '">' + esc(proxy) + '</span> ' +
+      '<span class="level-badge ' + lvlClass + '">' + esc(lvl) + '</span> ' +
+      '<span class="log-message">' + esc((log && log.message) || '') + '</span>' +
+    '</div>';
+  }
+
+  function renderLogs(logsToRender, totalCount, autoScroll) {
+    var viewer = document.getElementById('logViewer');
+    var countEl = document.getElementById('logCount');
+
+    if (logsToRender.length === 0) {
+      if (allLogs.length === 0) {
+        viewer.innerHTML = '<div class="empty-state">暂无日志，点击"刷新"加载日志数据。<br><small>也可以点击"自动刷新"开始实时监控。</small></div>';
+      } else if (totalCount > 0) {
+        viewer.innerHTML = '<div class="empty-state">无匹配的日志<br><small>试试调整筛选条件或时间范围</small></div>';
+      } else {
+        viewer.innerHTML = '<div class="empty-state">暂无日志，点击"刷新"加载...</div>';
+      }
+      countEl.innerHTML = totalCount > 0 ? '共 <strong>' + totalCount + '</strong> 条，显示 0 条' : '';
+      return;
+    }
+
+    viewer.innerHTML = logsToRender.map(renderLogLine).join('');
+    countEl.innerHTML = '共 <strong>' + totalCount + '</strong> 条，显示 <strong>' + logsToRender.length + '</strong> 条';
+
+    // Click-to-copy log lines — use event delegation (single listener on viewer)
+    if (!viewer.hasAttribute('data-delegate-bound')) {
+      viewer.addEventListener('click', function(e) {
+        var line = e.target.closest('.log-line');
+        if (line) {
+          var text = line.textContent;
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(function() {
+              showToast('日志已复制到剪贴板', 'success', 1500);
+            });
+          }
+        }
+      });
+      viewer.setAttribute('data-delegate-bound', '1');
+    }
+
+    // Auto-scroll on initial load or auto-refresh
+    if (autoScroll) {
+      viewer.scrollTop = viewer.scrollHeight;
+    }
+  }
+
+  // ===== Filtering =====
+  window.applyFilters = function() {
+    var proxyFilter = document.getElementById('proxyFilter').value;
+    var levelFilter = document.getElementById('levelFilter').value;
+    var searchTerm = document.getElementById('logSearch').value.toLowerCase();
+
+    var filtered = allLogs;
+
+    // Apply time range filter
+    if (currentTimeRange > 0) {
+      var cutoff = Date.now() - currentTimeRange * 3600 * 1000;
+      filtered = filtered.filter(function(log) {
+        return new Date(log.timestamp).getTime() >= cutoff;
+      });
+    }
+
+    if (proxyFilter !== 'all') {
+      filtered = filtered.filter(function(l) { return l.proxy === proxyFilter; });
+    }
+
+    if (levelFilter !== 'all') {
+      filtered = filtered.filter(function(l) { return l.level === levelFilter; });
+    }
+
+    if (searchTerm) {
+      filtered = filtered.filter(function(l) { return l.message.toLowerCase().indexOf(searchTerm) !== -1; });
+    }
+
+    renderLogs(filtered, allLogs.length, false);
+  };
+
+  // ===== Load Logs =====
+  window.loadLogs = function() {
+    showLoading();
+    var viewer = document.getElementById('logViewer');
+    viewer.innerHTML = '<div class="loading"><span class="loading-spinner"></span> 加载中...</div>';
+
+    fetchLogs(500).then(function(logs) {
+      if (logs.length === 0) {
+        // 真的没日志就说没日志。过去这里 `logs = generateMockLogs()`——
+        // 空日志时反而显示 20+ 条不存在的日志，其中还有假 ERROR。
+        hideOfflineBanner();
+        allLogs = [];
+        applyFilters();
+        viewer.innerHTML =
+          '<div class="empty-state">' +
+            '<div class="empty-text">暂无日志</div>' +
+            '<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:6px;">' +
+              '代理运行后这里会出现日志。若刚启动，稍等几秒再刷新。' +
+            '</div>' +
+          '</div>';
+        var logViewer = document.getElementById('logViewer');
+        if (logViewer) logViewer.scrollTop = logViewer.scrollHeight;
+        return;
+      }
+      allLogs = logs;
+      applyFilters();
+
+      var logViewer = document.getElementById('logViewer');
+      if (logViewer) logViewer.scrollTop = logViewer.scrollHeight;
+    }).catch(function(err) {
+      allLogs = [];
+      applyFilters();
+      // 读失败 ≠ 没日志。显示读失败并给排查入口，不喂假日志。
+      viewer.innerHTML =
+        '<div class="empty-state">' +
+          '<div class="empty-text" style="color:#d97706;">日志读取失败</div>' +
+          '<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:6px;max-width:520px;">' +
+            esc((err && err.message) || '未知错误') +
+            '<br>常见原因：manager 未启动、登录态过期（会自动跳登录页）、或 /api/logs 报错。' +
+          '</div>' +
+        '</div>';
+    }).finally(hideLoading);
+  };
+
+  // ===== Clear Logs =====
+  window.clearLogs = function() {
+    if (!confirm('确定要清除所有日志吗？')) return;
+    var viewer = document.getElementById('logViewer');
+    // 过去这里 fetch 失败被 `.catch(function() {})` 吞掉，然后无条件显示「日志已清除」。
+    // 清除失败却报成功，用户会以为日志已清空而停止排查——必须先等后端确认。
+    fetch('/api/logs/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function() {
+      allLogs = [];
+      viewer.innerHTML = '<div class="empty-state">日志已清除</div>';
+      var countEl = document.getElementById('logCount');
+      if (countEl) countEl.innerHTML = '共 <strong>0</strong> 条';
+      showToast('日志已清除', 'success');
+    }).catch(function(err) {
+      showToast('清除失败：' + ((err && err.message) || '未知错误'), 'error');
+    });
+  };
+
+  // ===== Copy Logs =====
+  window.copyLogs = function() {
+    var proxyFilter = document.getElementById('proxyFilter').value;
+    var levelFilter = document.getElementById('levelFilter').value;
+    var searchTerm = document.getElementById('logSearch').value.toLowerCase();
+    var filtered = allLogs;
+
+    if (currentTimeRange > 0) {
+      var cutoff = Date.now() - currentTimeRange * 3600 * 1000;
+      filtered = filtered.filter(function(log) { return new Date(log.timestamp).getTime() >= cutoff; });
+    }
+    if (proxyFilter !== 'all') filtered = filtered.filter(function(l) { return l.proxy === proxyFilter; });
+    if (levelFilter !== 'all') filtered = filtered.filter(function(l) { return l.level === levelFilter; });
+    if (searchTerm) filtered = filtered.filter(function(l) { return l.message.toLowerCase().indexOf(searchTerm) !== -1; });
+
+    var text = filtered.map(function(log) {
+      return '[' + log.timestamp + '] [' + log.proxy.toUpperCase() + '] [' + log.level + '] ' + log.message;
+    }).join('\n');
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function() {
+        showToast('已复制 ' + filtered.length + ' 条日志到剪贴板', 'success');
+      });
+    }
+  };
+
+  // ===== Export Logs =====
+  window.exportLogs = function(format) {
+    var proxyFilter = document.getElementById('proxyFilter').value;
+    var levelFilter = document.getElementById('levelFilter').value;
+    var searchTerm = document.getElementById('logSearch').value.toLowerCase();
+    var filtered = allLogs;
+
+    if (currentTimeRange > 0) {
+      var cutoff = Date.now() - currentTimeRange * 3600 * 1000;
+      filtered = filtered.filter(function(log) { return new Date(log.timestamp).getTime() >= cutoff; });
+    }
+    if (proxyFilter !== 'all') filtered = filtered.filter(function(l) { return l.proxy === proxyFilter; });
+    if (levelFilter !== 'all') filtered = filtered.filter(function(l) { return l.level === levelFilter; });
+    if (searchTerm) filtered = filtered.filter(function(l) { return l.message.toLowerCase().indexOf(searchTerm) !== -1; });
+
+    if (filtered.length === 0) {
+      showToast('没有可导出的日志', 'error');
+      return;
+    }
+
+    var content, mimeType, extension;
+    if (format === 'csv') {
+      var csvRows = ['Timestamp,Proxy,Level,Message'];
+      for (var i = 0; i < filtered.length; i++) {
+        var row = filtered[i];
+        var msgEscaped = (row.message || '').replace(/"/g, '""');
+        csvRows.push([row.timestamp, row.proxy.toUpperCase(), row.level, '"' + msgEscaped + '"'].join(','));
+      }
+      content = csvRows.join('\n');
+      mimeType = 'text/csv';
+      extension = 'csv';
+    } else {
+      var txtLines = filtered.map(function(log) {
+        return '[' + log.timestamp + '] [' + log.proxy.toUpperCase() + '] [' + log.level + '] ' + log.message;
+      });
+      content = txtLines.join('\n');
+      mimeType = 'text/plain';
+      extension = 'txt';
+    }
+
+    var blob = new Blob([content], { type: mimeType });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'logs-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.' + extension;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('已导出 ' + filtered.length + ' 条日志 (' + extension.toUpperCase() + ')', 'success');
+  };
+
+  // ===== Toggle Auto Refresh =====
+  window.toggleAutoRefresh = function() {
+    var btn = document.getElementById('autoRefreshBtn');
+
+    if (autoRefreshInterval) {
+      clearInterval(autoRefreshInterval);
+      autoRefreshInterval = null;
+      btn.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg> 自动刷新';
+      btn.classList.remove('active');
+    } else {
+      loadLogs();
+      autoRefreshInterval = setInterval(loadLogs, 5000);
+      btn.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 停止刷新';
+      btn.classList.add('active');
+    }
+  };
+
+  // ===== M3 常见问题面板 =====
+  var errorPatternsCache = [];
+  var errorSearchDebounce = null;
+
+  async function loadErrorPatterns() {
+   var count = document.getElementById('errorPanelCount');
+   try {
+     var res = await fetch('/api/errors/patterns', { headers: getAuthHeader() });
+     if (!res.ok) throw new Error('not ok');
+     var data = await res.json();
+     errorPatternsCache = data.patterns || [];
+     renderErrorPatterns(errorPatternsCache);
+     if (count) count.textContent = String(errorPatternsCache.length);
+    } catch (e) {
+     errorPatternsCache = [];
+     MPStates.registerRetry('logs:errorPatterns', loadErrorPatterns);
+     var list = document.getElementById('errorList');
+     if (list) list.innerHTML = MPStates.error({
+       title: '读取失败',
+       detail: e && e.message ? e.message : '错误模式接口无响应',
+       hint: '错误模式读不到，不代表没有 error 级日志。可刷新页面重试。',
+       retryKey: 'logs:errorPatterns'
+     });
+     if (count) count.textContent = '0';
+    }
+  }
+
+  function renderErrorPatterns(patterns) {
+   var list = document.getElementById('errorList');
+   if (!list) return;
+   if (!patterns || patterns.length === 0) {
+     list.innerHTML = '<div class="panel-empty">暂无已知错误模式<br><small>发生 error 级日志后会自动积累</small></div>';
+     return;
+    }
+   list.innerHTML = patterns.map(function(p) {
+     var freqTxt = (p.frequency || 0) > 0 ? ('出现 ' + p.frequency + ' 次') : '未触发';
+     return '<div class="error-card" data-id="' + esc(p.id) + '">' +
+       '<div class="error-card-top">' +
+         '<span class="error-card-id">' + esc(p.id) + '</span>' +
+         '<span class="error-card-freq">' + freqTxt + '</span>' +
+         '<button class="error-card-copy" id="copy-' + esc(p.id) + '" data-res="' + esc(p.resolution || '') + '">复制修复</button>' +
+       '</div>' +
+       '<div class="error-card-resolution">' + esc(p.resolution || '') + '</div>' +
+     '</div>';
+    }).join('');
+
+    // 事件委托：复制修复建议（避免逐卡片绑定）
+   list.onclick = function(e) {
+     var btn = e.target.closest('.error-card-copy');
+     if (!btn) return;
+     var text = btn.dataset.res || '';
+     if (navigator.clipboard && text) {
+       navigator.clipboard.writeText(text).then(function() {
+         showToast('修复建议已复制', 'success', 1500);
+         });
+     }
+   };
+  }
+
+  window.onErrorSearchInput = function() {
+   clearTimeout(errorSearchDebounce);
+   errorSearchDebounce = setTimeout(function() {
+     var q = (document.getElementById('errorSearch').value || '').trim().toLowerCase();
+     if (!q) {
+       renderErrorPatterns(errorPatternsCache);
+       return;
+     }
+     var matched = errorPatternsCache.filter(function(p) {
+       var hay = [p.id, p.pattern, p.resolution].join(' ').toLowerCase();
+       return hay.indexOf(q) !== -1;
+      });
+     renderErrorPatterns(matched);
+    }, 250);
+  };
+
+  window.toggleErrorPanel = function() {
+   var panel = document.getElementById('errorPanel');
+   if (!panel) return;
+   var collapsed = panel.classList.toggle('collapsed');
+   var toggle = panel.querySelector('.panel-toggle');
+   if (toggle) toggle.textContent = collapsed ? '▶ 展开' : '▼ 收起';
+   }
+
+   // ===== Navigation =====
+   document.getElementById('sidebarNav').addEventListener('click', function(e) {
+   var navItem = e.target.closest('.nav-item');
+   if (!navItem) return;
+    if (navItem.classList.contains('proxy-nav-item')) {
+      closeMobileSidebar();
+      return;
+    }
+    var pageId = navItem.dataset.page;
+    if (pageId) {
+      var pages = document.querySelectorAll('.page');
+      for (var i = 0; i < pages.length; i++) {
+        pages[i].classList.remove('active');
+      }
+      var navItems = document.querySelectorAll('.nav-item');
+      for (var j = 0; j < navItems.length; j++) {
+        navItems[j].classList.remove('active');
+      }
+      var nav = document.querySelector('.nav-item[data-page="' + pageId + '"]');
+      if (nav) nav.classList.add('active');
+      closeMobileSidebar();
+    }
+  });
+
+  // ===== Mobile Sidebar =====
+  var mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  var sidebar = document.getElementById('sidebar');
+  var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+  mobileMenuBtn.addEventListener('click', function() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay.classList.toggle('show');
+  });
+
+  sidebarOverlay.addEventListener('click', closeMobileSidebar);
+
+  function closeMobileSidebar() {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('show');
+  }
+
+  // ===== Logout =====
+  window.handleLogout = function() {
+    sessionStorage.removeItem('auth_token');
+    window.location.href = 'login.html';
+  };
+
+  // ===== Dark Mode Toggle =====
+  function initDarkMode() {
+    var toggle = document.getElementById('darkModeToggle');
+    var isDark = localStorage.getItem('darkMode') === 'true';
+    var sunSvg = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+    var moonSvg = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      if (toggle) toggle.innerHTML = moonSvg + ' 亮色模式';
+    }
+    if (toggle) {
+      toggle.addEventListener('click', function() {
+        var html = document.documentElement;
+        var isNowDark = html.classList.contains('dark');
+        if (isNowDark) {
+          html.classList.remove('dark');
+          html.classList.add('light');
+          localStorage.setItem('darkMode', 'false');
+          toggle.innerHTML = sunSvg + ' 暗色模式';
+        } else {
+          html.classList.add('dark');
+          html.classList.remove('light');
+          localStorage.setItem('darkMode', 'true');
+          toggle.innerHTML = moonSvg + ' 亮色模式';
+        }
+      });
+    }
+  }
+
+  // ===== Dynamic Proxy Nav =====
+  function renderDynamicProxyNav(proxyNames) {
+    var container = document.getElementById('proxyNavItems');
+    if (!container) return;
+    var label = document.getElementById('proxySectionLabel');
+    if (label) label.style.display = proxyNames.length > 0 ? '' : 'none';
+
+    if (proxyNames.length === 0) {
+      container.innerHTML = '<div class="nav-item" style="color:var(--color-text-tertiary);font-size:12px;padding:4px 12px;">暂无代理</div>';
+      return;
+    }
+
+    container.innerHTML = proxyNames.map(function(name) {
+      var config = PROXY_CONFIGS[name] || { name: name, icon: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>' };
+      return '<a href="proxy-config.html?proxy=' + name + '" class="nav-item proxy-nav-item" data-proxy="' + esc(name) + '" data-tooltip="' + esc(config.name) + '" tabindex="0">' +
+        '<span class="ico nav-icon">' + config.icon + '</span>' +
+        esc(config.name) +
+        '</a>';
+    }).join('');
+  }
+
+  // 2026-10-27 收口 PROXY_CONFIGS 多副本：从服务端单一真源拉取，替代硬编码副本。
+  // 服务端 GET /api/proxy-configs 返回状态字段（name/port/defaultVersion），
+  // 图标由 icons.js（决策 E 全站单一图标源）的 window.MPIcons.proxies[name] 解析。
+  function fetchProxyConfigs() {
+    return fetch('/api/proxy-configs')
+      .then(function (res) { return res.json(); })
+      .then(function (serverCfg) {
+        PROXY_CONFIGS = {};
+        var proxyIcons = (window.MPIcons && window.MPIcons.proxies) || {};
+        for (var name in serverCfg) {
+          if (!serverCfg.hasOwnProperty(name)) continue;
+          var s = serverCfg[name];
+          var pi = proxyIcons[name] || {};
+          PROXY_CONFIGS[name] = {
+            name: s.name,
+            port: s.port,
+            defaultVersion: s.defaultVersion,
+            icon: pi.icon || '',
+            iconClass: pi.iconClass || name
+          };
+        }
+      })
+      .catch(function () { /* 拉取失败不阻塞 */ });
+  }
+
+  // ===== Initialize =====
+  function init() {
+    initDarkMode();
+    fetchProxyConfigs().then(function() {
+    // Load version info
+    fetch('/api/version')
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function(data) {
+        versionCache = data;
+        var sidebarVer = document.getElementById('sidebarVersion');
+        if (sidebarVer && data && data.version) {
+          sidebarVer.textContent = 'Manager ' + data.version;
+        }
+      })
+      .catch(function() {
+        // 2026-10-16：过去这里兜底 getMockVersion()——假版本 '1.0.3' 加三个假
+        // 子版本号（codex v1.2.0 / hermes v0.9.4 / cursor v2.1.0），侧边栏显示
+        // "Manager 1.0.3"。版本号是「要不要升级」的判断依据，喂假值会让用户
+        // 放弃一次本该做的升级。现在如实说读不到。
+        versionCache = null;
+        var sidebarVer = document.getElementById('sidebarVersion');
+        if (sidebarVer) sidebarVer.textContent = '版本读取失败';
+      });
+
+    // Load dynamic proxy nav
+    fetch('/api/installed')
+      .then(function(res) {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then(function(names) {
+        if (names && names.length > 0) renderDynamicProxyNav(names);
+        else throw new Error();
+      })
+      .catch(function() {
+        renderDynamicProxyNav(Object.keys(PROXY_CONFIGS));
+      });
+
+    // Load logs
+    loadLogs();
+
+    // Load M3 常见问题面板
+    loadErrorPatterns();
+    });
+   }
+
+  // 轮询直到 states.js 就绪再跑 init()（与 context.html 同款守卫）：
+  // 底部脚本经请求拦截时，单次 setTimeout(0) 可能在 states.js 执行前触发，
+  // 导致内部 MPStates.* 报「未定义」整页崩。等不到就明说等不到。
+  (function waitForStates(attempt) {
+    if (window.MPStates) { init(); return; }
+    if (attempt > 60) {
+      console.error('[states] 等待 states.js 超时（2s），日志页无法渲染，请刷新重试');
+      return;
+    }
+    setTimeout(function () { waitForStates(attempt + 1); }, 30);
+  })(0);
+})();
+</script>
+    <script src="./icons.js"></script>
+<script src="./nav.js"></script>
+<script src="./states.js"></script>
+<script src="./gatebar.js"></script>
+  <script>if(window.renderNav){renderNav(document.getElementById('sidebarNav'),{current:'logs'});}</script>
+</body>
+</html>

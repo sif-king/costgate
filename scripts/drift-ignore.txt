@@ -1,0 +1,88 @@
+# drift-check 忽略清单 · 声明「超出本仓守卫视野」的引用家族
+# ------------------------------------------------------------------
+# 语义：一行一条。glob（* 可跨 / 匹配多段）或精确名/前缀；命中即不再报漂移。
+# 只减少误报，不会掩盖仓内真实漂移（仓内 A 类不在此列）。改本文件 = 低风险可回滚。
+# 本守卫只负责「本仓文档 ↔ 本仓代码」存在性；下列家族指向兄弟仓/纯占位，属视野外。
+#
+# —— openshell / hive（Rust + TS 兄弟仓；multi-proxy 顶层无 data/src/services/crates）——
+crates/*
+src/lb/*
+src/client/*
+src/host/*
+services/hwfit/*
+data/*
+*.rs
+hive.ts
+hire.ts
+HIVE.md
+agentProvider.ts
+proxy.ts
+config.ts
+upstream_proxy.rs
+google_cloud.rs
+vertex.rs
+THREAT_MODEL.md
+build-matrix.md
+ROADMAP.md
+codex_setup.py
+setup.sh
+curator-switch-state.json
+alignment/*
+cordis.patch.yml
+
+# —— Portico（兄弟项目 ~/Documents/AI项目/Portico，multi-proxy 顶层无此目录）——
+Portico/*
+
+# —— 文章体系（兄弟项目 ~/Documents/AI项目/文章体系）——
+文章体系/*
+
+# —— 10-31 drift-clear · 历史 changelog / WIP / 误报引用（指已删文件，属历史快照，不改文档，仅消误报）——
+# 二、变更日志表（L190+）指 09-18 删的测试/文档 + 09-17 删的 2 个假测试：
+docs/06-test/test-plan.md
+docs/06-test/test-cases.md
+docs/_templates/
+docs/_evidence/
+_templates/
+_evidence/
+l2-integration.test.js
+providers.test.js
+visual-design.md
+multi-proxy-manager/routes/knowledge.js
+scripts/工具实战技巧-2026-09-28.md
+L2-QUALITY-ENGINEERING.md
+# 过程记录（历史）表（L137）：
+HANDOVER-2026-08-24/25/26/09-10.md
+# changelog #64 外部项目 AI 痕迹（keiskeies/ai-gateway 的 .claude/.mimocode，非本仓文件）：
+.claude/
+.mimocode/
+# live ~/.multi-proxy-manager/providers.json 运行时文件（代码 proxy.js:469 loadProviders 读它，.gitignore 保护，含 key 勿入库）；
+# drift-check 把 basename 误匹配到已删的仓库根同名。README:325 + INDEX changelog #64：
+providers.json
+# changelog #90 部署侧 live 文件（~/.multi-proxy-manager/，非本仓）：
+takeover-generic-openai-proxy.json
+# Portico 口径纠正（10-06 历史 changelog，03/04 方案文件已并入文档体系）：
+04-待拍板.md
+03-路线图.md
+# RELEASE-CHECKLIST §③-2 WIP 10-16 快照（dsh/generic-guard + codex-config 当时 WIP，现已删，落点留 owner 补）：
+lib/guard/dsh-guard.js
+lib/guard/generic-guard.js
+routes/codex-config.js
+# desktop/ 已 git rm 退场（2026-10-31，INDEX #98/#99，拍板走原生 Swift client/）；
+# INDEX #98 历史 changelog 行 + 各处过渡注记里的 `desktop/`、`desktop/RETIRED.md` 均指已删路径，进 ignore：
+desktop/
+# INDEX #99 / #101 历史 changelog 行里的四处引用，指的都是当时存在、后来已退场的东西：
+#   dist-app/                      = Electron 时代构建产物目录（#99 已 git rm 构建残留）
+#   profiles/desktop/              = DSH profile 分类名（字符串，非本仓路径）
+#   37-DSH与DSBot外部对照-2026-10-11.md = Portico 侧母本，本来就不在本仓
+#   l2/L2-QUALITY-ENGINEERING.md   = 已并入 l2/README.md 的旧文件
+# 这些是「历史记录如实叙述当时情况」，不改写历史；进 ignore 而非删句。
+dist-app/
+profiles/desktop/
+37-DSH与DSBot外部对照-2026-10-11.md
+l2/L2-QUALITY-ENGINEERING.md
+
+# docs/01-feature-matrix.md #6「DSH 生态已闭环」那条历史 changelog 提到的集成文档：
+#   docs/02-product/dsh-integration.md = 内部产品文档，被 .gitignore:71 排除（不入库），
+#   于是在干净 checkout 上必然被判「引用文件已删除」。属「入库文档 ↔ 本地私有件」，
+#   超出本守卫「本仓文档 ↔ 本仓代码」的视野。保留该句（历史如实叙述），进 ignore。
+docs/02-product/dsh-integration.md

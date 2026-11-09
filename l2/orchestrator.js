@@ -1,0 +1,389 @@
+// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the multi-proxy project.
+
+'use strict';
+
+// Orchestrator — L2 P2 编排中枢核心：任务拆解 → 调度（拓扑 + 并行/串行/条件分支）→ 执行 → 聚合 → 协作历史。
+// 蓝图 4.2 / 5.1。
+//
+// 设计原则（与 l2/ agent-registry / plugin-runtime / route-engine / decomposer 同构）：
+//    - 非侵入④：协作历史默认仅内存；opts.dir 注入才落盘（原子写 .tmp→rename，绝不默认写 home/agent 文件）。
+//    - 零外部依赖：仅 node 内置（fs/path 仅用于可选落盘）＋同层纯函数模块（semantic-review / quality-fidelity / relay-ledger）；不引任何 npm 包。
+//      （2026-11-06 订正：原写「零依赖：仅 node 内置」，与下方 :34-39 的三处 require 不符。）
+//    - 可注入：executor / decomposer / routeEngine 全部可注入便于测试；shadowMode 下不触碰真实 adapter。
+//    - shadow 优先：默认 shadow——只跑调度逻辑产出决策/聚合/历史，不执行真实 adapter（避免非侵入 + 零副作用 demo）。
+//
+// 执行模型：
+//   - 按拓扑序、ready 子任务（deps 全 done/skipped）并发执行；
+//   - 条件分支：子任务 when(ctx) 返回 false → skipped，其依赖的下游在自身当 ctx 时若判 false 也 skip；
+//   - 容错：失败 → 重试（retry 次）→ 仍失败走 fallback（备用子任务 id，其 when 默认 true）→ 仍失败则 failed；
+//   - 聚合：全部子任务终态后，按序拼 report（JSON + Markdown）。
+//   - 编排级总超时（2026-11-06 #123②）：opts.deadlineMs 传入才生效（默认关 = 逐字零行为变更）；
+//     绝对 deadline 整 run 共享、每个子任务按「剩余时间」执行；超时标 failed/timedOut，
+//     ⚠️ 只让编排器收敛，不取消底层 executor（迟到结果与副作用仍可能发生）。
+
+const fs = require('fs');
+const path = require('path');
+
+// 事实绑定层（质量工程 2.1）：编排进入执行前校验子任务形状契约。
+const { validateDag, validateSubtask } = require('./contract.js');
+// 语义审阅层（质量工程 2.2）：拆解产物是否有可路由 adapter（诊断级，默认关，零行为变更）。
+const { reviewDecomposition, assertSemantic } = require('./semantic-review.js');
+// 执行保真层（质量工程 2.3）：下发 executor 前后比对透传字段（默认关，零行为变更）。
+const { snapshotSubtask, diffFidelity, assertFidelity } = require('./quality-fidelity.js');
+// 接力开销账本（P2 观测件 2026-10-13）：可选的 usage 观测层，注入才启用（默认 null = 零行为变更）。
+const { extractUsage } = require('./relay-ledger.js');
+
+const DEFAULT_MAX_RETRIES = 1;
+
+class Orchestrator {
+    constructor({ executor, routeEngine, decomposer, shadowMode = true, dir = null, maxRetries = DEFAULT_MAX_RETRIES, retriever = null, semanticReview = false, semanticThrow = false, fidelityCheck = false, fidelityThrow = false, relayLedger = null, egressLedger = null } = {}) {
+        this.executor = executor;          // 注入：(subtask, ctx, runOpts) => result；shadowMode 下不被调用
+        this.routeEngine = routeEngine;    // 注入：非 shadow 时由 executor 用其 route() 选 adapter
+        this.decomposer = decomposer;      // 注入：runFromInput 用；否则用内置 templateDecompose
+        this.shadowMode = shadowMode;
+        this.dir = dir;                    // 非侵入：null=仅内存；注入才落盘
+        this.maxRetries = maxRetries;
+        this.retriever = retriever;        // I1 RAG（拉模式）：第 5 可注入项；null=不检索、不挂 ctx.knowledge（零回归）
+        this.semanticReview = semanticReview; // 质量工程 2.2：拆解产物语义审阅（默认关）
+        this.semanticThrow = semanticThrow;   // 默认关：打开则 error 级语义问题在派发前硬拒
+        this.fidelityCheck = fidelityCheck;   // 质量工程 2.3：下发 executor 前后比对透传字段（默认关）
+        this.fidelityThrow = fidelityThrow;   // 默认关：打开则透传字段被改样即硬拒
+        this.relayLedger = relayLedger;        // P2 观测件：null=不记账（零行为变更）；注入 relay-ledger 实例才逐跳记 usage
+        this.egressLedger = egressLedger;      // P2 观测件：null=不记账（零行为变更）；注入才逐跳记 client×destHost×bytes
+        this.history = [];                 // 协作历史（任务级）
+        this._seq = 0;
+        this._fidelityIssues = [];         // 2.3 诊断记录（fidelityCheck 开启时累积）
+     }
+
+    // 便捷：从原始输入拆解 + 执行
+    async runFromInput(input, opts = {}) {
+        const decomposeFn = this.decomposer || require('./decomposer.js').decompose;
+        const dag = await decomposeFn(input, { ...opts, input });
+        return this.run(dag, opts);
+    }
+
+    // 跑一个已解析的 DAG，返回 { results, report, history }
+    async run(dag, opts = {}) {
+       const subtasks = dag.subtasks;
+       const byId = new Map(subtasks.map((s) => [s.id, s]));
+        // 前置：拒绝环
+       const { hasCycle } = require('./decomposer.js');
+       if (hasCycle(dag)) throw new Error('orchestrator: DAG has cycle, refusing to schedule');
+       // 事实绑定层（质量工程 2.1）：进调度前校验子任务形状契约，挡住引用错/参数错。
+       validateDag(dag);
+
+       // 语义审阅层（质量工程 2.2）：拆解产物是否有可路由 adapter（诊断级，默认关，非阻塞）。
+       // 仅 registry 注入时才有候选信息可查；无 registry 则跳过（无法审阅）。
+       if (this.semanticReview) {
+           const reg = this.routeEngine && this.routeEngine.registry;
+           const pr = this.routeEngine && this.routeEngine.pluginRuntime;
+           const rev = reviewDecomposition(dag, { registry: reg, pluginRuntime: pr });
+           this._semanticIssues = rev.issues;
+           if (!rev.ok && this.semanticThrow) assertSemantic(rev.issues);
+       }
+
+       const results = {}; // id -> { id, status, value?, attempts?, skipped?, fallbackFrom? }
+       // 质量工程 §四 影响半径重跑：opts.seedResults 预置既有结果（未受影响节点直接复用，不执行）。
+       if (opts.seedResults) Object.assign(results, opts.seedResults);
+       const executionOrder = [];
+       const runId = `run_${Date.now()}_${(this._seq += 1)}`;
+
+       const ctx = { results, dag, runId, ...((opts.ctx) || {}) };
+       // 编排级总超时：默认 null；传了才算绝对时刻，由整 run 的所有子任务共享。
+       const deadline = Number.isFinite(opts.deadlineMs) && opts.deadlineMs > 0
+           ? Date.now() + opts.deadlineMs : null;
+       // 父子共享双预算（2026-11-06 #123② 二期）：opts.tokenBudget 传入才生效（默认关 = 逐字零行为变更）。
+       // 「传剩余不传配额」：整 run 一个 spent 池，每个子任务从 ctx.budget 读剩余，grant(want) = min(子欲, 父剩余)。
+       // ⚠️ 诚实边界：编排器只做「剩余读数 + 耗尽停发」，不承诺中途截断单个 agent 的 token（那是 executor 的职责）。
+       //    并发 ready 的最后一批可能合计超支——它们启动时看到的是同一份剩余，下一轮才停发。
+       const tokenBudget = Number.isFinite(opts.tokenBudget) && opts.tokenBudget > 0 ? opts.tokenBudget : null;
+       let spentTokens = 0;
+       if (tokenBudget != null) {
+           ctx.budget = {
+               tokenBudget,
+               deadline,
+               spent: () => spentTokens,
+               remaining: () => Math.max(0, tokenBudget - spentTokens),
+               remainingMs: () => (deadline == null ? null : Math.max(0, deadline - Date.now())),
+               grant: (want) => Math.min(Number.isFinite(want) ? want : Infinity,
+                   Math.max(0, tokenBudget - spentTokens)),
+               // 由编排器在子任务成功后调用；executor 不应自行调用。
+               charge: (n) => { if (Number.isFinite(n) && n > 0) spentTokens += n; },
+           };
+       }
+
+        // 调度：每轮挑「deps 全到终态且自身未处理」的 ready 子任务并发执行；
+       // 用 processed/total 驱动终止（不用 remaining.delete——ready 元素是子任务对象非 id，易错）。
+       const total = subtasks.length;
+       let processed = 0;
+       let guard = 0;
+       while (processed < total) {
+           if (++guard > total * total + total + 1) throw new Error('orchestrator: scheduling did not converge');
+           const ready = this._computeReady(subtasks, results);
+           if (ready.length === 0) {
+             // 仍有未处理却无 ready → 真死锁/不可满足：标 blocked（不谎报全 done）
+               for (const s of subtasks) if (!results[s.id]) results[s.id] = { id: s.id, status: 'blocked' };
+               processed = total;
+               break;
+            }
+           await Promise.all(ready.map((st) => this._executeSubtask(st, byId, results, ctx, executionOrder, deadline)));
+           processed += ready.length;
+        }
+
+        const report = this._aggregate(subtasks, results, { runId, shadowMode: this.shadowMode, input: dag.input });
+        const historyEntry = {
+            runId,
+            ts: new Date().toISOString(),
+            input: dag.input || (opts.input && String(opts.input).slice(0, 80)) || null,
+            template: dag.template || null,
+            subtasks: subtasks.map((s) => ({ id: s.id, type: s.type, status: results[s.id] ? results[s.id].status : 'missing' })),
+            shadowMode: this.shadowMode,
+         };
+        // 接力开销报告：仅注入 relayLedger 时附加（未注入 = 返回形状与既有逐字一致）
+        const out = { results, report, history: historyEntry };
+        if (this.relayLedger && typeof this.relayLedger.report === 'function') {
+            out.relay = this.relayLedger.report(runId);
+        }
+        this.history.push(historyEntry);
+        this._persistHistory(historyEntry);
+
+        return out;
+    }
+
+    getHistory() { return this.history; }
+    setShadowMode(on) { this.shadowMode = on; }
+
+    // ---- 私有 ----
+
+    // ready：deps 全部已到达终态（done/skipped/failed/fallback-done）的子任务
+    _computeReady(subtasks, results) {
+        return subtasks.filter((s) => {
+            if (results[s.id]) return false;                // 已处理
+            return s.deps.every((d) => results[d] && results[d].status !== 'running');
+        });
+    }
+
+    async _executeSubtask(st, byId, results, ctx, executionOrder, deadline = null) {
+        // 事实绑定层（质量工程 2.1）：执行前再校验一次子任务形状契约（纵深防御）。
+        validateSubtask(st);
+        // 条件分支：when(ctx) 为 false → 跳过
+        if (typeof st.when === 'function') {
+            let keep = true;
+            try { keep = !!st.when(ctx); } catch { keep = true; }
+            if (!keep) {
+                results[st.id] = { id: st.id, status: 'skipped', reason: 'when' };
+                executionOrder.push(st.id);
+                return;
+            }
+        }
+        // 依赖被跳过/失败 → 本任务无前置可执行，跳过
+        if (st.deps.some((d) => results[d] && (results[d].status === 'skipped' || results[d].status === 'failed'))) {
+            results[st.id] = { id: st.id, status: 'skipped', reason: 'dep-unmet' };
+            executionOrder.push(st.id);
+            return;
+         }
+
+        // I1 RAG（拉模式）：仅当 retriever 注入 + 子任务声明 useKnowledge!==false → 检索挂 ctx.knowledge。
+        // 默认 useKnowledge 视为 false（不检索、不注入，与「永不自动注入」一致）；shadowMode 下不检索（与 shadow 零回归一致）。
+        if (this.retriever && st.useKnowledge !== false && st.knowledgeQuery !== undefined && !this.shadowMode) {
+            try {
+                ctx.knowledge = await this.retriever.retrieve({
+                    query: st.knowledgeQuery || st.prompt || dag.input,
+                    topK: st.knowledgeTopK || 3,
+                });
+            } catch (e) {
+                ctx.knowledge = null; // 非侵入：检索失败不阻断调度
+            }
+        }
+
+        // 预算耗尽：编排器真正能强制的动作 = 不再启动后续子任务（不重试、不 fallback）。
+        if (ctx.budget && ctx.budget.remaining() <= 0) {
+            results[st.id] = {
+                id: st.id, status: 'failed', attempts: 0,
+                error: 'orchestrator: token budget exhausted', budgetExceeded: true,
+            };
+            executionOrder.push(st.id);
+            return;
+        }
+
+        // 重试 + 执行
+        const maxTries = (st.retry != null ? st.retry : this.maxRetries) + 1;
+        let lastErr = null;
+        let attempts = 0;
+        for (let i = 0; i < maxTries; i++) {
+            attempts++;
+            try {
+                const value = this.shadowMode
+                    ? { shadow: true, subtaskId: st.id, routedVia: this.routeEngine ? 'routeEngine' : null }
+                    : await this._invokeWithDeadline(st, ctx, deadline);
+                results[st.id] = { id: st.id, status: 'done', value, attempts };
+                executionOrder.push(st.id);
+                if (ctx.budget) {
+                    const u = extractUsage(value);
+                    if (u) ctx.budget.charge(u.totalTokens); // 挖不到不记账，也不把 null 当 0 假装没花
+                }
+                this._recordRelay(st, value, ctx, null);
+                this._recordEgress(st, value, ctx);
+                return;
+            } catch (e) {
+                lastErr = e;
+                if (e && e.code === 'ORCH_DEADLINE') break; // 剩余预算已耗尽，不重试
+            }
+        }
+
+        // fallback：备用子任务（超时不进 fallback，理由同上）
+        if (!(lastErr && lastErr.code === 'ORCH_DEADLINE') && st.fallback && byId.has(st.fallback)) {
+            const fb = byId.get(st.fallback);
+            try {
+                const value = this.shadowMode
+                    ? { shadow: true, subtaskId: fb.id, viaFallback: st.fallback }
+                    : await this._invokeWithDeadline(fb, ctx, deadline);
+                results[st.id] = { id: st.id, status: 'done', value, attempts, fallbackFrom: st.id, via: fb.id };
+                executionOrder.push(fb.id);
+                this._recordRelay(st, value, ctx, st.id);
+                this._recordEgress(st, value, ctx);
+                return;
+            } catch (e2) {
+                lastErr = e2 || lastErr;
+            }
+        }
+
+        results[st.id] = { id: st.id, status: 'failed', attempts, error: String(lastErr && lastErr.message || lastErr) };
+        if (lastErr && lastErr.code === 'ORCH_DEADLINE') results[st.id].timedOut = true;
+        executionOrder.push(st.id);
+    }
+
+    // 接力开销记账（P2 观测件）：仅当注入了 relayLedger 才动作；第一行守卫保证
+    // 未注入时逐字零行为变更（与 semanticReview/fidelityCheck 同一纪律）。
+    // usage 挖不到（shadow / h3web 任务队列 / 自定义 executor）照实记 usageFound=false，不填 0。
+    _recordRelay(st, value, ctx, viaFallback) {
+        if (!this.relayLedger || typeof this.relayLedger.record !== 'function') return null;
+        const adapterId = (value && typeof value === 'object' && (value.adapterId || value.agent)) || null;
+        return this.relayLedger.record({
+            runId: ctx && ctx.runId,
+            subtaskId: st.id,
+            adapterId,
+            tier: (value && typeof value === 'object' && value.tier) || null,
+            attempts: value && typeof value === 'object' && value.attempts != null ? value.attempts : undefined,
+            viaFallback,
+            shadow: this.shadowMode,
+            value,
+        });
+    }
+
+    // 出站记账（P2 观测件 2026-10-17）：仅当注入了 egressLedger 才动作；第一行守卫保证
+    // 未注入时逐字零行为变更。tokens 复用 relay-ledger 的 extractUsage（已懂真实链路结构）；
+    // bytes/destHost 来自适配器返回值的 egress 字段（l1-agent / claude adapter 在 invoke 里量好带上），
+    // 拿不到就记 null（bytesFound=false），不填 0。详见 l2/egress-ledger.js 文件头。
+    // ⚠️ upstreamHost = 适配器的下一跳（本地代理 host:port），不是真实 provider——真实出网在本地代理进程内，本层看不到。
+    _recordEgress(st, value, ctx) {
+        if (!this.egressLedger || typeof this.egressLedger.record !== 'function') return null;
+        const v = (value && typeof value === 'object') ? value : {};
+        const adapterId = v.adapterId || v.agent || null;
+        // 测量值三级回退：挂在 value 上 > 适配器返回值 value.raw.egress > 空
+        const eg = (v.egress && typeof v.egress === 'object') ? v.egress
+            : (v.raw && v.raw.egress && typeof v.raw.egress === 'object') ? v.raw.egress : {};
+        const usage = extractUsage(value) || eg.usage || null;   // 复用 relay-ledger 挖取逻辑
+        const tokens = (usage && Number.isFinite(usage.totalTokens))
+            ? usage.totalTokens
+            : (Number.isFinite(v.totalTokens) ? v.totalTokens : null);
+        const bytesOut = Number.isFinite(v.bytesOut) ? v.bytesOut
+            : (Number.isFinite(eg.bytesOut) ? eg.bytesOut : null);
+        const destHost = v.upstreamHost || eg.upstreamHost || null;
+        return this.egressLedger.record({
+            client: adapterId,
+            destHost,
+            bytes: bytesOut,
+            tokens,
+            runId: ctx && ctx.runId,
+            subtaskId: st.id,
+            shadow: this.shadowMode,
+        });
+    }
+
+    // 编排级总超时：deadline 为空 → 直接走 _invoke（逐字零行为变更）。
+    // ⚠️ Promise.race 只让编排器收敛，不取消底层 executor：超时后迟到的结果与副作用仍可能发生。
+    async _invokeWithDeadline(st, ctx, deadline) {
+        if (deadline == null) return this._invoke(st, ctx);
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) throw this._deadlineError();
+        let timer = null;
+        try {
+            return await Promise.race([
+                this._invoke(st, ctx),
+                new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(this._deadlineError()), remainingMs);
+                }),
+            ]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    _deadlineError() {
+        const e = new Error('orchestrator: run deadline exceeded');
+        e.code = 'ORCH_DEADLINE';
+        return e;
+    }
+
+    async _invoke(st, ctx) {
+        if (typeof this.executor !== 'function') throw new Error('orchestrator: no executor injected (non-shadow)');
+        // 质量工程 2.3：下发前快照透传字段，executor 返回后比对，防交付变样。
+        const snap = this.fidelityCheck ? snapshotSubtask(st) : null;
+        // 非 shadow：经 executor 执行（executor 内部可用 this.routeEngine 选 adapter，但 adapter 调用是 executor 自己的事）
+        const result = await this.executor(st, ctx);
+        if (this.fidelityCheck) {
+            const { ok, mutations } = diffFidelity(snap, st);
+            if (!ok) {
+                this._fidelityIssues.push({ id: st.id, mutations });
+                if (this.fidelityThrow) assertFidelity(snap, st); // error 级硬拒
+            }
+        }
+        return result;
+    }
+
+    _aggregate(subtasks, results, meta) {
+        const order = subtasks.map((s) => s.id);
+        const json = {
+            runId: meta.runId,
+            shadowMode: meta.shadowMode,
+            input: meta.input,
+            summary: order.reduce((acc, id) => Object.assign(acc, { [id]: results[id] ? results[id].status : 'missing' }), {}),
+            subtasks: order.map((id) => results[id] || { id, status: 'missing' }),
+        };
+        const md = this._toMarkdown(json);
+        return { json, markdown: md };
+    }
+
+    _toMarkdown(r) {
+        const lines = [`# 编排结果 ${r.runId}${r.shadowMode ? '（shadow 模式）' : ''}`];
+        if (r.input) lines.push('', `**输入**：${r.input}`);
+        lines.push('');
+        for (const s of r.subtasks) {
+            const tag = s.status === 'done' ? '✅' : s.status === 'skipped' ? '⏭️' : s.status === 'failed' ? '❌' : '·';
+            let v = '';
+            if (s.value) v = typeof s.value === 'string' ? ` → ${s.value.slice(0, 40)}` : ' → ' + JSON.stringify(s.value).slice(0, 40);
+            const fb = s.via ? ` (via ${s.via})` : '';
+            lines.push(`- ${tag} ${s.id}${fb}${v}`);
+        }
+        return lines.join('\n');
+    }
+
+    _persistHistory(entry) {
+        if (!this.dir) return;                       // 非侵入：未注入 dir 仅内存
+        try {
+            fs.mkdirSync(this.dir, { recursive: true });
+            const file = path.join(this.dir, 'orchestration-history.json');
+            let prev = [];
+            try { prev = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { prev = []; }
+            prev.push(entry);
+            const tmp = file + '.tmp';
+            fs.writeFileSync(tmp, JSON.stringify(prev, null, 2));
+            fs.renameSync(tmp, file);                 // 原子写
+        } catch { /* 落盘失败不影响主流程 */ }
+    }
+}
+
+module.exports = { Orchestrator, DEFAULT_MAX_RETRIES };

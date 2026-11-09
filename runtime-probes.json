@@ -1,0 +1,15 @@
+[
+  {
+    "name": "node",
+    "cmd": "node",
+    "args": ["-v"],
+    "fix": "装 Node.js 18+（本项目所有服务都跑在它上面）"
+  },
+  {
+    "name": "codex",
+    "cmd": "codex",
+    "args": ["--version"],
+    "optional": true,
+    "fix": "codex 命令被执行即 SIGKILL(137) 时，多半是那份二进制的签名证书被 Apple 吊销了。换成签名有效的版本，或让它指向 /Applications/ChatGPT.app/Contents/Resources/codex（app 内置的那份，随 app 一起更新）"
+  }
+]

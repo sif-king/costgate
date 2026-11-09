@@ -1,0 +1,8 @@
+{
+  "panelDir": "public",
+  "routeDir": "routes",
+  "serverFile": "server.js",
+  "testDir": "tests",
+  "gatePrefix": "PROXY_",
+  "ignore": ["node_modules", "dist"]
+}

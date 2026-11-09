@@ -1,0 +1,2529 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Proxy Manager - 代理配置</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='24' font-size='20' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial,sans-serif'%3EP%3C/text%3E%3C/svg%3E" type="image/svg+xml">
+    <link rel="stylesheet" href="./colors_and_type.css">
+    <link rel="stylesheet" href="./shared-styles.css">
+    <!-- 设计系统 v1.0（2026-10-16 迁移）：新 token + 新组件层；旧两 CSS 保留作别名桥；新层最后加载＝视觉默认 -->
+    <link rel="stylesheet" href="./tokens.css">
+    <link rel="stylesheet" href="./components.css">
+  <script src="./theme.js"></script>
+</head>
+<style>
+/* ============================================
+   Proxy Config Page Specific Styles
+   ============================================ */
+
+/* Hamburger Button */
+.hamburger-btn {
+  display: none;
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 200;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+/* Sidebar Close Button */
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+/* Proxy Header */
+.proxy-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.proxy-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.proxy-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.proxy-title-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.proxy-title-group h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.proxy-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  flex-wrap: wrap;
+}
+
+.port-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+}
+
+.proxy-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Tabs Container */
+.tabs-container {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.section-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  overflow-x: auto;
+}
+
+.section-tab {
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.section-tab:hover {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+.section-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  background: var(--color-bg);
+  font-weight: 600;
+}
+
+.section-tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.section-tab:disabled:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
+.tab-content {
+  display: none;
+  padding: 24px;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Cards */
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.card-subtitle {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 16px;
+}
+
+/* Info Grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-value {
+  font-size: 13px;
+  color: var(--color-text);
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.info-value.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Balance Grid */
+.balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.balance-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.balance-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.balance-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.balance-currency {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-left: 4px;
+}
+
+/* History Table */
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.history-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table-wrapper th {
+  text-align: left;
+  padding: 8px 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.table-wrapper td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.table-wrapper tr:last-child td {
+  border-bottom: none;
+}
+
+/* Key Toggle Button */
+.key-toggle-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.key-toggle-btn:hover {
+  background: var(--color-bg);
+  border-color: var(--color-text-tertiary);
+}
+
+/* Provider Enable Toggle */
+.provider-enable-toggle {
+  /* Visually hidden but still part of label flow */
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.result-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.result-dot .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.result-dot.success {
+  color: var(--color-success);
+}
+
+.result-dot.success .dot {
+  background: var(--color-success);
+}
+
+.result-dot.fail {
+  color: var(--color-error);
+}
+
+.result-dot.fail .dot {
+  background: var(--color-error);
+}
+
+/* Select Wrapper */
+.select-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.select-wrapper .form-select {
+  padding-right: 32px;
+}
+
+/* Current Model Info */
+.current-model-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+}
+
+.current-model-info .model-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.current-model-info .model-desc {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+/* Model Switcher */
+.model-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-switcher .btn {
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .hamburger-btn {
+    display: flex;
+  }
+
+  .sidebar-close {
+    display: block;
+  }
+
+  .proxy-header {
+    flex-direction: column;
+  }
+
+  .proxy-header-actions {
+    width: 100%;
+  }
+
+  .proxy-header-actions .btn {
+    flex: 1;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .section-tab {
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+
+  /* Icon-only action buttons */
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+
+  .btn-icon:hover {
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+    border-color: var(--color-text-tertiary);
+  }
+
+  .btn-icon.btn-danger:hover {
+    background: var(--color-error-light);
+    color: var(--color-error);
+    border-color: var(--color-error);
+  }
+
+  /* Actions cell - center buttons vertically */
+  .actions {
+    white-space: nowrap;
+  }
+
+  .actions .btn {
+    margin-right: 8px;
+  }
+
+  .actions .btn:last-child {
+    margin-right: 0;
+  }
+
+  .tab-content {
+    padding: 16px;
+  }
+}
+</style>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo-icon">P</div>
+      <h1>Multi-Proxy Manager</h1>
+      <button class="sidebar-close" onclick="closeSidebar()" aria-label="关闭侧边栏">&times;</button>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <a class="nav-item" href="dashboard.html" data-tooltip="返回概览">
+        <span class="icon">&#8592;</span> 返回概览
+      </a>
+      <div class="nav-section-label">代理服务</div>
+      <a class="nav-item" href="proxy-config.html?proxy=codex" data-tooltip="Codex Proxy">
+        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg></span> Codex Proxy
+      </a>
+      <a class="nav-item" href="proxy-config.html?proxy=hermes" data-tooltip="Hermes Proxy">
+        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Hermes Proxy
+      </a>
+      <a class="nav-item active" href="proxy-config.html?proxy=cursor" data-tooltip="Cursor Proxy">
+        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span> Cursor Proxy
+      </a>
+      <div class="nav-section-label">系统</div>
+      <a class="nav-item" href="logs.html" data-tooltip="查看系统日志">
+        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> 日志
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="version-info">v1.0.0</div>
+      <button class="btn btn-outline btn-sm" onclick="handleLogout()" title="退出登录">登出</button>
+    </div>
+  </aside>
+
+  <div class="loading-bar" id="loadingBar"></div>
+  <main class="main">
+    <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="打开侧边栏">
+      <svg class="icon-svg icon-svg-lg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    
+    <!-- Offline Banner -->
+    <div class="offline-banner hidden" id="offlineBanner">
+      <span class="offline-banner-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+      <span>后端服务未运行，当前显示模拟数据。请确认 Manager 服务已启动。</span>
+    </div>
+    
+    <!-- Proxy Header -->
+    <div class="proxy-header">
+      <div class="proxy-header-left">
+        <div class="proxy-icon">C</div>
+        <div class="proxy-title-group">
+          <h2>Cursor Proxy</h2>
+          <div class="proxy-meta">
+            <span class="status-badge online" id="proxyStatusBadge">
+              <span class="dot"></span>
+              <span id="proxyStatusText">运行中</span>
+            </span>
+            <span class="port-badge">Port 18794</span>
+          </div>
+        </div>
+      </div>
+      <div class="proxy-header-actions">
+        <button class="btn btn-primary" id="btnStartStop" onclick="toggleProxyStatus()">
+          <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 停止
+        </button>
+        <button class="btn" onclick="refreshPage()">
+          <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 刷新
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Container -->
+    <div class="tabs-container">
+      <div class="section-tabs">
+        <div class="section-tab active" data-tab="config" onclick="switchTab(this, 'config')">配置</div>
+        <div class="section-tab" data-tab="providers" onclick="switchTab(this, 'providers')" id="tab-providers-btn" disabled title="该代理暂不支持供应商管理">供应商</div>
+        <div class="section-tab" data-tab="models" onclick="switchTab(this, 'models')">模型</div>
+        <div class="section-tab" data-tab="balances" onclick="switchTab(this, 'balances')" id="tab-balances-btn" disabled title="该代理暂不支持余额查询">余额</div>
+      </div>
+
+      <!-- Config Tab -->
+      <div class="tab-content active" id="tab-config">
+        <div class="card">
+          <div class="card-title">当前配置</div>
+          <div class="card-subtitle">查看和修改代理的配置参数</div>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">配置文件路径</span>
+              <span class="info-value mono">~/.cursor/multi-model-config.json</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">当前模型</span>
+              <span class="info-value">claude-sonnet-4-20250514</span>
+            </div>
+            <div class="info-item" id="routingModeItem" style="display:none;">
+              <span class="info-label">路由模式</span>
+              <div class="select-wrapper">
+                <select id="routingModeSelect" onchange="changeRoutingMode(this.value)" class="form-select">
+                  <option value="failover" selected title="故障转移，主 Provider 失败自动切换到备用">Failover</option>
+                  <option value="round-robin" title="轮询分发请求">Round Robin</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Providers Tab -->
+      <div class="tab-content" id="tab-providers">
+        <div class="card">
+          <div class="card-title">供应商管理</div>
+          <div class="card-subtitle">管理供应商配置，支持增删改查操作</div>
+          <div style="margin-bottom: 16px;">
+            <button class="btn btn-primary" onclick="showAddProviderModal()">+ 添加供应商</button>
+          </div>
+          <div class="table-wrapper">
+            <table id="providersTable">
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>Provider ID</th>
+                  <th>Base URL</th>
+                  <th>API Key <button class="key-toggle-btn" id="keyToggleBtn" title="显示/隐藏密钥"><svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button></th>
+                  <th>启用</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="providersBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Models Tab -->
+      <div class="tab-content" id="tab-models">
+        <div class="card">
+          <div class="card-title">模型切换</div>
+          <div class="card-subtitle">选择并切换到新的模型</div>
+          <div class="model-switcher">
+            <div class="select-wrapper">
+              <select id="modelSelect" class="form-select"></select>
+            </div>
+            <button class="btn btn-primary" onclick="switchCurrentModel()">切换模型</button>
+          </div>
+          <div class="current-model-info">
+            当前模型: <strong id="currentModelDisplay">claude-sonnet-4-20250514</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Balances Tab -->
+      <div class="tab-content" id="tab-balances">
+        <div class="card">
+          <div class="card-title">账户余额</div>
+          <div class="card-subtitle">查看各供应商账户余额信息</div>
+          <div class="balance-grid" id="balanceGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History Section -->
+    <div class="card">
+      <div class="history-header">
+        <div>
+          <div class="card-title" style="margin-bottom: 0;">切换历史</div>
+          <div class="card-subtitle" style="margin-bottom: 0;">最近 20 条模型切换记录</div>
+        </div>
+        <button class="btn" onclick="clearHistory()"><svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> 清除历史</button>
+      </div>
+      <div class="table-wrapper" style="margin-top: 12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>动作</th>
+              <th>旧模型</th>
+              <th>新模型</th>
+              <th>结果</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // ⚠️ 命名警示（2026-10-16）：MOCK_MODELS / MOCK_BALANCES 名字带 MOCK，
+    // 但它们**不是假数据，是已加载数据的容器**——loadModelsData / loadBalancesData
+    // 往里 push 真实数据，renderModels / renderBalances 从里读。改名会牵涉十余处
+    // 引用，风险大于收益，故保留名字只在此注明。
+    // 旁边原本还有个 MOCK_PROVIDERS，那**是真假数据**（4 个假 provider 带
+    // sk-test-key-xxxxx 假 key），已于 2026-10-16 删除：它的初值曾直接当
+    // providers 初始值，loadProviders 读失败时又兜底成它。
+    var MOCK_MODELS = [
+      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+      { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+      { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet' },
+      { id: 'o3-mini', name: 'o3 mini' },
+      { id: 'gpt-4o', name: 'GPT-4o' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+      { id: 'gemini-2.5-pro-preview-05-06', name: 'Gemini 2.5 Pro' },
+    ];
+
+    var MOCK_BALANCES = [];
+    // Q3 P1-B 成本闭环：cursor 实采成本（来自 /api/status 的 actualCost，单位 CNY）。
+    // 门控关 / 无付费请求 → null，余额卡片显示空态而非伪造 USD 随机值（不产假值，AGENTS §3）。
+    var currentActualCost = null;
+
+    // 余额卡片数据源：只读真实实采成本，绝不伪造 USD 随机余额。
+    // 与后端 fetchCursorActualCost 契约一致：totalCny > 0 才显卡（0 由后端已归 null → 空态）。
+    function getBalancesFromProviders() {
+      MOCK_BALANCES.length = 0;
+      if (currentActualCost && currentActualCost.totalCny > 0) {
+        MOCK_BALANCES.push({
+          name: 'Cursor 实采成本',
+          amount: currentActualCost.totalCny,
+          currency: 'CNY',
+          requestCount: currentActualCost.requestCount || 0,
+          source: 'actual',
+         });
+       }
+      // cursor 无实采数据（门控 PROXY_CURSOR_COST 关 / 今日无付费请求）→ 空态，不产假值；
+      // codex/hermes 的账户余额由 /api/balances 真实提供，不经过此兜底。
+    }
+
+    // 切换历史：来自后端 /api/history（codex/hermes 内存记录）。
+    // cursor 无此端点，显示空态提示。
+    var switchHistory = [];
+    // 切换历史：/api 前缀的代理都有 /api/history（codex/hermes + claude/dsh/opencode/generic，
+    // 2026-10-23 逐个核实源码确认）。cursor 走 /admin-api/logs，无此端点；无前缀的 2 个也没有。
+    // 旧写法只认 codex/hermes，会给新接入的 4 个同构分叉误报「不支持切换历史」。
+    // ⚠️ 不能在顶层直接求值：它依赖 PROXY_API_PREFIX（var，本文件后面才赋值）与
+    //    currentProxyName（init() 才赋值），顶层取到的是 undefined ⇒ undefined[undefined] 抛错、
+    //    整个 init() 都不执行。故先给初值，真正的判定放到 init() 里做。
+    var historySupported = false;
+
+    // 2026-10-16：过去初值就是 MOCK_PROVIDERS.slice()——页面刚打开、
+    // loadProviders() 还没回来时，用户先看到 4 个假 provider（OpenAI /
+    // Anthropic / Gemini / Azure，api_key 是 'sk-test-key-xxxxx'）。
+    // 若 loadProviders 再失败，这些假数据会一直挂着。改成空数组，
+    // 加载前显示「加载中」而不是假配置。
+    var providers = [];
+    var isRunning = true;
+    var currentModel = 'claude-sonnet-4-20250514';
+    var currentProxyName = 'cursor';
+
+    // ==================== API Layer ====================
+    function apiBase() {
+      return '';
+    }
+
+    // 读失败统一呈现（2026-10-16 面板走查新增）。视觉用本页已有的 toast 容器
+    // 与 empty-state 文案，语义是「读不到」而不是「没有」——把读失败显示成
+    // 「暂无数据」会让用户以为自己的配置没了。
+    // 四参：containerId 容器 / title 主文案 / detail 后端原因 / hint 排查提示。
+    function showReadError(containerId, title, detail, hint) {
+      var el = document.getElementById(containerId);
+      if (!el) return;
+      var body = [detail, hint].filter(Boolean).join('<br>') || '未知错误';
+      el.innerHTML =
+        '<div style="grid-column:1/-1;padding:16px;text-align:center;">' +
+          '<div style="color:#d97706;font-weight:600;margin-bottom:6px;">' + esc(title || '读取失败') + '</div>' +
+          '<div style="font-size:12px;color:var(--color-text-tertiary,#94a3b8);line-height:1.6;max-width:460px;margin:0 auto;">' +
+            body +
+          '</div>' +
+        '</div>';
+    }
+
+    async function fetchAdminApi(path, options = {}) {
+      const prefix = PROXY_API_PREFIX[currentProxyName] || '/api';
+      const fwdUrl = '/api/' + currentProxyName + prefix + path;
+      const headers = { 'Content-Type': 'application/json' };
+      const token = sessionStorage.getItem('auth_token');
+      if (token) headers['x-auth-token'] = token;
+
+      // 2026-10-16：这里过去 catch 后 `return null`，把 HTTP 错误、网络错误、
+      // JSON 解析错误全吞成同一个值。调用方因此无法区分「成功返回 null」和
+      // 「失败」，于是 addProvider / updateProvider / deleteProviderById 的
+      // catch 分支把变更写进本地数组——**提交失败却显示成功**（刷新后消失，
+      // 用户配的 API key 会一直失败）。switchModel 的注释本来写着「失败时抛
+      // 异常，由调用方提示」，被这个 null 吞成了假 `{success:true}`。
+      // 现在失败就抛，且带上后端 body 里的 error / hint（后端常在 hint 里
+      // 写「怎么修」，丢掉它只显示机器码等于把写好的解决方案扔了）。
+      let res;
+      try {
+        res = await fetch(fwdUrl, { headers, ...options });
+      } catch (e) {
+        const err = new Error('无法连接管理端（' + e.message + '）');
+        err.networkError = true;
+        throw err;
+      }
+      let body = null;
+      try { body = await res.json(); } catch (_) { body = null; }
+      if (!res.ok) {
+        const err = new Error((body && (body.error || body.message)) || ('HTTP ' + res.status));
+        err.httpStatus = res.status;
+        err.hint = body && body.hint;
+        throw err;
+      }
+      return body;
+    }
+
+    async function loadProviders() {
+      showLoading();
+      try {
+        // Preserve full API keys from current state before loading from backend
+        var fullKeys = {};
+        for (var i = 0; i < providers.length; i++) {
+          if (providers[i].api_key && !providers[i].api_key.endsWith('****')) {
+            fullKeys[providers[i].id] = providers[i].api_key;
+          }
+        }
+        const data = await fetchAdminApi('/providers');
+        if (data && Array.isArray(data.providers)) {
+          providers = data.providers;
+        } else if (data && Array.isArray(data)) {
+          providers = data;
+        } else {
+          throw new Error('Invalid response');
+        }
+        // Restore full API keys from local state (backend masks them)
+        for (var i = 0; i < providers.length; i++) {
+          if (fullKeys[providers[i].id]) {
+            providers[i].api_key = fullKeys[providers[i].id];
+          }
+        }
+        // 成功取到（含空列表）即重绘：空→空态、有数据→列表。此前成功路径不自绘，
+        // 依赖调用方再 renderProviders，导致 init 漏调时永远停在初始空态。
+        renderProviders();
+      } catch (e) {
+        // 2026-10-16：读失败过去兜底成 MOCK_PROVIDERS——4 个假 provider
+        // 带 sk-test-key-xxxxx 假 key。用户会以为自己的 provider 配置还在，
+        // 而真相可能是后端一个都没有或完全读不到。现在如实说「读不到」。
+        providers = [];
+        getBalancesFromProviders();
+        renderProviders();
+        showReadError('providersBody', '读取失败', e.message || '未知错误',
+          'provider 列表读不到，不代表你没有配置过 provider。');
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function addProvider(name, pid, url, key, enabled, responsesTranslate, responsesTarget, messagesTranslate) {
+      try {
+        await fetchAdminApi('/providers', {
+          method: 'POST',
+          body: JSON.stringify({ name, provider_id: pid, base_url: url, api_key: key, enabled, responsesTranslate, responsesTarget, messagesTranslate }),
+        });
+        await loadProviders();
+        renderProviders();
+        await loadBalancesData();
+        renderBalances();
+        await loadModelsData();
+        renderModels();
+      } catch (e) {
+        // 2026-10-16：过去这里把提交失败的 provider 塞进本地数组——**添加失败
+        // 却显示成功**。用户刷新页面后它消失，而期间配的模型会一直失败，
+        // 且用户完全不知道原因。现在如实报错，不往本地状态里写没存上的东西。
+        showToast('添加 Provider 失败: ' + (e.message || '未知错误'), 'error', 5000);
+        if (e.hint) showToast(e.hint, 'info', 6000);
+      }
+    }
+
+    async function updateProvider(id, name, url, key, enabled, responsesTranslate, responsesTarget, messagesTranslate) {
+      try {
+        const body = { name, base_url: url, enabled, responsesTranslate, responsesTarget, messagesTranslate };
+        if (key) body.api_key = key;
+        await fetchAdminApi('/providers/' + encodeURIComponent(id), {
+          method: 'PUT',
+          body: JSON.stringify(body),
+        });
+        await loadProviders();
+        renderProviders();
+        await loadBalancesData();
+        renderBalances();
+        await loadModelsData();
+        renderModels();
+      } catch (e) {
+        // 2026-10-16：过去这里在本地把 provider 改掉——**保存失败却显示已保存**。
+        // 用户以为新的 API key / base_url 生效了，实际后端还是旧值，
+        // 于是花几小时排查为什么链路不通。现在报错并重新拉一次真实状态。
+        showToast('保存 Provider 失败: ' + (e.message || '未知错误'), 'error', 5000);
+        if (e.hint) showToast(e.hint, 'info', 6000);
+        loadProviders();
+      }
+    }
+
+    async function deleteProviderById(id) {
+      try {
+        await fetchAdminApi('/providers/' + encodeURIComponent(id), { method: 'DELETE' });
+        await loadProviders();
+        renderProviders();
+        await loadBalancesData();
+        renderBalances();
+        await loadModelsData();
+        renderModels();
+      } catch (e) {
+        // 2026-10-16：过去这里本地 splice——**删除失败却显示已删除**。用户以为
+        // 敏感的 API key 已经删掉，实际后端还存着。现在报错并回拉真实状态。
+        showToast('删除 Provider 失败: ' + (e.message || '未知错误'), 'error', 5000);
+        if (e.hint) showToast(e.hint, 'info', 6000);
+        loadProviders();
+      }
+    }
+
+    async function toggleProviderEnabledApi(id, enabled) {
+      var idx = -1;
+      for (var i = 0; i < providers.length; i++) {
+        if (providers[i].id === id) { idx = i; break; }
+      }
+      if (idx === -1) return;
+      var prevEnabled = providers[idx].enabled;
+      providers[idx].enabled = enabled;
+      renderProviders();
+      try {
+        await fetchAdminApi('/providers/' + encodeURIComponent(id), {
+          method: 'PUT',
+          body: JSON.stringify({ enabled }),
+        });
+      } catch (e) {
+        // 2026-10-16：过去这里只回滚不说原因——用户看到开关弹回去，
+        // 但不知道为什么，只会反复点。回滚保留（乐观更新失败要复原），
+        // 补一句人话。
+        providers[idx].enabled = prevEnabled;
+        renderProviders();
+        showToast('切换启用状态失败: ' + (e.message || '未知错误'), 'error', 5000);
+      }
+    }
+
+    async function testProviderConnection(id, url, key, pid) {
+      var btn = document.querySelector('.test-provider-btn[data-id="' + esc(id) + '"]');
+      if (!btn) return;
+      var origText = btn.textContent;
+      btn.textContent = '测试中...';
+      btn.disabled = true;
+      try {
+        var res = await fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ model: pid, baseUrl: url, apiKey: key }),
+        });
+        var data = await res.json();
+        if (data.success) {
+          showToast('连通性测试成功: ' + id, 'success');
+        } else {
+          showToast('连通性测试失败: ' + (data.error || '未知错误'), 'error');
+        }
+      } catch (e) {
+        showToast('连通性测试失败: ' + e.message, 'error');
+      } finally {
+        btn.textContent = origText;
+        btn.disabled = false;
+      }
+    }
+
+    async function loadModels() {
+      try {
+        const data = await fetchAdminApi('/models');
+        if (data && Array.isArray(data.models)) {
+          return data.models;
+        } else if (data && Array.isArray(data)) {
+          return data;
+        }
+      } catch {}
+      return null;
+    }
+
+    // 返回后端 JSON（含 success 字段）；网络/HTTP 失败时抛异常，由调用方提示
+    async function switchModel(modelId) {
+      // /api 前缀的代理都有专用 switch-model 端点：改写配置文件 + 记录切换历史 +
+      // 路由模式切到 config（claude/dsh/opencode/generic 与 codex/hermes 同构，2026-10-23 核实）。
+      // cursor 无此端点，用 settings KV 持久化当前模型。
+      if (proxySupportsFullAdmin(currentProxyName)) {
+        const prefix = PROXY_API_PREFIX[currentProxyName] || '/api';
+        const fwdUrl = '/api/' + currentProxyName + prefix + '/switch-model';
+        const res = await fetch(fwdUrl, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ model: modelId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || ('HTTP ' + res.status));
+        }
+        return data;
+      }
+      await fetchAdminApi('/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ key: 'current_model', value: modelId }),
+      });
+      return { success: true };
+    }
+
+    async function loadBalances() {
+      try {
+        const data = await fetchAdminApi('/balances');
+        if (data && Array.isArray(data)) {
+          return data;
+        }
+      } catch {}
+      // Fallback: manager has GET /api/balances?proxy={name} that returns normalized array
+      try {
+        const res = await fetch('/api/balances?proxy=' + currentProxyName, {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const arr = await res.json();
+          if (Array.isArray(arr) && arr.length > 0) return arr;
+        }
+      } catch {}
+      return null;
+    }
+
+    function getProxyFromUrl() {
+      var params = new URLSearchParams(window.location.search);
+      return params.get('proxy') || 'cursor';
+    }
+
+    // 2026-10-23 Phase B：与 dashboard 的 PROXY_CONFIGS 同源 —— 同样的 9 个代理、同样的名称与图标。
+    // 此前这里只硬编码 3 个（codex/hermes/cursor），而 dashboard 已列 9 个 ⇒ 同一产品两处不一致（取证报告 P0-8）。
+    var proxyDisplayNameMap = {
+      codex: 'Codex Proxy',
+      hermes: 'Hermes Proxy',
+      cursor: 'Cursor Proxy',
+      claude: 'Claude Proxy',
+      dsh: 'DSH Proxy',
+      opencode: 'OpenCode Proxy',
+      generic: 'Generic OpenAI Proxy',
+      'opencode-free': 'OpenCode Free',
+      'workbuddy-shim': 'WorkBuddy Shim',
+    };
+
+    // 图标与 dashboard PROXY_CONFIGS 逐一对齐（单一 SVG 图标语言，避免两套并存）
+    var proxyIconMap = {
+      codex: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>',
+      hermes: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+      cursor: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>',
+      claude: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9h16M6 4h12l-2 16H8L6 4z"/><circle cx="12" cy="9" r="1"/></svg>',
+      dsh: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="7 9 10 12 7 15"/><line x1="12" y1="15" x2="17" y2="15"/></svg>',
+      opencode: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+      generic: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>',
+      'opencode-free': '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2l7 4v8l-7 4-7-4V6l7-4z"/><polyline points="9 12 11.5 14.5 16 9"/></svg>',
+      'workbuddy-shim': '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    };
+
+    var proxyColorMap = {
+      // B: 使用令牌层定义的代理色，避免硬编码（颜色令牌化）
+      // codex/hermes 有专属代理色令牌；其余回落主色令牌（不新增硬编码）
+      codex: { bg: 'var(--color-prov-codex-bg)', color: 'var(--color-prov-codex-fg)', letter: 'C' },
+      hermes: { bg: 'var(--color-prov-hermes-bg)', color: 'var(--color-prov-hermes-fg)', letter: 'H' },
+      cursor: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)', letter: 'C' },
+      claude: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)', letter: 'C' },
+      dsh: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)', letter: 'D' },
+      opencode: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)', letter: 'O' },
+      generic: { bg: 'var(--color-primary-light)', color: 'var(--color-primary)', letter: 'G' },
+      'opencode-free': { bg: 'var(--color-primary-light)', color: 'var(--color-primary)', letter: 'F' },
+      'workbuddy-shim': { bg: 'var(--color-primary-light)', color: 'var(--color-primary)', letter: 'W' },
+    };
+
+    // Each proxy backend uses a different URL prefix for its admin API
+    // 前缀逐个核实（2026-10-23），不是猜的：
+    //   codex/claude/dsh/opencode/generic = codex-proxy 同构分叉，均暴露完整 /api/* 管理面
+    //     （config/settings/routing-mode/providers/status|CRUD/history/switch-model/test-connection/balances）
+    //   hermes = /api（服务端 routes/proxy-api.js PROXY_API_PATHS 既有定义）
+    //   cursor = /admin-api（TS 构建产物，既有定义）
+    var PROXY_API_PREFIX = {
+      codex: '/api',
+      hermes: '/api',
+      cursor: '/admin-api',
+      claude: '/api',
+      dsh: '/api',
+      opencode: '/api',
+      generic: '/api',
+    };
+
+    // 不提供面板可配置管理 API 的代理（2026-10-23 实测：源码里无任何 /api/* 或 /admin-api/* 管理路由）。
+    // 这些代理只能查看与启停，不能配置 —— 面板必须给出明确「不支持」态，绝不能露出点了就 404 的假控件。
+    var PROXY_NO_ADMIN_API = ['opencode-free', 'workbuddy-shim'];
+
+    function proxyHasAdminApi(name) {
+      return PROXY_NO_ADMIN_API.indexOf(name) === -1;
+    }
+
+    // ===== 能力判断（按已核实的前缀推导，不再硬编码代理名）=====
+    // 旧代码到处写 `=== 'codex' || === 'hermes'`，导致 2026-10-23 新接入的
+    // claude / dsh / opencode / generic（同为 /api 前缀的同构分叉）被误判为「不支持」，
+    // 甚至会去取 /api/cursor/admin-api/settings 把 cursor 的模型显示成自己的。
+    // 统一改为：看前缀，不看名字。
+    function proxyPrefix(name) { return PROXY_API_PREFIX[name] || null; }
+
+    // /api 前缀的代理（codex / hermes / claude / dsh / opencode / generic）暴露完整管理面，
+    // 含 config / settings / routing-mode / providers CRUD / history / switch-model / test-connection / balances。
+    function proxySupportsFullAdmin(name) { return proxyPrefix(name) === '/api'; }
+
+    // 面板可配置 = 有管理 API 前缀（cursor 走 /admin-api，其余 /api；无前缀的 2 个不支持）
+    function proxySupportsPanel(name) { return !!proxyPrefix(name); }
+
+    // ===== 代理侧栏列表（与 dashboard 同源）=====
+    // 来源与 dashboard 的 loadInstalledProxies() 完全一致：先 /api/installed，取不到再回落本地映射的 key。
+    // 这样两边永远不会再出现「dashboard 9 个、proxy-config 3 个」的不一致。
+    var allProxyStatus = {};   // /api/status 全量状态（各代理 running），供徽标使用
+    var installedProxyNames = [];
+
+    function loadInstalledProxies() {
+      return fetch('/api/installed')
+        .then(function (res) { if (!res.ok) throw new Error(); return res.json(); })
+        .then(function (names) { if (names && names.length > 0) return names; throw new Error(); })
+        .catch(function () { return Object.keys(proxyDisplayNameMap); });
+    }
+
+    // 时序竞争修复：renderNav 在文档末尾执行，而 /api/installed 可能先返回。
+    // 早到的那次渲染不能丢 —— 先存起来，等 nav.js 派发 mp-nav-rendered 再补渲染。
+    var pendingProxyNames = null;
+
+    function renderDynamicProxyNav(proxyNames) {
+      if (proxyNames) pendingProxyNames = proxyNames;
+      var container = document.getElementById('proxyNavItems');
+      if (!container) return;   // 容器还没建好：等 mp-nav-rendered 事件来叫我们再画
+      var names = pendingProxyNames || [];
+      installedProxyNames = names;
+      var label = document.getElementById('proxySectionLabel');
+      if (label) label.style.display = names.length > 0 ? '' : 'none';
+
+      if (names.length === 0) {
+        container.innerHTML = '<div class="nav-item" style="color:var(--color-text-tertiary);font-size:12px;padding:4px 12px;">暂无代理</div>';
+        return;
+      }
+
+      container.innerHTML = names.map(function (name) {
+        var st = allProxyStatus[name];
+        var running = !!(st && st.running);
+        var isCurrent = (name === currentProxyName);
+        return '<a href="proxy-config.html?proxy=' + encodeURIComponent(name) + '" class="nav-item proxy-nav-item' +
+          (isCurrent ? ' active' : '') + '" data-proxy="' + esc(name) + '"' +
+          ' data-tooltip="' + esc(proxyDisplayNameMap[name] || name) + '" tabindex="0"' +
+          (isCurrent ? ' aria-current="page"' : '') + '>' +
+          '<span class="nav-icon">' + (proxyIconMap[name] || '') + '</span>' +
+          esc(proxyDisplayNameMap[name] || name) +
+          '<span class="nav-badge ' + (running ? 'running' : 'stopped') + '">' + (running ? 'ON' : 'OFF') + '</span>' +
+          '</a>';
+      }).join('');
+    }
+
+    // nav.js 在文档末尾才建好 #proxyNavItems。若 /api/installed 先回来了，
+    // 那次渲染只是暂存 —— 这里等容器就绪的事件一到就补画，避免代理列表时有时无。
+    document.addEventListener('mp-nav-rendered', function () {
+      if (pendingProxyNames) renderDynamicProxyNav(pendingProxyNames);
+    });
+
+    // 已落地 Responses API 协议翻译（l2/responses-translate.js + 各 proxy handleTranslatedResponses）
+    // 的代理集合。hermes 是 Python、cursor 是 TS 构建产物，翻译层未同步过去——不露死开关。
+    var RESPONSES_TRANSLATE_PROXIES = ['codex', 'claude', 'opencode', 'generic'];
+    // Messages 协议翻译只对 claude 代理有意义：Claude Code 只说 /v1/messages，
+    // 而免费模型池只说 /v1/chat/completions。
+    var MESSAGES_TRANSLATE_PROXIES = ['claude'];
+
+    var displayName;
+
+    // ==================== Core Init ====================
+    function init() {
+      // Cross-tab status sync via BroadcastChannel
+      try {
+        window.__statusChannel = new BroadcastChannel('proxy-status');
+        window.__statusChannel.onmessage = function(e) {
+          if (e.data && e.data.type === 'proxy-status-changed') {
+            fetchStatus();
+          }
+        };
+      } catch {}
+      currentProxyName = getProxyFromUrl();
+      // 到这里 currentProxyName 与 PROXY_API_PREFIX 都已就绪，才能真正按能力判定
+      historySupported = proxySupportsFullAdmin(currentProxyName);
+      displayName = proxyDisplayNameMap[currentProxyName] || currentProxyName;
+      document.title = displayName + ' - 配置';
+      applySavedDarkMode();
+      updateProxyHeader(displayName);
+      highlightActiveNav();
+      setupDynamicTabs();
+      setupRoutingModeVisibility();
+
+      var tabName = getTabFromHash();
+      var tabEl = document.querySelector('.section-tab[data-tab="' + tabName + '"]');
+      if (tabEl) {
+        switchTab(tabEl, tabName);
+      }
+
+      renderProviders();
+      renderModels();
+      renderBalances();
+      loadHistory();
+      loadConfigData();
+      fetchStatus();
+      // Phase C：页面打开即拉取真实的 provider / 模型数据。此前 init 从不调用，
+      // 导致 providers 恒为空、models 恒为 8 个硬编码占位，用户看不到真实配置。
+      // 两者成功路径内部已自行重绘（空则空态、有则列表）；读失败由各自 catch 呈现。
+      loadProviders();
+      loadModelsData();
+      // 代理侧栏列表（9 个，与 dashboard 同源）：异步，等 renderNav 建好 #proxyNavItems 后再填
+      loadInstalledProxies().then(renderDynamicProxyNav);
+    }
+
+    // ==================== P4: Dynamic Tabs ====================
+    function setupDynamicTabs() {
+      var providersBtn = document.getElementById('tab-providers-btn');
+      var balancesBtn = document.getElementById('tab-balances-btn');
+
+      // 无管理 API 的代理（opencode-free / workbuddy-shim，源码实测无任何管理路由）：
+      // 供应商 / 余额 tab 背后没有端点，启用就会变成点了 404 的假 tab —— 禁用并说明原因。
+      // 注意：必须用 <button disabled>（本页 tab 已 button 化），CSS :disabled 对 div 无效。
+      if (!proxySupportsPanel(currentProxyName)) {
+        var why = '该代理不提供面板配置接口，仅可查看与启停';
+        [providersBtn, balancesBtn].forEach(function (btn) {
+          if (!btn) return;
+          btn.disabled = true;
+          btn.setAttribute('title', why);
+          btn.style.opacity = '0.5';
+          btn.style.cursor = 'not-allowed';
+        });
+        return;
+      }
+
+      if (providersBtn) {
+        providersBtn.disabled = false;
+        providersBtn.removeAttribute('style');
+        providersBtn.removeAttribute('title');
+      }
+      if (balancesBtn) {
+        balancesBtn.disabled = false;
+        balancesBtn.removeAttribute('title');
+        balancesBtn.removeAttribute('style');
+      }
+    }
+
+    function setupRoutingModeVisibility() {
+      // Routing mode is only available for Cursor proxy
+      var routingItem = document.getElementById('routingModeItem');
+      var routingSelect = document.getElementById('routingModeSelect');
+      if (currentProxyName === 'cursor') {
+        if (routingItem) routingItem.style.display = '';
+        if (routingSelect) routingSelect.disabled = false;
+      } else {
+        if (routingItem) routingItem.style.display = 'none';
+        if (routingSelect) routingSelect.disabled = true;
+      }
+    }
+
+    function highlightActiveNav() {
+      var items = document.querySelectorAll('.nav-item');
+      for (var i = 0; i < items.length; i++) {
+        var href = items[i].getAttribute('href') || '';
+        items[i].classList.remove('active');
+        if (href.indexOf('proxy=' + currentProxyName) !== -1) {
+          items[i].classList.add('active');
+        }
+      }
+    }
+
+    function updateProxyHeader(name) {
+      var h2 = document.querySelector('.proxy-title-group h2');
+      if (h2) h2.textContent = name;
+      var icon = document.querySelector('.proxy-icon');
+      if (icon) {
+        var colors = proxyColorMap[currentProxyName] || proxyColorMap.cursor;
+        icon.textContent = colors.letter;
+        icon.style.background = 'linear-gradient(135deg, ' + colors.color + ' 0%, ' + adjustColor(colors.color, 40) + ' 100%)';
+      }
+      var portBadge = document.querySelector('.port-badge');
+      if (portBadge) {
+        var ports = { codex: 18790, hermes: 18793, cursor: 18794 };
+        portBadge.textContent = 'Port ' + (ports[currentProxyName] || 0);
+      }
+      // Update config file path based on proxy type
+      var configPathEl = document.querySelector('.info-item:first-child .info-value.mono');
+      if (configPathEl) {
+        var paths = {
+          codex: '~/.codex/multi-model-config.json',
+          hermes: '~/.hermes/config.json',
+          cursor: '~/.cursor/multi-model-config.json',
+        };
+        configPathEl.textContent = paths[currentProxyName] || '~/.multi-proxy/config.json';
+      }
+    }
+
+    function adjustColor(hex, amount) {
+      hex = hex.replace('#', '');
+      var r = Math.min(255, parseInt(hex.substring(0, 2), 16) + amount);
+      var g = Math.min(255, parseInt(hex.substring(2, 4), 16) + amount);
+      var b = Math.min(255, parseInt(hex.substring(4, 6), 16) + amount);
+      return '#' + [r, g, b].map(function(c) { return c.toString(16).padStart(2, '0'); }).join('');
+    }
+
+    async function loadModelsData() {
+      showLoading();
+      try {
+        var models = await loadModels();
+        if (models) {
+          MOCK_MODELS.length = 0;
+          for (var i = 0; i < models.length; i++) {
+            MOCK_MODELS.push({ id: models[i].id || models[i].model_id || models[i], name: models[i].name || models[i].display_name || models[i] });
+          }
+          // 成功取到模型（含空列表）即重绘：空→空态、有数据→下拉。
+          renderModels();
+          // 2026-10-16：过去这里在列表为空时塞一个假模型 'claude-sonnet-4'。
+          // 模型下拉是「选哪个模型」的唯一入口，出现一个后端不存在的模型，
+          // 用户选它只会得到上游报错。空就是空，让用户看到「没读到模型」。
+
+        }
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function loadBalancesData() {
+      showLoading();
+      try {
+        var balances = await loadBalances();
+        if (balances && balances.length > 0) {
+          MOCK_BALANCES.length = 0;
+          for (var i = 0; i < balances.length; i++) {
+            var rawAmt = balances[i].amount !== undefined ? balances[i].amount : balances[i].balance;
+            var amt;
+            if (typeof rawAmt === 'number') {
+              amt = rawAmt;
+            } else if (rawAmt !== undefined && rawAmt !== null) {
+              var parsed = parseFloat(rawAmt);
+              amt = isNaN(parsed) ? rawAmt : parsed;
+            } else {
+              amt = 0;
+            }
+            MOCK_BALANCES.push({
+              name: balances[i].name || balances[i].provider_name || 'Unknown',
+              amount: amt,
+              currency: balances[i].currency || 'USD',
+            });
+          }
+        }
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function loadConfigData() {
+      showLoading();
+      try {
+        // 【2026-10-23 修正】原分支硬编码 `codex || hermes`，其余一律走
+        //   /api/cursor/admin-api/settings —— 新接入的 claude/dsh/opencode/generic
+        //   会落进 else，把 **cursor 的模型当成自己的** 显示出来（数据串台）。
+        // 改为按前缀推导：/api → <name>/api/config（{model}）；/admin-api → <name>/admin-api/settings（settings.current_model）。
+        var prefix = proxyPrefix(currentProxyName);
+        if (!prefix) { hideLoading(); return; }   // 无管理 API 的代理：不请求，避免 404 假态
+        var url, modelKey;
+        if (prefix === '/api') {
+          url = '/api/' + currentProxyName + '/api/config';
+          modelKey = 'model';
+        } else {
+          url = '/api/' + currentProxyName + prefix + '/settings';
+          modelKey = 'current_model';
+        }
+        var res = await fetch(url, {
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        });
+        if (!res.ok) return;
+        var data = await res.json();
+        var s = (modelKey === 'model') ? data : data.settings;
+        if (!s) return;
+        if (s[modelKey]) {
+          currentModel = s[modelKey];
+          var disp = document.getElementById('currentModelDisplay');
+          if (disp) disp.textContent = s[modelKey];
+          var sel = document.getElementById('modelSelect');
+          if (sel) {
+            for (var i = 0; i < sel.options.length; i++) {
+              if (sel.options[i].value === s[modelKey]) { sel.selectedIndex = i; break; }
+            }
+          }
+        }
+        if (s.routing_mode) {
+          var sel2 = document.getElementById('routingModeSelect');
+          if (sel2) sel2.value = s.routing_mode;
+        }
+      } catch (e) {
+        // 2026-10-24：原 catch {} 静默吞错——配置读失败时 modelSelect / 当前模型显示
+        // 停在旧值或空白，用户无从得知。现改为显式报错：toast 提示 + 当前模型标「读取失败」。
+        console.error('[proxy-config] loadConfigData failed:', e);
+        showToast('配置读取失败：' + ((e && e.message) || '未知错误'), 'error', 5000);
+        var dispCfg = document.getElementById('currentModelDisplay');
+        if (dispCfg) { dispCfg.textContent = '读取失败'; dispCfg.style.color = 'var(--subtle)'; }
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function getAuthHeaders() {
+      var token = sessionStorage.getItem('auth_token');
+      var h = { 'Content-Type': 'application/json' };
+      if (token) h['x-auth-token'] = token;
+      return h;
+    }
+
+    // B6: 全局 401 拦截 —— token 过期/无效时跳转登录页，避免页面显示错误状态。
+    // auth 端点自身的 401（密码错误）不拦截。本页 fetch 均为相对 /api/ 路径。
+    (function() {
+      var origFetch = window.fetch;
+      window.fetch = function(url, options) {
+        var p = origFetch(url, options);
+        if (typeof url === 'string' && url.indexOf('/api/') === 0
+            && url.indexOf('/api/auth/') !== 0) {
+          p.then(function(res) {
+            if (res.status === 401) {
+              sessionStorage.removeItem('auth_token');
+              window.location.href = 'login.html';
+            }
+          }).catch(function() {});
+        }
+        return p;
+      };
+    })();
+
+    async function fetchStatus() {
+      try {
+        var res = await fetch('/api/status');
+        if (res.ok) {
+          hideOfflineBanner();
+          var data = await res.json();
+          // 存全量状态（各代理 running），供侧栏 9 个代理的 ON/OFF 徽标使用；
+          // 徽标刷新一次即可，避免为 9 个代理各发一次请求。
+          allProxyStatus = data || {};
+          if (installedProxyNames.length) renderDynamicProxyNav(installedProxyNames);
+          if (data[currentProxyName]) {
+            var st = data[currentProxyName];
+            isRunning = st.running;
+             // Q3 P1-B：cursor 实采成本（/status.actualCost，CNY 实采）→ 余额卡片。
+             // 非 cursor / 门控关 / 无数据 = null → 空态（不产假值，不伪造 USD）。
+             // 仅 cursor 走此路，codex/hermes 余额仍由 /api/balances 真实提供，不被清。
+            if (currentProxyName === 'cursor') {
+              currentActualCost = st.actualCost || null;
+              getBalancesFromProviders();
+              renderBalances();
+             }
+            var badge = document.getElementById('proxyStatusBadge');
+            var text = document.getElementById('proxyStatusText');
+            var btn = document.getElementById('btnStartStop');
+            if (st.running) {
+              badge.className = 'status-badge online';
+              text.textContent = '运行中';
+              btn.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 停止';
+            } else {
+              badge.className = 'status-badge offline';
+              text.textContent = '未运行';
+              btn.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg> 启动';
+            }
+          }
+        } else {
+          showOfflineBanner();
+        }
+      } catch {
+        showOfflineBanner();
+      }
+    }
+
+    // ==================== Offline Banner ====================
+    function showOfflineBanner() {
+      var banner = document.getElementById('offlineBanner');
+      if (banner) banner.classList.remove('hidden');
+    }
+
+    function hideOfflineBanner() {
+      var banner = document.getElementById('offlineBanner');
+      if (banner) banner.classList.add('hidden');
+    }
+
+    // ==================== Logout ====================
+    function handleLogout() {
+      sessionStorage.removeItem('auth_token');
+      window.location.href = 'login.html';
+    }
+
+    async function toggleProxyStatus() {
+      var name = currentProxyName;
+      var btn = document.getElementById('btnStartStop');
+      var badge = document.getElementById('proxyStatusBadge');
+      var text = document.getElementById('proxyStatusText');
+
+      if (isRunning) {
+        try {
+          var res = await fetch('/api/stop/' + name, { method: 'POST', headers: getAuthHeaders() });
+          var data = await res.json();
+          if (data.success) {
+            isRunning = false;
+            badge.className = 'status-badge offline';
+            text.textContent = '未运行';
+            btn.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg> 启动';
+            showToast(displayName + ' 已停止', 'info');
+            try { window.__statusChannel && window.__statusChannel.postMessage({ type: 'proxy-status-changed' }); } catch {}
+            return;
+          } else {
+            showToast('停止失败: ' + (data.error || '未知错误'), 'error');
+            return;
+          }
+        } catch (e) {
+          showToast('停止失败: ' + e.message, 'error');
+          return;
+        }
+      } else {
+        try {
+          var res = await fetch('/api/start/' + name, { method: 'POST', headers: getAuthHeaders() });
+          var data = await res.json();
+          if (data.success) {
+            isRunning = true;
+            badge.className = 'status-badge online';
+            text.textContent = '运行中';
+            btn.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 停止';
+            showToast(displayName + ' 已启动', 'success');
+            try { window.__statusChannel && window.__statusChannel.postMessage({ type: 'proxy-status-changed' }); } catch {}
+            return;
+          } else {
+            showToast('启动失败: ' + (data.error || '未知错误'), 'error');
+            return;
+          }
+        } catch (e) {
+          showToast('启动失败: ' + e.message, 'error');
+          return;
+        }
+      }
+    }
+
+    function goBack() {
+      window.location.href = 'dashboard.html';
+    }
+
+    // B8: key 明文永不进 DOM，"显示/隐藏密钥"按钮改为提示（复制功能保留）
+    function toggleKeyVisibility() {
+      showToast('出于安全考虑，API Key 仅显示掩码；点击掩码可复制完整 Key', 'info', 3000);
+    }
+
+    function getProviderById(id) {
+      for (var i = 0; i < providers.length; i++) {
+        if (providers[i].id === id) return providers[i];
+      }
+      return null;
+    }
+
+    function switchTab(tabEl, tabName) {
+      if (tabEl.disabled) return;
+      document.querySelectorAll('.section-tab').forEach(function(t) { t.classList.remove('active'); });
+      tabEl.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(function(tc) { tc.classList.remove('active'); });
+      document.getElementById('tab-' + tabName).classList.add('active');
+      history.replaceState(null, '', '#' + tabName);
+    }
+
+    function getTabFromHash() {
+      var hash = location.hash.replace('#', '');
+      if (hash) return hash;
+      return 'config';
+    }
+
+    function renderProviders() {
+      var tbody = document.getElementById('providersBody');
+      if (!tbody) return;
+      if (providers.length === 0) {
+        // 真没有 provider（区别于「读不到」——读不到由 loadProviders 的 showReadError 单独呈现）
+        tbody.innerHTML = '<tr><td colspan="6">' + MPStates.empty({
+          title: '暂无 Provider',
+          hint: '当前代理下还没有配置任何 provider。点上方「添加 Provider」接入模型源。'
+        }) + '</td></tr>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < providers.length; i++) {
+        var p = providers[i];
+        // B8: API Key 明文不进 DOM —— 显示掩码，复制/测试按钮只带 data-id，
+        // 点击时从内存 providers 数组按 id 取 key。
+        var displayKey = maskKey(p.api_key);
+        var rtBadge = (p.responsesTranslate) ? ' <span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:6px;font-size:11px;font-weight:600;background:var(--color-primary);color:#fff;vertical-align:middle;">↔ 翻译</span>' : '';
+        html += '<tr data-provider-id="' + esc(p.id) + '">' +
+          '<td><strong>' + esc(p.name) + '</strong>' + rtBadge + '</td>' +
+          '<td><code style="background:var(--color-bg-secondary);padding:2px 8px;border-radius:4px;font-size:12px;font-family:\'SF Mono\',Menlo,monospace;max-width:120px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(p.provider_id) + '">' + esc(p.provider_id) + '</code></td>' +
+          '<td><code style="background:var(--color-bg-secondary);padding:2px 8px;border-radius:4px;font-size:12px;font-family:\'SF Mono\',Menlo,monospace;max-width:200px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(p.base_url) + '">' + esc(p.base_url) + '</code></td>' +
+          '<td><code class="api-key-display" data-id="' + esc(p.id) + '" style="background:var(--color-bg-secondary);padding:2px 8px;border-radius:4px;font-size:12px;font-family:\'SF Mono\',Menlo,monospace;max-width:180px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" title="点击复制">' + displayKey + '</code></td>' +
+          '<td><label class="toggle" style="cursor:pointer"><input type="checkbox" class="provider-enable-toggle" data-id="' + esc(p.id) + '" ' + (p.enabled ? 'checked' : '') + '><span class="toggle-slider"></span></label></td>' +
+          '<td class="actions">' +
+            '<button class="btn btn-sm edit-provider-btn" data-id="' + esc(p.id) + '">编辑</button>' +
+            '<button class="btn btn-sm test-provider-btn" data-id="' + esc(p.id) + '">测试</button>' +
+            '<button class="btn btn-sm btn-danger delete-provider-btn" data-id="' + esc(p.id) + '">删除</button>' +
+          '</td></tr>';
+      }
+      tbody.innerHTML = html;
+    }
+
+    function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          showToast('已复制到剪贴板', 'success', 1500);
+        }).catch(function() {
+          fallbackCopy(text);
+        });
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); showToast('已复制到剪贴板', 'success', 1500); } catch {}
+      document.body.removeChild(ta);
+    }
+
+    function maskKey(key) {
+      if (!key || key.length < 12) return '***';
+      return key.substring(0, 4) + '•'.repeat(Math.max(key.length - 8, 4)) + key.substring(key.length - 4);
+    }
+
+    function toggleProviderEnabled(id, enabled) {
+      toggleProviderEnabledApi(id, enabled);
+    }
+
+    function deleteProvider(id) {
+      var idx = -1;
+      for (var i = 0; i < providers.length; i++) {
+        if (providers[i].id === id) { idx = i; break; }
+      }
+      if (idx === -1) return;
+      if (!confirm('确定要删除供应商 "' + providers[idx].name + '" 吗？')) return;
+      var removed = providers.splice(idx, 1)[0];
+      deleteProviderById(removed.id).catch(function() {
+        renderProviders();
+        showToast('已删除 ' + removed.name, 'success');
+      });
+    }
+
+    function createFormField(labelText, inputType, inputId, opts) {
+      opts = opts || {};
+      var group = document.createElement('div');
+      group.className = 'form-group';
+      var label = document.createElement('label');
+      label.setAttribute('for', inputId);
+      label.textContent = labelText;
+      group.appendChild(label);
+
+      var input = document.createElement('input');
+      input.type = inputType;
+      input.id = inputId;
+      if (opts.placeholder) input.placeholder = opts.placeholder;
+      if (opts.value !== undefined) input.value = opts.value;
+      if (opts.disabled) input.disabled = true;
+      if (opts.defaultChecked) input.defaultChecked = true;
+      group.appendChild(input);
+
+      if (opts.hint) {
+        var hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = opts.hint;
+        group.appendChild(hint);
+      }
+
+      return group;
+    }
+
+    function createCheckboxField(checkboxId, labelText, checked) {
+      var row = document.createElement('div');
+      row.className = 'form-check';
+
+      var labelMain = document.createElement('label');
+      labelMain.style.cssText = 'display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--color-text-secondary);';
+      labelMain.setAttribute('for', checkboxId);
+
+      var toggleWrapper = document.createElement('label');
+      toggleWrapper.className = 'toggle';
+      toggleWrapper.style.cssText = 'position:relative;width:40px;height:24px;display:inline-block;flex-shrink:0;cursor:pointer;';
+      var chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.id = checkboxId;
+      if (checked) chk.checked = true;
+      var slider = document.createElement('span');
+      slider.className = 'toggle-slider';
+      toggleWrapper.appendChild(chk);
+      toggleWrapper.appendChild(slider);
+
+      var spanLabel = document.createElement('span');
+      spanLabel.textContent = labelText;
+
+      labelMain.appendChild(toggleWrapper);
+      labelMain.appendChild(spanLabel);
+      row.appendChild(labelMain);
+      return row;
+    }
+
+    // Responses API 协议翻译区块：仅 codex 代理显示（responsesTranslate 门控）
+    function createResponsesTranslateSection(checked, target) {
+      var box = document.createElement('div');
+      box.className = 'form-check';
+      box.style.marginTop = '14px';
+
+      box.appendChild(createCheckboxField('modal-responses-translate', '开启 Responses API 协议翻译', !!checked));
+
+      var selWrap = document.createElement('div');
+      selWrap.style.cssText = 'margin-top:10px;';
+      var selLabel = document.createElement('label');
+      selLabel.style.cssText = 'display:block;font-size:12px;color:var(--color-text-tertiary);margin-bottom:6px;';
+      selLabel.textContent = '上游协议（把 Responses 翻译成哪种上游协议）';
+      var sel = document.createElement('select');
+      sel.id = 'modal-responses-target';
+      sel.className = 'form-input';
+      sel.style.cssText = 'width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);font-size:13px;';
+      var optChat = document.createElement('option');
+      optChat.value = 'chat'; optChat.textContent = 'Chat Completions（OpenAI 兼容上游，默认）';
+      var optMsg = document.createElement('option');
+      optMsg.value = 'messages'; optMsg.textContent = 'Anthropic Messages（Claude / 兼容上游）';
+      sel.appendChild(optChat); sel.appendChild(optMsg);
+      sel.value = (target === 'messages') ? 'messages' : 'chat';
+      selWrap.appendChild(selLabel); selWrap.appendChild(sel);
+      box.appendChild(selWrap);
+
+      var hint = document.createElement('p');
+      hint.style.cssText = 'margin:8px 0 0;font-size:12px;color:var(--color-text-tertiary);line-height:1.5;';
+      hint.textContent = '仅 codex 代理生效：上游不原生支持 /v1/responses 时（多数 OpenAI 兼容网关、Anthropic 兼容上游），开启后由网关把 Codex 的 Responses 请求翻译成上游真支持的协议再翻回。默认关闭 = 维持原透传。';
+      box.appendChild(hint);
+      return box;
+    }
+
+    function createMessagesTranslateSection(checked) {
+      var box = document.createElement('div');
+      box.className = 'form-check';
+      box.style.marginTop = '14px';
+      box.appendChild(createCheckboxField('modal-messages-translate', '开启 Messages 协议翻译（让 Claude Code 用 OpenAI 协议上游）', !!checked));
+      var hint = document.createElement('p');
+      hint.style.cssText = 'margin:8px 0 0;font-size:12px;color:var(--color-text-tertiary);line-height:1.5;';
+      hint.textContent = '仅 claude 代理生效：Claude Code 只说 /v1/messages，而免费模型池（如 Kilo 匿名池）只说 /v1/chat/completions。开启后由网关把 Messages 请求翻成 Chat Completions 发给上游，再把响应（含流式与工具调用）翻回 Messages。默认关闭 = 维持原透传。';
+      box.appendChild(hint);
+      return box;
+    }
+
+    function showAddProviderModal() {
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'modal-add-title');
+
+      var title = document.createElement('div');
+      title.className = 'modal-title';
+      title.id = 'modal-add-title';
+      title.textContent = '添加供应商';
+      modal.appendChild(title);
+
+      modal.appendChild(createFormField('名称 *', 'text', 'modal-name', { placeholder: '如: OpenAI' }));
+      modal.appendChild(createFormField('Provider ID *', 'text', 'modal-provider-id', { placeholder: '如: openai', hint: '唯一标识符，用于路由配置' }));
+      modal.appendChild(createFormField('Base URL *', 'text', 'modal-base-url', { placeholder: 'https://api.openai.com/v1' }));
+      modal.appendChild(createFormField('API Key *', 'password', 'modal-api-key', { placeholder: 'sk-...' }));
+      modal.appendChild(createCheckboxField('modal-enabled', '启用此供应商', true));
+      if (RESPONSES_TRANSLATE_PROXIES.indexOf(currentProxyName) !== -1) {
+        modal.appendChild(createResponsesTranslateSection(false, 'chat'));
+      }
+      if (MESSAGES_TRANSLATE_PROXIES.indexOf(currentProxyName) !== -1) {
+        modal.appendChild(createMessagesTranslateSection(false));
+      }
+
+      var fetchRow = document.createElement('div');
+      fetchRow.style.cssText = 'display:flex;justify-content:flex-start;margin-top:16px;padding-top:16px;border-top:1px solid var(--color-border);';
+      var fetchBtn = document.createElement('button');
+      fetchBtn.type = 'button';
+      fetchBtn.className = 'btn';
+      fetchBtn.id = 'modal-fetch-models';
+      fetchBtn.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> 拉取模型列表';
+      fetchBtn.disabled = true;
+      fetchRow.appendChild(fetchBtn);
+      modal.appendChild(fetchRow);
+
+      var actions = document.createElement('div');
+      actions.className = 'modal-actions';
+
+      var cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn';
+      cancelBtn.id = 'modal-cancel';
+      cancelBtn.textContent = '取消';
+
+      var saveBtn = document.createElement('button');
+      saveBtn.className = 'btn btn-primary';
+      saveBtn.id = 'modal-save';
+      saveBtn.textContent = '保存';
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(saveBtn);
+      modal.appendChild(actions);
+
+      var overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.appendChild(modal);
+
+      document.body.appendChild(overlay);
+      cancelBtn.onclick = function() { overlay.remove(); };
+      saveBtn.onclick = function() {
+        var nameEl = document.getElementById('modal-name');
+        var pidEl = document.getElementById('modal-provider-id');
+        var urlEl = document.getElementById('modal-base-url');
+        var keyEl = document.getElementById('modal-api-key');
+        var enEl = document.getElementById('modal-enabled');
+        var name = nameEl.value.trim();
+        var pid = pidEl.value.trim();
+        var url = urlEl.value.trim();
+        var key = keyEl.value.trim();
+        var en = enEl.checked;
+        var rtEl = document.getElementById('modal-responses-translate');
+        var rtTargetEl = document.getElementById('modal-responses-target');
+        var rt = rtEl ? rtEl.checked : false;
+        var rtTarget = rtTargetEl ? rtTargetEl.value : 'chat';
+        var mtEl = document.getElementById('modal-messages-translate');
+        var mt = mtEl ? mtEl.checked : false;
+        if (!name || !pid || !url || !key) { showToast('请填写所有必填字段', 'error'); return; }
+        if (!/^https?:\/\/.+/.test(url)) { showToast('Base URL 必须以 http:// 或 https:// 开头', 'error'); return; }
+        if (key.length < 8) { showToast('API Key 长度至少 8 个字符', 'error'); return; }
+        addProvider(name, pid, url, key, en, rt, rtTarget, mt);
+        overlay.remove();
+        showToast('已添加供应商 ' + name, 'success');
+      };
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+      overlay.addEventListener('keydown', function(e) { if (e.key === 'Escape') overlay.remove(); });
+
+      var fetchEl = fetchBtn;
+      var pidEl2 = document.getElementById('modal-provider-id');
+      var urlEl2 = document.getElementById('modal-base-url');
+      var keyEl2 = document.getElementById('modal-api-key');
+
+      function updateFetchBtn() {
+        fetchEl.disabled = !(pidEl2.value.trim() && urlEl2.value.trim() && keyEl2.value.trim());
+      }
+      fetchEl.addEventListener('click', function() {
+        var pid = pidEl2.value.trim();
+        var url = urlEl2.value.trim();
+        var key = keyEl2.value.trim();
+        fetchAndShowModels(pid, url, key);
+      });
+      [pidEl2, urlEl2, keyEl2].forEach(function(el) {
+        el.addEventListener('input', updateFetchBtn);
+        el.addEventListener('blur', updateFetchBtn);
+      });
+      updateFetchBtn();
+    }
+
+    function showEditProviderModal(id) {
+      var provider = null;
+      for (var i = 0; i < providers.length; i++) {
+        if (providers[i].id === id) { provider = providers[i]; break; }
+      }
+      if (!provider) { showToast('未找到供应商', 'error'); return; }
+
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'modal-edit-title');
+
+      var title = document.createElement('div');
+      title.className = 'modal-title';
+      title.id = 'modal-edit-title';
+      title.textContent = '编辑供应商';
+      modal.appendChild(title);
+
+      var nameField = document.createElement('div');
+      nameField.className = 'form-group';
+      var nameLabel = document.createElement('label');
+      nameLabel.setAttribute('for', 'modal-name');
+      nameLabel.textContent = '名称 *';
+      nameField.appendChild(nameLabel);
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.id = 'modal-name';
+      nameInput.value = provider.name;
+      nameField.appendChild(nameInput);
+      modal.appendChild(nameField);
+
+      var pidField = document.createElement('div');
+      pidField.className = 'form-group';
+      var pidLabel = document.createElement('label');
+      pidLabel.setAttribute('for', 'modal-provider-id');
+      pidLabel.textContent = 'Provider ID';
+      pidField.appendChild(pidLabel);
+      var pidInput = document.createElement('input');
+      pidInput.type = 'text';
+      pidInput.id = 'modal-provider-id';
+      pidInput.value = provider.provider_id;
+      pidInput.disabled = true;
+      pidField.appendChild(pidInput);
+      var pidHint = document.createElement('div');
+      pidHint.className = 'hint';
+      pidHint.textContent = 'Provider ID 不可修改';
+      pidField.appendChild(pidHint);
+      modal.appendChild(pidField);
+
+      var urlField = document.createElement('div');
+      urlField.className = 'form-group';
+      var urlLabel = document.createElement('label');
+      urlLabel.setAttribute('for', 'modal-base-url');
+      urlLabel.textContent = 'Base URL *';
+      urlField.appendChild(urlLabel);
+      var urlInput = document.createElement('input');
+      urlInput.type = 'text';
+      urlInput.id = 'modal-base-url';
+      urlInput.value = provider.base_url;
+      urlField.appendChild(urlInput);
+      modal.appendChild(urlField);
+
+      var keyField = document.createElement('div');
+      keyField.className = 'form-group';
+      var keyLabel = document.createElement('label');
+      keyLabel.setAttribute('for', 'modal-api-key');
+      keyLabel.textContent = 'API Key';
+      keyField.appendChild(keyLabel);
+      var keyInput = document.createElement('input');
+      keyInput.type = 'password';
+      keyInput.id = 'modal-api-key';
+      keyInput.placeholder = '留空则不修改';
+      keyField.appendChild(keyInput);
+      var keyHint = document.createElement('div');
+      keyHint.className = 'hint';
+      keyHint.textContent = '留空表示不修改当前密钥';
+      keyField.appendChild(keyHint);
+      modal.appendChild(keyField);
+
+      modal.appendChild(createCheckboxField('modal-enabled', '启用此供应商', provider.enabled));
+      if (RESPONSES_TRANSLATE_PROXIES.indexOf(currentProxyName) !== -1) {
+        modal.appendChild(createResponsesTranslateSection(provider.responsesTranslate, provider.responsesTarget));
+      }
+      if (MESSAGES_TRANSLATE_PROXIES.indexOf(currentProxyName) !== -1) {
+        modal.appendChild(createMessagesTranslateSection(provider.messagesTranslate));
+      }
+
+      var fetchRow2 = document.createElement('div');
+      fetchRow2.style.cssText = 'display:flex;justify-content:flex-start;margin-top:16px;padding-top:16px;border-top:1px solid var(--color-border);';
+      var fetchBtn2 = document.createElement('button');
+      fetchBtn2.type = 'button';
+      fetchBtn2.className = 'btn';
+      fetchBtn2.id = 'modal-fetch-models';
+      fetchBtn2.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> 拉取模型列表';
+      fetchRow2.appendChild(fetchBtn2);
+      modal.appendChild(fetchRow2);
+
+      var actions = document.createElement('div');
+      actions.className = 'modal-actions';
+
+      var cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn';
+      cancelBtn.id = 'modal-cancel';
+      cancelBtn.textContent = '取消';
+
+      var saveBtn = document.createElement('button');
+      saveBtn.className = 'btn btn-primary';
+      saveBtn.id = 'modal-save';
+      saveBtn.textContent = '保存';
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(saveBtn);
+      modal.appendChild(actions);
+
+      var overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.appendChild(modal);
+
+      document.body.appendChild(overlay);
+      cancelBtn.onclick = function() { overlay.remove(); };
+      saveBtn.onclick = function() {
+        var nameEl = document.getElementById('modal-name');
+        var urlEl = document.getElementById('modal-base-url');
+        var keyEl = document.getElementById('modal-api-key');
+        var enEl = document.getElementById('modal-enabled');
+        var rtEl = document.getElementById('modal-responses-translate');
+        var rtTargetEl = document.getElementById('modal-responses-target');
+        var name = nameEl.value.trim();
+        var url = urlEl.value.trim();
+        var key = keyEl.value.trim();
+        var en = enEl.checked;
+        var rt = rtEl ? rtEl.checked : false;
+        var rtTarget = rtTargetEl ? rtTargetEl.value : 'chat';
+        var mtEl = document.getElementById('modal-messages-translate');
+        var mt = mtEl ? mtEl.checked : false;
+        if (!name || !url) { showToast('请填写所有必填字段', 'error'); return; }
+        if (!/^https?:\/\/.+/.test(url)) { showToast('Base URL 必须以 http:// 或 https:// 开头', 'error'); return; }
+        updateProvider(provider.id, name, url, key, en, rt, rtTarget, mt);
+        overlay.remove();
+        showToast('已更新 ' + name, 'success');
+      };
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+      overlay.addEventListener('keydown', function(e) { if (e.key === 'Escape') overlay.remove(); });
+
+      var fetchEl = fetchBtn2;
+      var urlEl3 = document.getElementById('modal-base-url');
+      var keyEl3 = document.getElementById('modal-api-key');
+
+      function updateFetchBtn2() {
+        fetchEl.disabled = !(urlEl3.value.trim() && keyEl3.value.trim());
+      }
+      fetchEl.addEventListener('click', function() {
+        var pid = provider.provider_id;
+        var url = urlEl3.value.trim();
+        var key = keyEl3.value.trim();
+        fetchAndShowModels(pid, url, key);
+      });
+      [urlEl3, keyEl3].forEach(function(el) {
+        el.addEventListener('input', updateFetchBtn2);
+        el.addEventListener('blur', updateFetchBtn2);
+      });
+      updateFetchBtn2();
+    }
+
+    // 转义 < > & ' " —— 引号必须转义：本页大量把 esc() 输出放进
+    // 双引号属性（data-* / title），不转义 " 会被含引号的供应商
+    // 名称/URL/API Key 逃逸属性注入事件处理器（存储型 XSS）。
+    function esc(str) {
+      if (str === null || str === undefined) return '';
+      var d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // ===== Loading Bar (P1-4) =====
+    function showLoading() {
+      var bar = document.getElementById('loadingBar');
+      if (bar) bar.classList.add('active');
+    }
+    function hideLoading() {
+      var bar = document.getElementById('loadingBar');
+      if (bar) bar.classList.remove('active');
+    }
+
+    function renderModels() {
+      var sel = document.getElementById('modelSelect');
+      if (!sel) return;
+      if (!MOCK_MODELS || MOCK_MODELS.length === 0) {
+        // 真没有可选模型（区别于「读不到」）——给占位选项 + 空态提示，而不是空白下拉
+        sel.innerHTML = '<option value="" disabled selected>无可用模型</option>';
+        var sw = sel.closest ? sel.closest('.model-switcher') : null;
+        if (sw) {
+          var ex = document.getElementById('modelEmptyState');
+          if (!ex) {
+            ex = document.createElement('div');
+            ex.id = 'modelEmptyState';
+            ex.className = 'empty-state';
+            ex.style.marginTop = '12px';
+            // 2026-10-24：插到 .model-switcher 之后（块级），而不是塞进 flex 行里被按钮挤窄
+            sw.insertAdjacentElement('afterend', ex);
+          }
+          // 无模型时禁用「切换模型」，避免点了提交空模型
+          var mb = sw.querySelector('button');
+          if (mb) mb.disabled = true;
+          ex.innerHTML = '<div class="empty-icon">' + MPStates.svg.inbox + '</div>' +
+            '<div class="empty-text">暂无可选模型</div>' +
+            '<div class="empty-hint">当前代理没有拉到模型列表。可能是模型接口暂不可用，或该代理不支持模型枚举。可刷新重试。</div>';
+        }
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < MOCK_MODELS.length; i++) {
+        var m = MOCK_MODELS[i];
+        html += '<option value="' + esc(m.id) + '"' + (m.id === currentModel ? ' selected' : '') + '>' + esc(m.name) + ' (' + m.id + ')</option>';
+      }
+      sel.innerHTML = html;
+      var ex2 = document.getElementById('modelEmptyState');
+      if (ex2) ex2.remove();
+      // 有模型时恢复「切换模型」按钮
+      var sw2 = sel.closest ? sel.closest('.model-switcher') : null;
+      if (sw2) { var mb2 = sw2.querySelector('button'); if (mb2) mb2.disabled = false; }
+    }
+
+    async function switchCurrentModel() {
+      var sel = document.getElementById('modelSelect');
+      var nm = sel.value;
+      if (!nm) { showToast('暂无可切换的模型', 'info'); return; }
+      if (nm === currentModel) { showToast('已经是当前模型', 'info'); return; }
+      var oldModel = currentModel;
+      currentModel = nm;
+      document.getElementById('currentModelDisplay').textContent = nm;
+      try {
+        await switchModel(nm);
+        showToast('模型已切换为 ' + nm, 'success', 3000);
+        loadHistory();
+      } catch (e) {
+        // 后端失败则回滚 UI，避免显示假状态
+        currentModel = oldModel;
+        document.getElementById('currentModelDisplay').textContent = oldModel;
+        sel.value = oldModel;
+        showToast('切换失败: ' + (e.message || '未知错误'), 'error', 4000);
+      }
+    }
+
+    function renderBalances() {
+      var grid = document.getElementById('balanceGrid');
+      var html = '';
+      for (var i = 0; i < MOCK_BALANCES.length; i++) {
+        var b = MOCK_BALANCES[i];
+        var amountDisplay;
+        if (typeof b.amount === 'number') {
+          amountDisplay = b.amount.toFixed(6) + ' <span class="balance-currency"' +
+                         (b.source === 'actual' ? ' title="实采 · 今日 ' + (b.requestCount || 0) + ' 次计费请求"' : '') + '>' +
+                         (b.currency || '') + '</span>';
+        } else {
+          amountDisplay = b.amount !== undefined && b.amount !== null ? esc(String(b.amount)) : '—';
+        }
+        html += '<div class="balance-card">' +
+           '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+             '<div>' +
+               '<span class="balance-name">' + esc(b.name) + '</span>' +
+               '<div style="margin-top:4px;"><span class="balance-amount">' + amountDisplay + '</span></div>' +
+             '</div>' +
+             '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;flex-shrink:0;" onclick="refreshBalance(' + i + ')">刷新</button>' +
+           '</div>' +
+         '</div>';
+      }
+      // 空态诚实占位：无实采/余额数据时明示，不渲染伪造数值（cursor 成本来自 /status actualCost，
+      // 门控关或今日无付费请求即空；codex/hermes 余额来自 /api/balances）。
+      if (MOCK_BALANCES.length === 0) {
+        html = '<div style="color:var(--color-text-tertiary);font-size:13px;padding:12px;">' +
+               '<span>暂无余额/成本数据。' +
+               (currentProxyName === 'cursor' ?
+                ' cursor 成本为实采（需门控 PROXY_CURSOR_COST 开启且有付费请求）。' : '') +
+               '</span></div>';
+       }
+      grid.innerHTML = html;
+     }
+
+    async function refreshBalance(index) {
+      if (index < 0 || index >= MOCK_BALANCES.length) return;
+      var b = MOCK_BALANCES[index];
+      b.amount = '加载中...';
+      renderBalances();
+      try {
+        var res = await fetch('/api/balances?proxy=' + currentProxyName, {
+          headers: getAuthHeaders(),
+        });
+        var data = await res.json();
+        if (data && data.length && data[index]) {
+          var entry = data[index];
+          var val = entry.amount;
+          if (typeof val === 'number') {
+            b.amount = val;
+          } else {
+            var parsed = parseFloat(val);
+            b.amount = isNaN(parsed) ? (val || 0) : parsed;
+          }
+        }
+      } catch (e) {
+        b.amount = 0;
+      }
+      renderBalances();
+    }
+
+    async function loadHistory() {
+      if (!historySupported) {
+        switchHistory = [];
+        renderHistory();
+        return;
+      }
+      try {
+        const data = await fetchAdminApi('/history');
+        if (data && Array.isArray(data.history)) {
+          switchHistory = data.history;
+        }
+      } catch {}
+      renderHistory();
+    }
+
+    function renderHistory() {
+      var tbody = document.getElementById('historyBody');
+      var html = '';
+      var list = (switchHistory || []).slice(0, 20);
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--color-text-tertiary,#94a3b8);">'
+          + (historySupported ? '暂无切换记录，切换模型后将显示在这里' : '当前代理不支持切换历史')
+          + '</td></tr>';
+        return;
+      }
+      for (var i = 0; i < list.length; i++) {
+        var h = list[i];
+        html += '<tr>' +
+          '<td><span class="ts">' + fmtTime(h.timestamp) + '</span></td>' +
+          '<td>' + esc(h.action) + '</td>' +
+          '<td><code class="history-copy-item" data-text="' + esc(h.from) + '" style="background:var(--color-bg-secondary);padding:2px 6px;border-radius:3px;font-size:11px;font-family:\'SF Mono\',Menlo,monospace;max-width:150px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" title="' + esc(h.from) + '">' + esc(h.from) + '</code></td>' +
+          '<td><code class="history-copy-item" data-text="' + esc(h.to) + '" style="background:var(--color-bg-secondary);padding:2px 6px;border-radius:3px;font-size:11px;font-family:\'SF Mono\',Menlo,monospace;max-width:150px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" title="' + esc(h.to) + '">' + esc(h.to) + '</code></td>' +
+          '<td><span class="result-dot ' + (h.success ? 'success' : 'fail') + '"><span class="dot"></span>' + (h.success ? '成功' : '失败') + '</span></td>' +
+        '</tr>';
+      }
+      tbody.innerHTML = html;
+    }
+
+    function fmtTime(ts) {
+      var d = new Date(ts);
+      var now = new Date();
+      var ms = now - d;
+      var h = Math.floor(ms / 3600000);
+      var m = Math.floor(ms / 60000);
+      if (h < 1) return m + '分钟前';
+      if (h < 24) return h + '小时前';
+      return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function clearHistory() {
+      if (!confirm('确定要清除所有切换历史吗？')) return;
+      if (historySupported) {
+        // 2026-10-16：fetchAdminApi 改成抛错后，这里必须自己接——否则失败会
+        // 变成未捕获的 Promise rejection，用户点了「清除」什么都没发生。
+        try {
+          const data = await fetchAdminApi('/clear-history', { method: 'POST' });
+          if (!data || !data.success) {
+            showToast('清除失败: ' + ((data && data.error) || '后端未确认'), 'error');
+            return;
+          }
+        } catch (e) {
+          showToast('清除失败: ' + (e.message || '未知错误'), 'error', 5000);
+          return;
+        }
+      }
+      switchHistory = [];
+      renderHistory();
+      showToast('历史记录已清除', 'success');
+    }
+
+    async function refreshPage() {
+      var loadingBtn = document.getElementById('refreshBtn');
+      if (loadingBtn) loadingBtn.disabled = true;
+
+      try {
+        await Promise.all([
+          loadProviders(),
+          loadModelsData(),
+          loadBalancesData(),
+          fetchStatus(),
+          loadConfigData(),
+        ]);
+        renderProviders();
+        renderModels();
+        renderBalances();
+        showToast('数据已刷新', 'success');
+      } catch (e) {
+        showToast('刷新失败: ' + e.message, 'error');
+      } finally {
+        if (loadingBtn) loadingBtn.disabled = false;
+      }
+    }
+
+    async function changeRoutingMode(mode) {
+      try {
+        await fetchAdminApi('/settings', {
+          method: 'PUT',
+          body: JSON.stringify({ key: 'routing_mode', value: mode }),
+        });
+        showToast('路由模式已切换为 ' + mode, 'success');
+      } catch (e) {
+        // 2026-10-16：过去这里失败时也弹「路由模式已切换为 xxx」，只是把
+        // success 降成 info——**连错误字样都没有**。用户以为路由改了，
+        // 实际没改，然后发现请求还走老路由，完全对不上。现在如实报错。
+        showToast('切换路由模式失败: ' + (e.message || '未知错误'), 'error', 5000);
+        if (e.hint) showToast(e.hint, 'info', 6000);
+      }
+    }
+
+    function showToast(msg, type) {
+      type = type || 'info';
+      var c = document.getElementById('toastContainer');
+      var t = document.createElement('div');
+      t.className = 'toast ' + type;
+      t.textContent = msg;
+      c.appendChild(t);
+      setTimeout(function() {
+        t.style.transition = 'opacity 0.3s ease';
+        t.style.opacity = '0';
+        setTimeout(function() { t.remove(); }, 300);
+      }, 2500);
+    }
+
+    function toggleSidebar() {
+      var sb = document.getElementById('sidebar');
+      if (sb) sb.classList.toggle('open');
+    }
+
+    function closeSidebar() {
+      var sb = document.getElementById('sidebar');
+      if (sb) sb.classList.remove('open');
+    }
+
+    // ==================== Fetch Models Modal ====================
+    function fetchAndShowModels(providerId, baseUrl, apiKey) {
+      var overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+
+      var modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.style.maxWidth = '90vw';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'modal-fetch-title');
+
+      var title = document.createElement('div');
+      title.className = 'modal-title';
+      title.style.display = 'flex';
+      title.style.justifyContent = 'space-between';
+      title.style.alignItems = 'center';
+      title.id = 'modal-fetch-title';
+
+      var titleText = document.createElement('span');
+      titleText.innerHTML = '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg> 选择模型 (' + providerId + ')';
+      title.appendChild(titleText);
+
+      var ctrlBar = document.createElement('div');
+      ctrlBar.style.display = 'flex';
+      ctrlBar.style.gap = '8px';
+
+      var selectAllBtn = document.createElement('button');
+      selectAllBtn.className = 'btn btn-sm';
+      selectAllBtn.textContent = '全选';
+      selectAllBtn.style.fontSize = '11px';
+      selectAllBtn.style.padding = '3px 8px';
+
+      var invertBtn = document.createElement('button');
+      invertBtn.className = 'btn btn-sm';
+      invertBtn.textContent = '反选';
+      invertBtn.style.fontSize = '11px';
+      invertBtn.style.padding = '3px 8px';
+
+      ctrlBar.appendChild(selectAllBtn);
+      ctrlBar.appendChild(invertBtn);
+      title.appendChild(ctrlBar);
+      modal.appendChild(title);
+
+      var modelsArea = document.createElement('div');
+      modelsArea.id = 'models-area';
+      modelsArea.style.cssText = 'max-height:400px;overflow-y:auto;margin-top:16px;';
+      modelsArea.innerHTML = '<div style="text-align:center;padding:40px;color:var(--color-text-tertiary);"><svg class="icon-svg" style="width:24px;height:24px;" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> 正在拉取...</div>';
+      modal.appendChild(modelsArea);
+
+      var footer = document.createElement('div');
+      footer.className = 'modal-actions';
+
+      var cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn';
+      cancelBtn.textContent = '取消';
+      cancelBtn.style.display = 'none';
+      cancelBtn.id = 'models-cancel';
+
+      var confirmBtn = document.createElement('button');
+      confirmBtn.className = 'btn btn-primary';
+      confirmBtn.textContent = '确认';
+      confirmBtn.id = 'models-confirm';
+      confirmBtn.disabled = true;
+
+      footer.appendChild(cancelBtn);
+      footer.appendChild(confirmBtn);
+      modal.appendChild(footer);
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      cancelBtn.onclick = function() { overlay.remove(); };
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+      overlay.addEventListener('keydown', function(e) { if (e.key === 'Escape') overlay.remove(); });
+
+      var allCheckboxes = [];
+      var modelsAreaEl = document.getElementById('models-area');
+
+      selectAllBtn.onclick = function() {
+        allCheckboxes.forEach(function(cb) { cb.checked = true; });
+      };
+      invertBtn.onclick = function() {
+        allCheckboxes.forEach(function(cb) { cb.checked = !cb.checked; });
+      };
+
+      var token = sessionStorage.getItem('auth_token');
+      fetch('/api/fetch-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token || '' },
+        body: JSON.stringify({ providerId: providerId, baseUrl: baseUrl, apiKey: apiKey }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.success && data.models && data.models.length > 0) {
+          var html = '';
+          for (var i = 0; i < data.models.length; i++) {
+            var m = data.models[i];
+            html += '<label style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'var(--color-bg-secondary)\'" onmouseout="this.style.background=\'\'">' +
+              '<input type="checkbox" class="model-cb" data-index="' + i + '" value="' + esc(m.id) + '" style="flex-shrink:0;cursor:pointer;" />' +
+              '<div style="display:flex;flex-direction:column;gap:1px;">' +
+                '<span style="font-weight:500;color:var(--color-text);">' + esc(m.displayName || m.name) + '</span>' +
+                '<code style="font-size:11px;color:var(--color-text-tertiary);font-family:\'SF Mono\',Menlo,monospace;">' + esc(m.id) + '</code>' +
+              '</div>' +
+            '</label>' +
+            ((i < data.models.length - 1) ? '<hr style="border:none;border-top:1px solid var(--color-border);margin:0 4px;">' : '');
+          }
+          modelsAreaEl.innerHTML = html;
+
+          var checkboxes = modelsAreaEl.querySelectorAll('.model-cb');
+          allCheckboxes = Array.from(checkboxes);
+
+          modelsAreaEl.querySelectorAll('.model-cb').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+              var checked = modelsAreaEl.querySelectorAll('.model-cb:checked');
+              confirmBtn.disabled = checked.length === 0;
+            });
+          });
+
+          cancelBtn.style.display = 'inline-flex';
+          confirmBtn.onclick = function() {
+            var selected = [];
+            modelsAreaEl.querySelectorAll('.model-cb:checked').forEach(function(cb) {
+              selected.push(cb.value);
+            });
+            overlay.remove();
+            showToast('已选择 ' + selected.length + ' 个模型: ' + selected.join(', '), 'success');
+          };
+        } else if (data.error) {
+          modelsAreaEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--color-error);">拉取失败: ' + esc(data.error) + '</div>';
+          cancelBtn.style.display = 'inline-flex';
+          confirmBtn.style.display = 'none';
+        } else {
+          modelsAreaEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--color-text-secondary);">没有可用的模型，请检查 API Key 和 Base URL。</div>';
+          cancelBtn.style.display = 'inline-flex';
+          confirmBtn.style.display = 'none';
+        }
+      })
+      .catch(function(err) {
+        modelsAreaEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--color-error);">拉取失败: ' + esc(err.message) + '</div>';
+        cancelBtn.style.display = 'inline-flex';
+        confirmBtn.style.display = 'none';
+      });
+    }
+
+    function applySavedDarkMode() {
+      if (localStorage.getItem('darkMode') === 'true') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      }
+    }
+
+    // Phase C 时序守卫：states.js 在本内联脚本之后才加载（见文档末尾三行脚本），
+    // 而 init() 同步调用 renderProviders()/renderModels()，其中引用 MPStates.empty/svg。
+    // 若 states.js 未就绪会抛 ReferenceError 并中断 init（页面白屏/无数据）。
+    // 轮询等待 MPStates 就绪再跑 init，与 context/floor 页同源修复。
+    (function waitForStates(attempt) {
+      if (window.MPStates) { init(); return; }
+      if (attempt > 60) { return; }   // ~1.8s 兜底，避免无限等待
+      setTimeout(function () { waitForStates(attempt + 1); }, 30);
+    })(0);
+
+    // Hash-driven tab switching: same-document fragment navigation (e.g. goto / 用户改 hash /
+    // 浏览器前进后退) 不触发整页重载, on-load 的 getTabFromHash 不会重跑 → 监听 hashchange 补齐。
+    window.addEventListener('hashchange', function() {
+      var tabName = getTabFromHash();
+      var tabEl = document.querySelector('.section-tab[data-tab="' + tabName + '"]');
+      if (tabEl) switchTab(tabEl, tabName);
+    });
+
+    // ==================== Event Delegation for Provider Table ====================
+    document.addEventListener('click', function(e) {
+      // Key toggle button
+      var keyToggleBtn = e.target.closest('#keyToggleBtn');
+      if (keyToggleBtn) {
+        toggleKeyVisibility();
+        return;
+      }
+      // API Key copy (B8: key 不在 DOM，从内存 providers 按 data-id 取)
+      var apiKeyEl = e.target.closest('.api-key-display');
+      if (apiKeyEl) {
+        var keyId = apiKeyEl.getAttribute('data-id');
+        var p = getProviderById(keyId);
+        if (p && p.api_key) copyToClipboard(p.api_key);
+        return;
+      }
+      // History copy items
+      var historyEl = e.target.closest('.history-copy-item');
+      if (historyEl) {
+        var text = historyEl.getAttribute('data-text');
+        if (text) copyToClipboard(text);
+        return;
+      }
+      var editBtn = e.target.closest('.edit-provider-btn');
+      if (editBtn) {
+        var id = editBtn.getAttribute('data-id');
+        showEditProviderModal(id);
+        return;
+      }
+      var testBtn = e.target.closest('.test-provider-btn');
+      if (testBtn) {
+        var tid = testBtn.getAttribute('data-id');
+        var tp = getProviderById(tid);
+        if (tp) testProviderConnection(tp.id, tp.base_url, tp.api_key, tp.provider_id);
+        return;
+      }
+      var delBtn = e.target.closest('.delete-provider-btn');
+      if (delBtn) {
+        var id = delBtn.getAttribute('data-id');
+        deleteProvider(id);
+        return;
+      }
+    });
+
+    document.addEventListener('change', function(e) {
+      var toggle = e.target.closest('.provider-enable-toggle');
+      if (toggle) {
+        var id = toggle.getAttribute('data-id');
+        if (id) {
+          toggleProviderEnabled(id, toggle.checked);
+        }
+      }
+    });
+  </script>
+    <script src="./icons.js"></script>
+<script src="./nav.js"></script>
+<script src="./states.js"></script>
+<script src="./gatebar.js"></script>
+  <script>
+    // proxyNav:true —— 渲染 #proxyNavItems 动态代理容器。
+    // 必须开：统一导航（renderNav）会接管 #sidebarNav，此前 proxy-config 自带的 3 个代理链接
+    // 会被覆盖；开了 proxyNav 后由 renderDynamicProxyNav() 回填 9 个代理（与 dashboard 同源）。
+    if(window.renderNav){renderNav(document.getElementById('sidebarNav'),{current:'proxy-config',proxyNav:true});}
+  </script>
+</body>
+</html>

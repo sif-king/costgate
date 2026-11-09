@@ -1,0 +1,144 @@
+:root {
+  /* ===== Brand Colors ===== */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-light: #dbeafe;
+  --color-primary-bg: #eff6ff;
+
+  /* Success */
+  --color-success: #10b981;
+  --color-success-light: #d1fae5;
+
+  /* Warning */
+  --color-warning: #f59e0b;
+  --color-warning-light: #fef3c7;
+
+  /* Error */
+  --color-error: #ef4444;
+  --color-error-light: #fee2e2;
+
+  /* Info */
+  --color-info: #3b82f6;
+  --color-info-light: #dbeafe;
+
+  /* ===== Neutrals ===== */
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f8fafc;
+  --color-bg-tertiary: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+
+  /* ===== Text =====
+     三级文本必须达到 WCAG AA 正文 4.5:1。旧值 #94a3b8 在 #fff 上仅 2.56:1、
+     在 --color-bg-tertiary(#f1f5f9) 上仅 2.34:1，不达标（P0-8）。
+     #5a6779 在浅色最差底 #eef0f3 上 5.04:1。 */
+  --color-text: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #5a6779;
+
+  /* ===== Typography ===== */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, "Helvetica Neue", Arial, sans-serif;  /* 2026-11-05 样式审计：原 'Inter' 首项无中文字体且未加载(Web Fonts 已移除)，对齐 --font-sans 系统中文栈，消除双 token 不一致 */
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  /* ===== Spacing ===== */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* ===== Shadows ===== */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+  /* ===== Transitions ===== */
+  /* 2026-11-01 动效 token 收敛：对齐设计系统 tokens.css（--dur-fast/--dur/--dur-slow + --ease
+     cubic-bezier(.2,.8,.2,1)）。旧值 150/200ms + ease → 120/180ms + 项目缓动，补齐 slow 档，
+     让 10 个引用本页的旧页面动效手感与新 tokens.css 一致（Stageshow「统一节奏」）。 */
+  --transition-fast: 120ms cubic-bezier(.2,.8,.2,1);
+  --transition-normal: 180ms cubic-bezier(.2,.8,.2,1);
+  --transition-slow: 300ms cubic-bezier(.2,.8,.2,1);
+
+  /* ===== Deep text for colored badges/toasts (AA-contrast) ===== */
+  --color-error-deep: #991b1b;
+  --color-warning-deep: #92400e;
+  --color-info-deep: #1e40af;
+  --color-success-deep: #065f46;
+
+  /* ===== Layout ===== */
+  --sidebar-width: 240px;
+  --main-padding: 32px;
+}
+
+/* ===== Dark Mode =====
+   修复 P0-1 根因：旧系统在 :root.dark（=html.dark）下定义完整旧色板，但各页从不设
+   data-theme/dark 类，只设无效的 body.theme-dark，导致暗色永不生效。
+   此处补 html[data-theme="dark"] 选择器别名，使 theme.js 在 <html> 上设 data-theme
+   即可触发完整旧色板（与新 token 层 colors_and_type.css:131 / tokens.css:93 一致）。 */
+:root.dark, html[data-theme="dark"] {
+  --color-primary: #3b82f6;
+  --color-primary-hover: #60a5fa;
+  --color-primary-light: #1e3a5f;
+  --color-primary-bg: #1e3a5f;
+
+  --color-success: #34d399;
+  --color-success-light: #064e3b;
+
+  --color-warning: #fbbf24;
+  --color-warning-light: #451a03;
+
+  --color-error: #f87171;
+  --color-error-light: #450a0a;
+
+  --color-info: #60a5fa;
+  --color-info-light: #1e3a5f;
+
+  --color-bg: #0f172a;
+  --color-bg-secondary: #1e293b;
+  --color-bg-tertiary: #334155;
+  --color-border: #334155;
+  --color-border-light: #1e293b;
+
+  --color-text: #f1f5f9;
+  --color-text-secondary: #cbd5e1;
+  /* 旧值 #64748b 在 --color-bg-secondary(#1e293b) 上仅 3.07:1、在
+     --color-bg-tertiary(#334155) 上仅 2.18:1，不达标（P0-8）。
+     #a8b2c6 在暗色最差底 #334155 上 4.86:1。 */
+  --color-text-tertiary: #a8b2c6;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* ===== Proxy Brand Tokens ===== */
+  --color-prov-codex-bg: #ede9fe;
+  --color-prov-codex-fg: #7c3aed;
+  --color-prov-codex-bg-dark: #2e1065;
+  --color-prov-codex-fg-dark: #c4b5fd;
+  --color-prov-hermes-bg: #fef3c7;
+  --color-prov-hermes-fg: #d97706;
+  --color-prov-hermes-bg-dark: #451a03;
+  --color-prov-hermes-fg-dark: #fde68a;
+}
+
+
+/* ===== v1 设计系统 token 桥接（2026-10-15）====
+   追加新设计层（--accent/--ok/--warn/--danger/--faint...）+ WCAG --faint 修值，
+   旧 --color-* 名保留作向后兼容别名，新旧并存；逐步迁到 var(--accent|--fg|--faint)。
+   --faint 提对比度至 ≥3:1（WCAG AA inactive/UI 级），闭 P0 红线。 */
+:root {
+  --accent:            #2563eb;
+  --accent-strong:     #1d4ed8;
+  --ok:                #16a34a;
+  --warn:              #d97706;
+  --danger:            #dc2626;
+  --faint:             #78818f;   /* 占位 / 时间戳 / 禁用 — AA ≥3:1（旧值 #8a93a3 实测仅 2.71:1，未兑现注释承诺） */
+  --bg:                #ffffff;
+  --fg:                 #101828;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, "Helvetica Neue", Arial, sans-serif;  /* 新系统中文栈，离线零网络 */
+  }
+html[data-theme="dark"], html.dark {
+  --faint: #8b93a0;
+  --bg:    #141619;
+  --fg:    #f5f6f8;
+  --accent:#4d8dff;
+}

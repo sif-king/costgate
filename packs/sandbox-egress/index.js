@@ -1,0 +1,283 @@
+// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the multi-proxy project.
+
+'use strict';
+
+// packs/sandbox-egress/index.js · 出站脱敏 + 入站工具调用检查（2026-10-04 建 pack）
+//
+// 定位（对齐 75 号外部对照文档 §五）：这是**控制面/数据面的旁路检查**，不是执行面沙箱。
+// 我们不抢「沙箱」的活（不造内核级强制、不做 macOS 强制机制 —— Landlock/seccomp 属 Linux 特性，
+// 且至今未核到）。pack 只做两件事：出站脱敏、入站危险工具调用拦截。
+//
+// 两种模式（PROXY_SANDBOX_EGRESS_MODE）：
+//   observe（默认，显式写 observe 也走这）→ 只记账，响应原样转发。
+//   enforce（PROXY_SANDBOX_EGRESS_MODE=enforce）→ 命中高危 tool_use 时**真切断**：
+//      把命中的 tool_use / tool_calls 换成一条说明文本（危险入参没了 ⇒ 工具拿不到可执行的参数），
+//      但**不删整条响应**——删整条会让 agent 当场断腿（一次合法 tool_use 被吞，往返就断了）。
+//      换文本的好处：agent 看得见「这条被拦了」，会自我修正，而不是收到空响应乱猜。
+//
+// enforce 的能力边界（诚实）：只在**流量真的过我们这一跳**时生效。客户端绕过 multi-proxy
+// 直接打上游 ⇒ 我们看不见，拦不住。这不是 bug，是代理层的物理限制。
+//
+// 门控：PROXY_PACK_SANDBOX_EGRESS —— **默认开（observe，只记账不落刀）**，
+// 显式 0/false/off 才关（T7 v1 拍板 A 全提，见下方 enabled()）。
+// 🔴 2026-11-08 更正：此处原写「=1/true/on → 开；默认整体关」，与 enabled() 的实际语义
+//    相反（它只认 0/false/off）。注释反向漂移会让读代码的人把默认态判错，
+//    而默认态判错直接影响「用户装完到底有没有被保护」这个结论。
+// 门控关时两个入口都直接早退（< 1μs 布尔判断），**不 copy body、不 rewrite**。
+// enforce 只在命中高危模式时才深拷贝响应体，未命中一律返回原引用。
+
+const redact = require('../../multi-proxy-manager/lib/redact');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// 危险工具调用模式（抄 ThinkWatch-Lite 的 tool-call inspection 清单，MIT；75 号文档 §三）
+// 只做**文本级**匹配：我们拿到的不是 shell 执行结果，是响应体里的 tool_use 参数 JSON。
+const TOOL_RULES = [
+  { id: 'download-and-exec', re: /\b(?:curl|wget)\b[^\n]{0,200}\|\s*(?:ba)?sh\b/i },
+  { id: 'exfiltrate-env',     re: /\b(?:printenv|env)\b[^\n]{0,120}(?:>[^\n]{0,60}\/|curl|POST)/i },
+  { id: 'credential-file-out',re: /["''][^\"']{0,80}(?:id_rsa|id_ed25519|\.npmrc|\.env|\.git-credentials|\.aws\/credentials)["'']/i },
+  { id: 'install-startup',    re: /\b(?:launchctl\s+(?:load|enable|submit)|systemd-?enable|crontab\s+-|schtasks\s+\/|\/Library\/LaunchAgents)/i },
+];
+
+function enabled() {
+  const v = String(process.env.PROXY_PACK_SANDBOX_EGRESS ?? '').trim().toLowerCase();
+  // T7 v1（2026-10-06 维护者拍板 A 全提）：默认开（observe，只记账不落刀）；显式 0/false/off 关（可回滚）。
+  // 非否定任意值视为开——gate 范式与 lib/redact、lib/upstream-check 对齐。
+  if (v === '0' || v === 'false' || v === 'off') return false;
+  return true;
+}
+
+/** enforce 模式（PROXY_SANDBOX_EGRESS_MODE=enforce|block）。默认 observe —— 改成真切断必须显式。 */
+function mode() {
+  const v = String(process.env.PROXY_SANDBOX_EGRESS_MODE ?? '').trim().toLowerCase();
+  return v === 'enforce' || v === 'block' ? 'enforce' : 'observe';
+}
+
+/** 出站：请求体离开本机前脱敏（内部复用 lib/redact，落点唯一）。 */
+function inspectOutbound(body) {
+  if (!enabled()) return { body, changed: false, hits: [] };
+  const r = redact.redactOutbound(body);
+  if (r.changed) {
+    console.log('[sandbox-egress] outbound redaction', proxyTag(), JSON.stringify(r.hits));
+    recordHit({ ts: Date.now(), proxy: _tag, kind: 'outbound-redact', hits: r.hits });
+  }
+  return r;
+}
+
+/** 入站：上游响应体（可能带 tool_use）→ 记账；mode=enforce 时把高危 tool_use 换成说明文本。 */
+function inspectInbound(data) {
+  if (!enabled()) return { findings: [], action: 'none', data };
+  const text = safeStringify(data);
+  const findings = scan(text);
+  if (!findings.length) return { findings, action: 'observe', data };
+
+  const m = mode();
+  console.log('[sandbox-egress] inbound tool-call inspection', m, proxyTag(), JSON.stringify(findings));
+  recordHit({
+    ts: Date.now(), proxy: _tag, kind: 'inbound-tool-check', mode: m,
+    findings: findings.map((f) => f.id),
+    action: m === 'enforce' ? 'blocked' : 'observe',
+  });
+  if (m !== 'enforce') return { findings, action: 'observe', data };
+  return { findings, action: 'blocked', data: blockToolCalls(data) };
+}
+
+function scan(text) {
+  const found = [];
+  for (const rule of TOOL_RULES) {
+    const re = new RegExp(rule.re.source, rule.re.flags);
+    if (re.test(text)) found.push({ id: rule.id });
+  }
+  return found;
+}
+
+/** 某个 tool_use 参数串是否命中（enforce 落刀时逐个判定，不用整包结论一刀切）。 */
+function hitIds(input) {
+  return scan(typeof input === 'string' ? input : safeStringify(input));
+}
+
+const BLOCK_NOTE = (ids) => ({
+  type: 'text',
+  text: `[sandbox-egress] 已拦截 ${ids.join(', ')}：该工具调用的入参命中高危模式（下载即执行 / 外发凭据文件 / 读取私钥 / 安装启动项），已替换为无害内容，工具未执行。`,
+});
+
+/**
+ * enforce 落刀：深拷贝一份响应体，把命中的 tool_use / tool_calls 换成说明文本。
+ * 🔴 只深拷贝**命中时**的那一份，未命中由调用方拿原引用 ⇒ 热路径常态零开销。
+ * 两种响应形态都覆盖：Anthropic 的 data.content[]（assistant message）
+ * 与 OpenAI 兼容的 data.choices[].message.{content|tool_calls}。
+ */
+function blockToolCalls(data) {
+  const out = deepCopy(data);
+
+  // 🔴 说明文本只写「真被拦下的」规则 id，不写整包 findings：
+  // findings 是**整包**扫描出来的（响应正文里提一句 "curl ... | sh" 也算命中），
+  // 拿它当说明会写出「已拦截 A」但实际拦的是 B —— 排障时最坑的就是这种假线索。
+  const noteIds = [];
+  const mark = (ids) => { for (const id of ids) if (!noteIds.includes(id)) noteIds.push(id); };
+
+  if (Array.isArray(out.content)) {
+    const kept = out.content.filter((b) => {
+      const ids = hitIdsOf(b);
+      if (!ids.length) return true;
+      mark(ids);
+      return false;
+    });
+    out.content = kept.length ? kept.concat([BLOCK_NOTE(noteIds)]) : [BLOCK_NOTE(noteIds)];
+  }
+
+  if (Array.isArray(out.choices)) {
+    for (const c of out.choices) {
+      const m = c && c.message;
+      if (!m) continue;
+      if (Array.isArray(m.content)) {
+        m.content = m.content.filter((b) => {
+          const ids = hitIdsOf(b);
+          if (!ids.length) return true;
+          mark(ids);
+          return false;
+        });
+        m.content.push(BLOCK_NOTE(noteIds));
+      } else if (Array.isArray(m.tool_calls)) {
+        m.tool_calls = m.tool_calls.filter((tc) => {
+          const arg = tc && tc.function ? tc.function.arguments : tc;
+          const ids = hitIds(arg).map((f) => f.id);
+          if (ids.length) mark(ids);
+          return ids.length === 0;
+        });
+        // 🔴 tool_calls 被删光 ⇒ 必须补说明，且 content 可能是 null/''：
+        // 只写 `content != null` 的判断会让 agent 收到一个空 message，
+        // 既看不出被拦了、也不知道为什么工具没跑（2026-10-04 真 HTTP 回环抓到的）。
+        // content 非空数组 ⇒ 追加 text block（Anthropic 形态）；其余 ⇒ 落字符串，
+        // **不塞对象**：OpenAI 侧 message.content 只收 string|null，塞对象会被 SDK 拒。
+        if (!m.tool_calls.length) {
+          if (Array.isArray(m.content)) {
+            m.content = m.content.concat([BLOCK_NOTE(noteIds)]);
+          } else if (typeof m.content === 'string' && m.content) {
+            m.content = m.content + ' ' + BLOCK_NOTE(noteIds).text;
+          } else {
+            m.content = BLOCK_NOTE(noteIds).text;
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Anthropic content block（type=tool_use）实际命中的规则 id 列表。 */
+function hitIdsOf(block) {
+  if (!block || block.type !== 'tool_use') return [];
+  return hitIds(block.input).map((f) => f.id);   // 非字符串由 hitIds 内部 stringify
+}
+
+function deepCopy(v) {
+  if (Array.isArray(v)) return v.map(deepCopy);
+  if (v && typeof v === 'object') {
+    const o = {};
+    for (const k of Object.keys(v)) o[k] = deepCopy(v[k]);
+    return o;
+  }
+  return v;
+}
+
+function safeStringify(v) {
+  try { return JSON.stringify(v) || ''; } catch { return ''; }
+}
+
+let _tag = '';
+function proxyTag() { return _tag; }
+function setProxy(name) { _tag = name || ''; }
+
+// ── observe 命中落盘（T7 v1，2026-10-06）──
+// 仿 cost-track 的 jsonl 落盘范式（path.join(os.homedir(), ...) + env 覆盖 + 落盘前 mkdir）：
+// 门控开（enabled()）才 append 一行；门控关 ⇒ 零写盘（非侵入，测试用 fs.existsSync===false 断言）。
+// 只记「观察事件」，不改任何请求/响应（enforce 落刀仍由 mode() 独立控制，二者解耦）。
+let _hitsFile = '';
+function hitsFile() {
+  if (_hitsFile) return _hitsFile;
+  return process.env.PROXY_SANDBOX_EGRESS_HITS
+    || path.join(os.homedir(), '.multi-proxy-manager', 'sandbox-egress-hits.jsonl');
+}
+/** 测试注入缝（仿 provider-health.setHealthFile）：setHitsFile(tmp) 把命中落盘指到临时文件，防 jest 污染真实 ~/.multi-proxy-manager。传 '' 回到 env/默认。 */
+function setHitsFile(p) { _hitsFile = p || ''; }
+
+/** 命中记账：门控开则 append 一行 jsonl；best-effort try/catch 隔离（写盘失败不影响主流程，75号 §九 同款纪律）。 */
+function recordHit(entry) {
+  if (!enabled()) return;
+  try {
+    const file = hitsFile();
+    const dir = path.dirname(file);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(file, JSON.stringify(entry) + '\n');
+  } catch { /* best-effort：记账失败不上抛、不动流量 */ }
+}
+
+// G-EVID（2026-11-08）：命中文件的**只读统计**（运行证据出口）。
+//
+// 为什么要它：`recordHit` 只在门控开、且真命中时才写一行 ⇒ 这个文件本身就是
+// 「这层真跑过」的物证。但「没写」有三种可能，必须分开报，不能都说成 0：
+//   (a) 门控关着 ⇒ 根本不写（enabled() 为 false）
+//   (b) 门控开着但从未命中（正常的静默态，不是故障）
+//   (c) 文件读不到（权限/IO）
+// 本函数只回答「文件里有什么」，(a) 由调用方用 enabled() 判断后自行说明。
+//
+// 纪律同 cost-track.ledgerStats：不 parse 每一行（只认 kind 字段的行才 parse，
+// 而记录量本就很小）、size+mtime 缓存、读失败报 null 而不是 0。
+let _statsCache = null;   // { key, value }
+
+function hitsStats(fileOverride) {
+  const file = fileOverride || hitsFile();
+  let st;
+  try {
+    st = fs.statSync(file);
+  } catch (e) {
+    if (e && e.code === 'ENOENT') {
+      return { file, exists: false, total: 0, byKind: {}, lastAt: null, error: null };
+    }
+    return { file, exists: true, total: null, byKind: {}, lastAt: null, error: (e && e.message) || 'stat 失败' };
+  }
+
+  const key = file + ':' + st.size + ':' + st.mtimeMs;
+  if (_statsCache && _statsCache.key === key) return _statsCache.value;
+
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    return { file, exists: true, total: null, byKind: {}, lastAt: null, error: (e && e.message) || '读取失败' };
+  }
+
+  let total = 0;
+  let lastTs = null;
+  const byKind = {};
+  for (const line of text.split('\n')) {
+    const s = line.trim();
+    if (!s) continue;
+    total++;
+    let r = null;
+    try { r = JSON.parse(s); } catch { /* 半行 → 只计数，不归类 */ }
+    if (r && typeof r === 'object') {
+      const k = typeof r.kind === 'string' ? r.kind : 'unknown';
+      byKind[k] = (byKind[k] || 0) + 1;
+      if (typeof r.ts === 'number' && (lastTs === null || r.ts > lastTs)) lastTs = r.ts;
+    }
+  }
+
+  const value = {
+    file, exists: true, total, byKind,
+    // recordHit 落的是 Date.now() 数字，不是 ISO —— 统一成 ISO 给上层，避免面板各写一份转换。
+    lastAt: lastTs === null ? null : new Date(lastTs).toISOString(),
+    error: null,
+  };
+  _statsCache = { key, value };
+  return value;
+}
+
+module.exports = {
+  enabled, mode, inspectOutbound, inspectInbound, setProxy, recordHit, setHitsFile,
+  hitsFile, hitsStats, TOOL_RULES,
+};

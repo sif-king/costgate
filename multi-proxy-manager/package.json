@@ -1,0 +1,35 @@
+{
+  "name": "multi-proxy-manager",
+  "version": "1.0.0",
+  "description": "Multi-Proxy Manager — 共享 Web 管理后台，统一管理 Codex/Hermes/Cursor 多模型代理",
+  "main": "main.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "start:l2": "PROXY_L2_SKILL=1 PROXY_L2_SKILLHOSTS=1 node server.js",
+    "start:l2:skill": "PROXY_L2_SKILLHOSTS=1 node server.js",
+    "start:l2:policy": "PROXY_TOKEN_POLICY=1 node server.js",
+    "start:guard": "MULTI_PROXY_SIDE_EFFECT_GUARD=1 MULTI_PROXY_ACTION_AUDIT=1 node server.js",
+    "start:isolate": "PROXY_HEALTH_ISOLATE=1 PROXY_COST_SCHEDULE=1 node server.js",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --verbose --forceExit",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules playwright test",
+    "test:e2e:ui": "NODE_OPTIONS=--experimental-vm-modules playwright test --ui",
+    "test:e2e:headed": "NODE_OPTIONS=--experimental-vm-modules playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "electron": "^31.7.7",
+    "jest": "^29.7.0",
+    "playwright": "^1.61.1",
+    "supertest": "^7.0.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.5.0",
+    "jsonwebtoken": "^9.0.0"
+  }
+}
