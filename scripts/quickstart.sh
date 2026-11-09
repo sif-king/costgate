@@ -62,6 +62,12 @@ MODEL_PROMPT="${MP_QS_PROMPT:-Reply with exactly: pong}"
 TOTAL_STEPS=5
 T0=$(date +%s)
 
+# 冷启期间给每个组件一个**独立**的 npm 缓存目录，见 ensure_deps_all 的注释。
+# 用 trap 兜底清理：任何退出路径都不会在用户机器上留下临时缓存。
+QS_NPM_CACHE=""
+_cleanup_qscache() { [ -n "${QS_NPM_CACHE:-}" ] && [ -d "${QS_NPM_CACHE:-}" ] && rm -rf "$QS_NPM_CACHE" 2>/dev/null; }
+trap _cleanup_qscache EXIT
+
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 say()  { printf '  %s\n' "$*"; }
@@ -152,7 +158,7 @@ deps_ready() { [ -f "$1/node_modules/.package-lock.json" ]; }
 #    以及「没人 require 的孤儿包」两路都会红）。改依赖前先跑它。
 ensure_deps_all() {
   local pairs=("$ROOT/multi-proxy-manager:manager" "$ROOT/$PROXY_DIR:$PROXY_LABEL")
-  local need=() pids=() pair dir label idx=0
+  local need=() pair dir label
   for pair in "${pairs[@]}"; do
     dir="${pair%%:*}"; label="${pair##*:}"
     if deps_ready "$dir"; then
@@ -164,17 +170,23 @@ ensure_deps_all() {
   if [ "${#need[@]}" -eq 0 ]; then return 0; fi
   command -v npm >/dev/null 2>&1 || die "未找到 npm。请安装 Node.js（含 npm）后重试"
   say "安装依赖（首次需联网，约 20-30s，只发生一次）"
+  # ⚠️ 两个改动，都是 2026-11-09 冷启实测踩出来的真 bug，不是洁癖：
+  #  (1) **私有 per-run 缓存**（mktemp，trap 兜底清理）：
+  #     实测有人 ~/.npmrc 把 cache 指向一个 root 占用的共享目录，npm 以当前用户写
+  #     进去 → EACCES 全挂。冷启不该被用户本机的 npm 缓存配置带沟里。
+  #  (2) **串行**装、**别并行**：并行装 + 共享/相邻缓存会把某个传递依赖（express 的
+  #     methods）抽成半份——只剩 README+package.json、缺 index.js；而 deps_ready 只查
+  #     .package-lock.json 在不在，半树照样判「已就绪」→ 之后每次运行都跳过重装，
+  #     manager 一启动就 `Cannot find module 'methods'` 永久卡死。串行后每次都是干净
+  #     完整的抽取；代价是慢网下多 ~16s（仅首次），换「冷启不再永久卡死」。
+  #     mktemp 失败时回退到 npm 默认缓存（行为同旧版，不引入新的失败面）。
+  QS_NPM_CACHE=$(mktemp -d 2>/dev/null || echo "")
   for pair in "${need[@]}"; do
     dir="${pair%%:*}"; label="${pair##*:}"
-    ( cd "$dir" && npm install --omit=dev --no-audit --no-fund --prefer-offline --loglevel=error ) \
-      >"$LOG_DIR/npm-$label.log" 2>&1 &
-    pids+=("$!")
-  done
-  for pair in "${need[@]}"; do
-    # 退出码不可尽信：实测出现过「返回 0 但只落了部分包、无 .package-lock.json」，
-    # 所以不按退出码判死，下面按落盘标记复核。
-    wait "${pids[$idx]}" || true
-    idx=$((idx + 1))
+    local cc=""
+    [ -n "$QS_NPM_CACHE" ] && cc="--cache=$QS_NPM_CACHE/$label"
+    ( cd "$dir" && npm install --omit=dev --no-audit --no-fund --prefer-offline --loglevel=error $cc ) \
+      >"$LOG_DIR/npm-$label.log" 2>&1 || true
   done
   # 复核 + 补装：对不完整的那一个补一次；仍不完整才算失败（失败必须指向日志）。
   for pair in "${need[@]}"; do
@@ -197,7 +209,9 @@ ensure_deps_all() {
     mv "$dir/node_modules" "$dir/$partial" 2>/dev/null || partial=""
     [ -n "$partial" ] && dim "  $label 半装目录已隔离到 $dir/$partial"
     dim "  $label 补装一次"
-    ( cd "$dir" && npm install --omit=dev --no-audit --no-fund --prefer-offline --loglevel=error ) \
+    local cc=""
+    [ -n "$QS_NPM_CACHE" ] && cc="--cache=$QS_NPM_CACHE/$label"
+    ( cd "$dir" && npm install --omit=dev --no-audit --no-fund --prefer-offline --loglevel=error $cc ) \
       >>"$LOG_DIR/npm-$label.log" 2>&1 || true
     if ! deps_ready "$dir"; then
       [ -n "$partial" ] && dim "  隔离出来的半装依赖留在 ${dir}/${partial}（可自行删除）"
