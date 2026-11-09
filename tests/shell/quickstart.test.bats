@@ -86,10 +86,12 @@ setup() {
   # 2026-11-09：并行 npm install + 共享缓存会把某传递依赖（express 的 methods）抽成半份
   # （只剩 LICENSE/README/package.json、缺 index.js），而 deps_ready 只查 .package-lock.json
   # 在不在 → 半树照样判「已就绪」→ 之后每次跳过重装，manager 一启动就
-  # `Cannot find module 'methods'` 永久卡死。两条 guard 锁死这个回归面：
+  # `Cannot find module 'methods'` 永久卡死。三条 guard 锁死这个回归面：
   #   ① 串行：不得再出现并行的 pids 数组 / wait 收口机器；
   #   ② 私有 per-run 缓存：npm 写进用户本机 ~/.npmrc 指向的共享缓存会 EACCES 全挂，
-  #      必须 mktemp 私有缓存 + trap EXIT 兜底清理。
+  #      必须 mktemp 私有缓存 + trap EXIT 兜底清理；
+  #   ③ 真加载冒烟：deps_ready 只认 .package-lock.json 哨兵，半树（哨兵在、模块缺）
+  #      照样判「已就绪」，必须 component_smoke 对 manager 真 require 一次 express 兜底。
   run grep -qF 'pids+=' "$QS"
   [ "$status" -ne 0 ] || { echo "install 又变回并行了（pids+= 数组），串行 guard 破" >&2; return 1; }
   run grep -qF 'wait "${pids' "$QS"
@@ -99,11 +101,21 @@ setup() {
   [ "$status" -eq 0 ] || { echo "私有 per-run 缓存 guard 破" >&2; return 1; }
   run grep -qF 'trap _cleanup_qscache EXIT' "$QS"
   [ "$status" -eq 0 ] || { echo "私有缓存的 trap 兜底清理 guard 破" >&2; return 1; }
-  # 退出码不可尽信（npm 可能返回 0 却没写全）→ 必须按落盘标记复核并补装一次
-  run grep -qF 'if ! deps_ready "$dir"; then' "$QS"
+  # 退出码不可尽信（npm 可能返回 0 却没写全）→ 必须按落盘标记 + 真加载冒烟复核并补装一次
+  run grep -qF 'if ! ( deps_ready "$dir" && component_smoke' "$QS"
   [ "$status" -eq 0 ] || { echo "补装复核 guard 破" >&2; return 1; }
   run grep -qF '补装一次' "$QS"
   [ "$status" -eq 0 ] || { echo "补装 guard 破" >&2; return 1; }
+}
+
+@test "deps_ready is the on-disk sentinel and component_smoke catches half-trees" {
+  # deps_ready 只看 .package-lock.json（不查目录存在——装到一半被打断目录照样在）；
+  # 但它治不了「哨兵在、模块缺」的半树，所以必须有 component_smoke 对 manager 真加载一次。
+  # 这条 guard 确保两条都在，且冒烟只认 manager（不维护「组件→模块」映射表）。
+  run grep -qF 'deps_ready() { [ -f "$1/node_modules/.package-lock.json" ]; }' "$QS"
+  [ "$status" -eq 0 ] || { echo "deps_ready 哨兵判据被改/删，guard 破" >&2; return 1; }
+  run grep -qE "component_smoke\(\) \{ \[ \"\\\$2\" = \"manager\" \] \|\| return 0; \( cd \"\\\$1\" 2>/dev/null && node -e \"require\('express'\)\"" "$QS"
+  [ "$status" -eq 0 ] || { echo "component_smoke 真加载冒烟被删/改，guard 破" >&2; return 1; }
 }
 
 @test "retry isolates the half-installed node_modules before rebuilding" {

@@ -145,10 +145,19 @@ start_svc() {
 # （2026-11-07 实测踩过：目录 128 个包、缺 axios、无 .package-lock.json。）
 deps_ready() { [ -f "$1/node_modules/.package-lock.json" ]; }
 
+# deps_ready 只看 .package-lock.json 这个「落盘哨兵」，治不了「哨兵在、模块缺」的半树：
+# 2026-11-09 实测——express 的传递依赖 methods 只剩 README/package.json、缺 index.js，
+# 哨兵却还在 → deps_ready 判「已就绪」→ 每次跳过重装 → manager 一启动就
+# Cannot find module 'methods' 永久卡死。component_smoke 补一道「真加载」判定专治这个。
+# 只对 manager 冒烟：它入口就 require('express')，半树缺的正是它这条链；codex-proxy 的哨兵
+# 即够（入口模块不在本次暴露的失败面内）。零映射——不维护「组件→模块」表，只认 manager。
+# 用子 shell + `cd` 隔离：失败也不影响当前 shell 的工作目录。
+component_smoke() { [ "$2" = "manager" ] || return 0; ( cd "$1" 2>/dev/null && node -e "require('express')" >/dev/null 2>&1 ); }
+
 # 依赖自举：陌生人是 clone 之后跑的，仓库里没有 node_modules。
 # 只装生产依赖（--omit=dev）：冷启不需要 jest/playwright/electron 那套，装了纯属浪费一次下载。
-# 两个服务并行装（实测串行 23s+16s，并行 ≈23s）——省下的 16 秒在慢网下更值钱。
-# 已有完整依赖直接跳过（老用户重复运行不受影响）。
+# 2026-11-09 起改**串行**装（原来并行）：并行 + 共享缓存会把传递依赖抽成半份（见下 deps_ready
+# 注释），永久卡死的代价远大于串行多花的 ~16s（仅首次）。已有完整依赖直接跳过（老用户不受影响）。
 #
 # ⚠️ 上一行那句「--omit=dev 就够了」在 2026-11-09 之前是**假话**：
 #    playwright 当时被写在 multi-proxy-manager 的 dependencies 里（不是 devDependencies），
@@ -161,7 +170,7 @@ ensure_deps_all() {
   local need=() pair dir label
   for pair in "${pairs[@]}"; do
     dir="${pair%%:*}"; label="${pair##*:}"
-    if deps_ready "$dir"; then
+    if deps_ready "$dir" && component_smoke "$dir" "$label"; then
       ok "$label 依赖已就绪"
     else
       need+=("$pair")
@@ -188,19 +197,24 @@ ensure_deps_all() {
     ( cd "$dir" && npm install --omit=dev --no-audit --no-fund --prefer-offline --loglevel=error $cc ) \
       >"$LOG_DIR/npm-$label.log" 2>&1 || true
   done
-  # 复核 + 补装：对不完整的那一个补一次；仍不完整才算失败（失败必须指向日志）。
+  # 复核 + 补装：对不完整（哨兵缺 或 加载冒烟没过）的那一个补一次；仍不完整才算失败。
   for pair in "${need[@]}"; do
     dir="${pair%%:*}"; label="${pair##*:}"
-    if deps_ready "$dir"; then continue; fi
+    if deps_ready "$dir" && component_smoke "$dir" "$label"; then continue; fi
     # 首次没装完必须说清「为什么」。只报「补装一次」会让人以为本项目坏了；
     # 实测最常见的原因是网络（npm 连不上 registry / 公司代理 / 沙箱拦截），
     # 而 npm 的报错已经被写进日志文件、屏幕上只剩一句「补装一次」——等于藏证据。
+    # 三类原因：① npm 有报错（网络/权限）② 没落盘哨兵（安装被打断）③ 哨兵在但加载没过（半树）。
     local why
     why=$(grep -E '^npm (error|ERR)' "$LOG_DIR/npm-$label.log" 2>/dev/null \
           | head -3 | sed 's/^npm error //; s/^npm ERR! //')
     if [ -n "$why" ]; then
       dim "  $label 首次安装没完成，npm 报的是："
       printf '%s\n' "$why" | sed 's/^/      /'
+    elif ! deps_ready "$dir"; then
+      dim "  $label 没落盘 .package-lock.json（安装被打断或网络中断）"
+    else
+      dim "  $label 哨兵在但加载冒烟没过（半树：模块缺），隔离后重装"
     fi
     # 半装会留下占位目录，直接重装常撞 ENOTEMPTY（实测卡在 playwright 的 rename）。
     # 先隔离再装，别在坏地基上浇筑。不存在时 mv 直接失败，忽略即可。
@@ -213,9 +227,9 @@ ensure_deps_all() {
     [ -n "$QS_NPM_CACHE" ] && cc="--cache=$QS_NPM_CACHE/$label"
     ( cd "$dir" && npm install --omit=dev --no-audit --no-fund --prefer-offline --loglevel=error $cc ) \
       >>"$LOG_DIR/npm-$label.log" 2>&1 || true
-    if ! deps_ready "$dir"; then
+    if ! ( deps_ready "$dir" && component_smoke "$dir" "$label" ); then
       [ -n "$partial" ] && dim "  隔离出来的半装依赖留在 ${dir}/${partial}（可自行删除）"
-      die "$label 依赖装不完整（补装后仍缺 node_modules/.package-lock.json）。日志：$LOG_DIR/npm-$label.log"
+      die "$label 依赖装不完整（补装后仍装不出可用依赖）。日志：$LOG_DIR/npm-$label.log"
     fi
     # 补装成功了，就把自己造的那份半装目录清掉：一次冷启会在用户 clone 里留下
     # 100MB 级的 node_modules.partial-*，是脚本自己产生的垃圾，不该让用户手工收拾。
