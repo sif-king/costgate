@@ -1,0 +1,13 @@
+# Docker 构建上下文：已知问题登记（不是开关，是待还的债）
+#
+# 每行一条，格式：<Dockerfile>  <源路径>  <理由>
+# 分隔用两个以上空格或 Tab（理由里可以正常写空格）。
+#
+# 判据见 scripts/check-docker-context.js。登记过的每次都会打印出来提醒，
+# 但不算 CI 失败——这样「新出现的问题」会立刻红，而「已知的债」不会把 CI 变噪音。
+#
+# 什么时候必须删掉这里的条目：真正修好之后（加构建阶段自己产出 dist，或干脆
+# 让镜像不托管 cursor 代理）。删掉后守卫会重新变红，正好证明修好了。
+
+Dockerfile.lite-mvp  cursor-proxy/dist  镜像要不要托管 cursor 代理尚未定（属定位问题）。若托管：加 build 阶段跑 cursor-proxy 的 tsc 自己产出 dist；若不托管：删掉这条 COPY 与 buildProxyConfigs 里的注册。见 PROJECT-STATE/PUBLISH-READINESS-2026-11-09.md 第三节。
+Dockerfile.manager  cursor-proxy/dist  同上：「manager 镜像要不要带 cursor 代理」是定位决定，不是笔误。在决定之前，这个镜像从干净 clone 构建必然失败，已在 Dockerfile 里加了 ⚠️ 注记。

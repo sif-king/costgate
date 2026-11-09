@@ -155,6 +155,12 @@ jobs:
       # 一次性目检脚本，每个新用户 `npm install --omit=dev` 多下 18MB。
       - name: production dependency hygiene (dev tools / orphans)
         run: node scripts/check-prod-deps.js
+      # 镜像构建上下文（2026-11-09 加）：Dockerfile 的 COPY 源若不在版本控制里、
+      # 或被 .dockerignore 排除，`docker build` 只会在**外部用户**机器上失败。
+      # 实案：两个 Dockerfile 靠 `COPY cursor-proxy/dist`，而 dist 是 tsc 产物（不入库）
+      # 且被 .dockerignore 里的 `dist` 排除 —— 从干净 clone 构建必然失败。
+      - name: docker build context (COPY sources reachable?)
+        run: node scripts/check-docker-context.js
       - name: shell script gate (check.sh + bats)
         run: |
           bash tests/shell/check.sh

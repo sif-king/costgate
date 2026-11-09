@@ -220,6 +220,9 @@ fi
 # ── 6. 生产依赖卫生（CI 无对应 job —— 它抓的是「别人装不上、我这好好的」）──
 run_step "生产依赖有没有主（scripts/check-prod-deps.js）" node scripts/check-prod-deps.js
 
+# ── 6b. 镜像构建上下文（同样只对外部用户失败：dist 在本地、不在干净 clone）──
+run_step "镜像 COPY 源在不在构建上下文里（scripts/check-docker-context.js）" node scripts/check-docker-context.js
+
 # ── 7. 依赖审计（CI: dep-audit job）──
 if [ -n "${CI:-}" ] || python3 -c 'import pip_audit' 2>/dev/null || command -v pip-audit >/dev/null 2>&1; then
   run_step "依赖审计（scripts/dep-audit.py）" python3 scripts/dep-audit.py
