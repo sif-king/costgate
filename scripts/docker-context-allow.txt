@@ -9,5 +9,5 @@
 # 什么时候必须删掉这里的条目：真正修好之后（加构建阶段自己产出 dist，或干脆
 # 让镜像不托管 cursor 代理）。删掉后守卫会重新变红，正好证明修好了。
 
-Dockerfile.lite-mvp  cursor-proxy/dist  镜像要不要托管 cursor 代理尚未定（属定位问题）。若托管：加 build 阶段跑 cursor-proxy 的 tsc 自己产出 dist；若不托管：删掉这条 COPY 与 buildProxyConfigs 里的注册。见 PROJECT-STATE/PUBLISH-READINESS-2026-11-09.md 第三节。
-Dockerfile.manager  cursor-proxy/dist  同上：「manager 镜像要不要带 cursor 代理」是定位决定，不是笔误。在决定之前，这个镜像从干净 clone 构建必然失败，已在 Dockerfile 里加了 ⚠️ 注记。
+Dockerfile.lite-mvp  cursor-proxy/dist  2026-11-09 已定：容器【托管代理运行时】（管理-only 镜像随后注册代理却起不来是最坏结果）。修法＝复用 Dockerfile.cursor 已证的多阶段样板：每个代理一个 builder 跑 tsc 自产 dist + `npm install --omit=dev`，基础镜像统一 bookworm（避开 manager=alpine 与 cursor=bookworm 的 native module libc 冲突）。状态＝结构修法已定、【运行时构建待在有 docker 的机器上 `docker build -f Dockerfile.lite-mvp .` 验证】——本沙箱无 docker daemon，按项目铁律不写「能 build」的未验证结论。见 PUBLISH-READINESS §三。
+Dockerfile.manager  cursor-proxy/dist  2026-11-09 同 lite-mvp：已定托管代理 + 同法修复；运行时构建待有 docker 的机器验证（本环境不声称能 build）。已在 Dockerfile 加 ⚠️ 注记。

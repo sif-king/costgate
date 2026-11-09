@@ -10,6 +10,13 @@
 #   要真做到「对外可 build」，得给每个代理加 `COPY package*.json && npm install --omit=dev`
 #   阶段（Dockerfile.cursor 是唯一写对的），并处理 manager(alpine) 与 cursor(bookworm) 的 libc 差异。
 #   未修之前，别在文档/宣传里说这个仓库支持容器部署。
+#
+# 📌 2026-11-09 已定（老板拍）：容器【托管代理运行时】——管理-only 镜像随后注册代理却起不来是最坏结果。
+#   修法＝复用 Dockerfile.cursor 的多阶段样板（每代理一个 builder 跑 tsc 自产 dist + npm install --omit=dev，
+#   基础镜像统一 bookworm 避开 native module 的 libc 冲突）。
+#   状态＝【结构修法已定，运行时构建待在有 docker 的机器上 `docker build -f Dockerfile.lite-mvp .` 验证】。
+#   本沙箱无 docker daemon，按项目铁律「不写无法验证的结论」，故此处不声称「已能 build」；
+#   在有人跑过 docker build 并确证之前，README/宣传仍不写「支持容器部署」。
 # 不含 h3 重引擎（百 GB 权重走「重量档」单独出）；接用户本地 Ollama（host.docker.internal:11434）。
 # 关键：manager 保持原目录名 multi-proxy-manager/（不改名 manager/）——
 #   forward.js 需 ../../packs/sandbox-egress、packs/sandbox-egress 需 ../../multi-proxy-manager/lib/redact，

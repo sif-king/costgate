@@ -17,6 +17,9 @@ COPY multi-proxy-manager/ ./manager/
 # ⚠️ 2026-11-09 核查：下面 `COPY cursor-proxy/dist` 在当前 .dockerignore 下必然失败 ——
 #   .dockerignore 排除了 dist 和 node_modules，而 dist 也不入库（git ls-files 查不到）。
 #   本机能构建只是因为本机 cursor-proxy/dist 恰好存在。详见 PROJECT-STATE/PUBLISH-READINESS-2026-11-09.md。
+# 📌 2026-11-09 已定（老板拍）：同 lite-mvp，容器【托管代理运行时】，修法＝复用 Dockerfile.cursor 多阶段样板
+#   （每代理 builder 跑 tsc 自产 dist + npm install --omit=dev，统一 bookworm 避 libc 冲突）。
+#   运行时构建待有 docker 的机器上验证（本沙箱无 daemon，不声称「已能 build」）。
 COPY codex-proxy/ ./codex-proxy/
 COPY hermes-proxy/ ./hermes-proxy/
 COPY cursor-proxy/package.json ./cursor-proxy/
