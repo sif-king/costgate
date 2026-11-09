@@ -115,9 +115,27 @@ elif ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>
   SKIPPED=$((SKIPPED + 1))
 else
   _TRY="$(mktemp -d "${TMPDIR:-/tmp}/mp-preflight-clean-XXXXXX" 2>/dev/null || true)"
-  if [ -z "$_TRY" ] || ! git worktree add --detach "$_TRY" HEAD >/dev/null 2>&1; then
-    [ -n "$_TRY" ] && rm -rf "$_TRY" 2>/dev/null
-    skip "干净 checkout 复现（建 worktree 失败：磁盘满 / 非 git 仓 / 权限）"
+  _WT_ERR=""
+  if [ -z "$_TRY" ]; then
+    skip "干净 checkout 复现（mktemp 建不出临时目录：TMPDIR 不可写？）"
+    SKIPPED=$((SKIPPED + 1))
+  elif ! _WT_ERR="$(git worktree add --detach "$_TRY" HEAD 2>&1)"; then
+    # 别把原因猜成「磁盘满 / 权限」—— 按 git 的原话归类，再给一条能看的完整日志。
+    # （2026-11-09 实测：整段原话里带着含中文的绝对路径，终端会把那一行吞掉，
+    #   所以这里不直接贴原话，只贴归类结论 + 落盘位置。）
+    _WT_LOG="${TMPDIR:-/tmp}"; _WT_LOG="${_WT_LOG%/}/mp-preflight-worktree.err"
+    printf '%s\n' "$_WT_ERR" > "$_WT_LOG" 2>/dev/null || _WT_LOG="（没写成功）"
+    _WT_WHY="未识别的失败"
+    case "$_WT_ERR" in
+      *"update_ref failed"*|*"couldn't set 'HEAD'"*) _WT_WHY="写不进 .git/worktrees（HEAD.lock 被锁/被拦）" ;;
+      *"No space left"*|*"disk full"*)               _WT_WHY="磁盘满" ;;
+      *"not a git repository"*)                      _WT_WHY="这里不是 git 工作区" ;;
+      *"already registered"*|*"already exists"*)      _WT_WHY="同一路径已注册成 worktree（git worktree prune）" ;;
+    esac
+    # 失败时 git 可能已经建了半个目录，先尽力清掉，别把垃圾留在 TMPDIR 里
+    if [ -n "$_TRY" ]; then rm -rf "$_TRY" 2>/dev/null || true; fi
+    skip "干净 checkout 复现（git worktree add 失败：${_WT_WHY}）"
+    dim "      git 完整报错：${_WT_LOG}"
     SKIPPED=$((SKIPPED + 1))
   else
     CLEAN_DIR="$_TRY"
