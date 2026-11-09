@@ -3,12 +3,16 @@
 # Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 # This file is part of the multi-proxy project.
 #
-# quickstart.sh —— 60 秒冷启：从零到看见第一笔真实账单
+# quickstart.sh —— 冷启：从零到看见第一笔真实账单
 #
 # 设计判据（对外交付四判据 I「冷启」的判别器）：
 #   在干净环境（无 .env、无 ~/.multi-proxy-manager）下运行本脚本，
 #   一条命令之内必须出现「本次请求真的花了 N tokens」——数字来自上游真实 usage，
 #   不是模拟、不是估算、不是 0 冒充。
+#
+# 关于耗时：本机实测 7s / 13s / 26s（依赖已缓存）到 97s（空 npm 缓存 + 一次装包失败重试）。
+#   差别几乎全在 npm 要不要现下那 30 多个包。所以这里**不承诺秒数**，只在末尾报这次的
+#   真实耗时并分段（端口 / 依赖 / 探测+起服务+请求）——让陌生人能判断慢在自己网络还是程序。
 #
 # 为什么只起两个服务：账本链是
 #   客户端 → codex-proxy(上游转发+取 usage) → manager(POST /api/cost/report)
@@ -136,8 +140,8 @@ start_svc() {
 deps_ready() { [ -f "$1/node_modules/.package-lock.json" ]; }
 
 # 依赖自举：陌生人是 clone 之后跑的，仓库里没有 node_modules。
-# 只装生产依赖（--omit=dev）：冷启不需要 jest/playwright/electron 那套，装了纯属浪费 60 秒。
-# 两个服务并行装（实测串行 23s+16s，并行 ≈23s）——60 秒预算里这 16 秒值得省。
+# 只装生产依赖（--omit=dev）：冷启不需要 jest/playwright/electron 那套，装了纯属浪费一次下载。
+# 两个服务并行装（实测串行 23s+16s，并行 ≈23s）——省下的 16 秒在慢网下更值钱。
 # 已有完整依赖直接跳过（老用户重复运行不受影响）。
 #
 # ⚠️ 上一行那句「--omit=dev 就够了」在 2026-11-09 之前是**假话**：
@@ -243,7 +247,7 @@ probe_ollama() {
       // 按体积升序选最小的：size 是字节，是唯一可靠信号。
       // 曾按名字正则 `/1b|1\.5b|3b|mini|tiny|small/` 挑，结果 qwen3:4b 与
       // qwen3.8:27b-mlx 都不匹配，落到 names[0] —— 挑中 18.2GB 的 27B，
-      // 第一次请求要把它整个加载进内存，跟「60 秒」差了两个数量级。
+      // 第一次请求要把它整个加载进内存，跟「一次冷启」差了两个数量级。
       cand.sort((a,b)=>((a.size||Infinity)-(b.size||Infinity)));
       const pick=String(cand[0].name);
       const names=cand.map(m=>String(m.name));
@@ -289,7 +293,7 @@ NODE
 
 usage() {
   cat <<EOF
-multi-proxy · 60 秒冷启 —— 一条命令,看到第一笔真实账单
+multi-proxy · 冷启 —— 一条命令,看到第一笔真实账单
 
 用法:
   bash scripts/quickstart.sh              冷启(默认 codex-proxy / OpenAI wire)
@@ -433,7 +437,7 @@ esac
 
 # ---------- 主流程 ----------
 
-bold "multi-proxy · 60 秒冷启"
+bold "multi-proxy · 冷启：从零到第一笔真实账单"
 dim "仓库：$ROOT"
 dim "数据：$DATA_DIR"
 

@@ -162,6 +162,7 @@ jobs:
           if command -v bats >/dev/null 2>&1; then
             bats tests/shell/manage.sh.test.bats
             bats tests/shell/prod-deps.test.bats
+            bats tests/shell/readme.test.bats
           else
             echo "bats unavailable; check.sh already validated above"
           fi

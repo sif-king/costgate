@@ -8,7 +8,7 @@ This file is part of the multi-proxy project.
 
 > **把你本机那些 AI 编码工具的模型请求收到一处，记一本你自己能查的花销账。**
 
-装好一条命令、几十秒，不用任何 API key。账本是磁盘上一个纯文本文件，另有一条只读命令把它读给你听——包括每项能力**真跑过几次**。
+装好只用一条命令，不用任何 API key。账本是磁盘上一个纯文本文件，另有一条只读命令把它读给你听——包括每项能力**真跑过几次**。
 
 <sub>English: One local gateway for all your AI coding tools — with a ledger you can audit yourself.</sub>
 
@@ -16,7 +16,9 @@ This file is part of the multi-proxy project.
 
 ---
 
-## 一分钟左右看到效果
+## 一条命令，看到第一笔真实账单
+
+本机实测 7 秒到 97 秒，差别全在 npm 要不要现下依赖；脚本末尾会报这次的真实秒数，别把秒数当承诺。
 
 ```bash
 git clone https://github.com/xiaoxianxian/multi-proxy && cd multi-proxy
@@ -32,7 +34,7 @@ MP_QS_CLIENT=claude bash scripts/quickstart.sh
 ```
 
 ```
-multi-proxy · 60 秒冷启
+multi-proxy · 冷启：从零到第一笔真实账单
 仓库：/Users/xiaota/Documents/AI项目/multi-proxy
 数据：/tmp/qs-readme-home/.multi-proxy-manager
 
@@ -77,7 +79,7 @@ multi-proxy · 60 秒冷启
 >
 > 同一天又从**空 npm 缓存**的干净副本（`git archive` 导出、连 `~/.npm` 都是新的）整跑了一次：**97 秒**（含 clone 2 秒），其中约 40 秒是第一轮 `npm install` 失败后补装的两次。失败原因是本机网络连不上 npm 的那个 socket，不是仓库的问题——脚本会把 npm 的**原话**打到屏幕上（`首次安装没完成，npm 报的是：…`），见到这行先查自己的网络/代理，别当成安装器坏了。
 
-那几十秒里真正发生的事：你的请求 → codex-proxy 转发到上游 → 上游返回 `usage` → 上报 manager → 追加写进 `~/.multi-proxy-manager/cost-ledger.jsonl`。
+那条命令背后真正发生的事：你的请求 → codex-proxy 转发到上游 → 上游返回 `usage` → 上报 manager → 追加写进 `~/.multi-proxy-manager/cost-ledger.jsonl`。
 
 **token 数来自上游返回的 `usage` 字段**，不是估算、不是模拟。请求成功但账本没多一行，脚本会**以退出码 2 报错**并告诉你去哪看日志——"没记上"不会被说成"成功"。
 

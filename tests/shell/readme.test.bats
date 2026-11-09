@@ -127,6 +127,26 @@ setup() {
   [ "$status" -eq 0 ] || { echo "README 没点明 Codex CLI 不认环境变量" >&2; return 1; }
 }
 
+@test "the banner in README's sample output matches what quickstart actually prints" {
+  # 中文口径（2026-11-09）：README 那段示例输出自称「一字未改」，但横幅写的是
+  # 「60 秒冷启」,而脚本正文同一屏的末尾会报「用时 97s」——横幅打脸正文，而且
+  # 60 秒这个数字本身对空缓存/慢网永远不成立。改法不是换个数字（过几个月又漂），
+  # 是把秒数从横幅里彻底拿掉，只由脚本末尾报本次真实耗时。
+  # 这条守卫抓的是「示例输出与脚本真源不一致」——示例输出是最容易腐烂的副本。
+  local banner
+  banner="$(grep -m1 '^bold "multi-proxy · ' "$ROOT/scripts/quickstart.sh" | sed 's/^bold "//; s/"$//')"
+  [ -n "$banner" ] || { echo "在 quickstart.sh 里找不到 bold \"multi-proxy · ...\" 横幅" >&2; return 1; }
+  run grep -qxF -- "$banner" "$README"
+  [ "$status" -eq 0 ] || {
+    echo "README 示例输出的横幅与脚本不一致（示例应逐字相同）：" >&2
+    echo "  脚本打印：$banner" >&2
+    return 1
+  }
+  # 顺手禁掉按固定秒数承诺：这类数字随 npm 缓存与网络漂移，写进对外文案必被现实打脸。
+  run grep -nE '60 ?秒冷启|一分钟左右看到效果' "$README" "$QS"
+  [ "$status" -ne 0 ] || { echo "又按固定秒数承诺冷启时长了：$output" >&2; return 1; }
+}
+
 @test "docs do not promise a first-run consent page while that gate is off" {
   # 中文口径：quickstart 原来写「面板（首启会展示协议页）」，README 写「首次访问
   # 引导设密码」——两处都与现实不符。2026-11-08 实测（全新 HOME、回环访问）：

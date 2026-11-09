@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# BATS tests for scripts/quickstart.sh（I 判据「冷启 60 秒」的判别器本身）
+# BATS tests for scripts/quickstart.sh（I 判据「一条命令冷启」的判别器本身）
 # Run with: bats tests/shell/quickstart.test.bats
 #
 # 为什么锁这几条：quickstart 是「第一笔真实账单」的唯一入口，它最容易在
