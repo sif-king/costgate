@@ -82,12 +82,27 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
-@test "install is re-verified after wait and retried once" {
-  # npm 可能返回 0 却没写全 → 不许只凭退出码判成功，必须按落盘标记复核并补装一次
-  run grep -qF 'wait "${pids[$idx]}" || true' "$QS"
-  [ "$status" -eq 0 ]
+@test "install is serial + private-cache, then re-verified by on-disk sentinel and retried once" {
+  # 2026-11-09：并行 npm install + 共享缓存会把某传递依赖（express 的 methods）抽成半份
+  # （只剩 LICENSE/README/package.json、缺 index.js），而 deps_ready 只查 .package-lock.json
+  # 在不在 → 半树照样判「已就绪」→ 之后每次跳过重装，manager 一启动就
+  # `Cannot find module 'methods'` 永久卡死。两条 guard 锁死这个回归面：
+  #   ① 串行：不得再出现并行的 pids 数组 / wait 收口机器；
+  #   ② 私有 per-run 缓存：npm 写进用户本机 ~/.npmrc 指向的共享缓存会 EACCES 全挂，
+  #      必须 mktemp 私有缓存 + trap EXIT 兜底清理。
+  run grep -qF 'pids+=' "$QS"
+  [ "$status" -ne 0 ] || { echo "install 又变回并行了（pids+= 数组），串行 guard 破" >&2; return 1; }
+  run grep -qF 'wait "${pids' "$QS"
+  [ "$status" -ne 0 ] || { echo "install 又用 wait 收并行子进程，串行 guard 破" >&2; return 1; }
+  run grep -qF '--cache=$QS_NPM_CACHE' "$QS"
+  [ "$status" -eq 0 ] || { echo "私有 per-run 缓存 guard 破" >&2; return 1; }
+  run grep -qF 'trap _cleanup_qscache EXIT' "$QS"
+  [ "$status" -eq 0 ] || { echo "私有缓存的 trap 兜底清理 guard 破" >&2; return 1; }
+  # 退出码不可尽信（npm 可能返回 0 却没写全）→ 必须按落盘标记复核并补装一次
+  run grep -qF 'if ! deps_ready "$dir"; then' "$QS"
+  [ "$status" -eq 0 ] || { echo "补装复核 guard 破" >&2; return 1; }
   run grep -qF '补装一次' "$QS"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 0 ] || { echo "补装 guard 破" >&2; return 1; }
 }
 
 @test "retry isolates the half-installed node_modules before rebuilding" {
