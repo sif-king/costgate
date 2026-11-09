@@ -94,7 +94,8 @@ setup() {
   [ "$status" -ne 0 ] || { echo "install 又变回并行了（pids+= 数组），串行 guard 破" >&2; return 1; }
   run grep -qF 'wait "${pids' "$QS"
   [ "$status" -ne 0 ] || { echo "install 又用 wait 收并行子进程，串行 guard 破" >&2; return 1; }
-  run grep -qF '--cache=$QS_NPM_CACHE' "$QS"
+  # `--cache=` 以 -- 开头，grep 会当成选项 → 必须用 -- 收尾再给 pattern
+  run grep -qF -- '--cache=$QS_NPM_CACHE' "$QS"
   [ "$status" -eq 0 ] || { echo "私有 per-run 缓存 guard 破" >&2; return 1; }
   run grep -qF 'trap _cleanup_qscache EXIT' "$QS"
   [ "$status" -eq 0 ] || { echo "私有缓存的 trap 兜底清理 guard 破" >&2; return 1; }
