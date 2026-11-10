@@ -189,7 +189,19 @@ ensure_deps_all() {
   #     manager 一启动就 `Cannot find module 'methods'` 永久卡死。串行后每次都是干净
   #     完整的抽取；代价是慢网下多 ~16s（仅首次），换「冷启不再永久卡死」。
   #     mktemp 失败时回退到 npm 默认缓存（行为同旧版，不引入新的失败面）。
-  QS_NPM_CACHE=$(mktemp -d 2>/dev/null || echo "")
+  #
+  # ⚠️ Windows（Git Bash/MSYS2/Cygwin）例外 —— 2026-11-10 判据 IV 真第三方 Windows 实测：
+  #   mktemp 落 C:\Temp\tmp.XXX，npm 的 atomic 写 + Windows Defender 实时扫描 → EPERM
+  #   （实测 tmp.ToKK3psH1X\manager\_cacache\index-v5 EPERM → 首次装失败、触发补装、543s）。
+  #   Windows 用户默认缓存是自己可写的 %LOCALAPPDATA%\npm-cache（无 Unix 那种 root 占用的
+  #   共享缓存 → 不存在 EACCES 面），故 Windows 保持 QS_NPM_CACHE 空、走 npm 默认缓存，
+  #   既安全又绕开 temp EPERM。WSL（uname=Linux）不在此列：它仍是 Unix 语义，保留私有缓存。
+  #   uname 缺失时回退到「试 mktemp」分支（行为同旧版，不引入新的失败面）。
+  QS_NPM_CACHE=""
+  case "$(uname 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) : ;;  # Windows：用 npm 默认缓存，不建 temp 私有缓存
+    *) QS_NPM_CACHE=$(mktemp -d 2>/dev/null || echo "") ;;
+  esac
   for pair in "${need[@]}"; do
     dir="${pair%%:*}"; label="${pair##*:}"
     local cc=""
@@ -235,9 +247,16 @@ ensure_deps_all() {
     # 100MB 级的 node_modules.partial-*，是脚本自己产生的垃圾，不该让用户手工收拾。
     # 只删本函数刚刚 mv 出来的那一个（名字带时间戳、且是本轮的），不碰任何用户目录。
     if [ -n "$partial" ] && [ -d "$dir/$partial" ]; then
+      # 主清用 rm -rf；Windows 上 MSYS 的 rm -rf 对刚 mv 出来、杀毒在扫的大目录会 EPERM 失败
+      # （2026-11-10 判据 IV Windows 实测「半装残留没删掉」），故 rm 失败时再用 node fs.rmSync 兜底
+      # （node 必有，need_node 已过；force 逐文件容错，跨平台比 MSYS rm -rf 更稳）。
       rm -rf "$dir/$partial" 2>/dev/null \
-        && dim "  $label 已清掉半装残留（${partial}）" \
-        || dim "  半装残留没删掉：${dir}/${partial}（可自行删除）"
+        || node -e 'try{require("fs").rmSync(process.argv[1],{recursive:true,force:true});process.exit(0)}catch(e){process.exit(1)}' "$dir/$partial" 2>/dev/null
+      if [ ! -d "$dir/$partial" ]; then
+        dim "  $label 已清掉半装残留（${partial}）"
+      else
+        dim "  半装残留没删掉：${dir}/${partial}（可自行删除）"
+      fi
     fi
   done
   ok "依赖装好"

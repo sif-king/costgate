@@ -359,3 +359,42 @@ setup() {
   run grep -qF "\$'\\n'" "$QS"
   [ "$status" -eq 0 ]
 }
+
+# ---- 2026-11-10: 判据 IV 真第三方 Windows 冷启实测暴露的两个跨平台 bug ----
+
+@test "on Windows the private npm cache is skipped (avoid temp-dir EPERM)" {
+  # 中文口径：2026-11-10 判据 IV 的第三方在一台 Windows（Git Bash/MSYS，路径 /c/Users、
+  # /d/buddy_workspace）上跑 quickstart，私有 per-run 缓存 mktemp 落到 C:\Temp\tmp.XXX，
+  # npm 的 atomic 写 + Windows Defender 实时扫描 → EPERM（tmp.ToKK3psH1X\manager\_cacache\index-v5），
+  # 首次装失败、触发补装、依赖安装 543s。Windows 用户默认缓存是自己可写的
+  # %LOCALAPPDATA%\npm-cache（无 Unix 那种 root 占用的共享缓存 → 无 EACCES 面），
+  # 故 Windows 必须跳过私有缓存、走 npm 默认缓存。三条 guard 锁死这个回归面：
+  #   ① 必须按 uname 判平台（不能无脑全平台建 temp 缓存）；
+  #   ② 必须认 MINGW/MSYS/CYGWIN 这一族 Windows bash；
+  #   ③ Windows 分支必须保持 QS_NPM_CACHE 空（不 mktemp），unix 分支才 mktemp。
+  run grep -qF 'case "$(uname 2>/dev/null)"' "$QS"
+  [ "$status" -eq 0 ] || { echo "没按 uname 判平台就建私有缓存，Windows EPERM 会回归" >&2; return 1; }
+  run grep -qF 'MINGW*|MSYS*|CYGWIN*' "$QS"
+  [ "$status" -eq 0 ] || { echo "Windows bash 族没被认出（漏了 MINGW/MSYS/CYGWIN）" >&2; return 1; }
+  # unix 分支才 mktemp，Windows 分支不能出现 mktemp（否则 EPERM 回归）
+  run grep -qF '*) QS_NPM_CACHE=$(mktemp' "$QS"
+  [ "$status" -eq 0 ] || { echo "unix 分支的 mktemp 私有缓存被删/改了" >&2; return 1; }
+}
+
+@test "half-install cleanup falls back to node fs.rmSync when rm -rf fails" {
+  # 中文口径：同一次 Windows 实测里，补装成功了，但隔离出来的 node_modules.partial-*
+  # 用 rm -rf 没删掉（MSYS 的 rm -rf 对刚 mv 出来、杀毒在扫的大目录 EPERM 失败），
+  # 屏幕只剩「半装残留没删掉（可自行删除）」——百兆垃圾留用户手工收拾。
+  # 故 rm -rf 失败时必须有 node fs.rmSync 兜底（node 必有、force 逐文件容错、跨平台更稳）。
+  # guard 要求 rm -rf 仍作主路径（不废掉旧清理），且其后必须有 node 兜底。
+  run grep -qF 'rm -rf "$dir/$partial"' "$QS"
+  [ "$status" -eq 0 ] || { echo "rm -rf 主清理被删了" >&2; return 1; }
+  run grep -qF 'rmSync(process.argv[1]' "$QS"
+  [ "$status" -eq 0 ] || { echo "node fs.rmSync 兜底被删了，Windows 半装残留会残留" >&2; return 1; }
+  # node 兜底必须在 rm -rf 之后（先 rm，失败才 rmSync）
+  local rm_line node_line
+  rm_line="$(grep -nF 'rm -rf "$dir/$partial"' "$QS" | cut -d: -f1 | head -1)"
+  node_line="$(grep -nF 'rmSync(process.argv[1]' "$QS" | cut -d: -f1 | head -1)"
+  [ -n "$rm_line" ] && [ -n "$node_line" ] || { echo "锚点找不到 rm=$rm_line node=$node_line" >&2; return 1; }
+  [ "$node_line" -gt "$rm_line" ] || { echo "node 兜底写在 rm -rf 之前（$node_line vs $rm_line），顺序反了" >&2; return 1; }
+}
