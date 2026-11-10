@@ -1,7 +1,9 @@
 <!--
-costgate（原 multi-proxy）— 用户手册
-面向第一次接触本项目的读者：从「它为什么存在」到「遇到问题找谁」。
-事实以 README.md 为真源；本文不重复技术细节，只把同一件事讲到人能听懂。
+multi-proxy — Copyright © 2026 xiaoxian (Jason)
+Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+This file is part of the multi-proxy project.
+成本/出口治理（原名 multi-proxy，2026-11-11 更名 costgate；本手册面向第一次接触本项目的读者，
+从「它为什么存在」到「遇到问题找谁」；事实以 README.md 为真源，不重复技术细节，只把同一件事讲到人能听懂。）
 -->
 
 # costgate · 用户手册
