@@ -1,4 +1,4 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 
 // 路由级集成测试（mirror 模式，与 integration.test.js 同约定）：

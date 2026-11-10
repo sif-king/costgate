@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # add-copyright-header.sh — DRY-RUN (默认关, 不执行)
-# 用途: 批量给 multi-proxy 仓内 .js/.ts/.py/.md 加版权头
+# 用途: 批量给 costgate 仓内 .js/.ts/.py/.md 加版权头
 # 铁律: 默认只做 dry-run, 维护者说一句 "run" 才真改; git add -- 显式列文件
 # 修复(2026-10-08): ① 去掉 header 里误带的 "#!/usr/bin/env bash"(会覆盖 .js/.cjs 的 node shebang)
 #                   ② 文件首行是 shebang 时, 版权头插到 shebang 之后
@@ -39,24 +39,24 @@ build_header() {
   if [[ "$f" == *.md ]]; then
     cat <<'EOF'
 <!--
-multi-proxy — Copyright © 2026 xiaoxian (Jason)
+costgate — Copyright © 2026 sif-king (Jason)
 Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-This file is part of the multi-proxy project.
+This file is part of the costgate project.
 -->
 
 EOF
   elif [[ "$f" == *.js || "$f" == *.ts || "$f" == *.cjs || "$f" == *.mjs ]]; then
     cat <<'EOF'
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 EOF
   else
     cat <<'EOF'
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 # Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-# This file is part of the multi-proxy project.
+# This file is part of the costgate project.
 
 EOF
   fi
@@ -64,7 +64,7 @@ EOF
 
 # 判断文件是否已有 copyright header (前 8 行匹配)
 has_header() {
-  head -8 "$1" | grep -q 'Copyright.*xiaoxian'
+  head -8 "$1" | grep -q 'Copyright.*sif-king'
 }
 
 # 真正加头: 保留首行 shebang(若有); 带 frontmatter 的 .md 不碰

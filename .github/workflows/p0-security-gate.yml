@@ -253,7 +253,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GAP_GUARD_TOKEN }}
         run: |
           if [ -n "$GH_TOKEN" ]; then
-            gh repo clone xiaoxianxian/agent-infra "${GITHUB_WORKSPACE:-$(pwd)}/agent-infra" \
+            gh repo clone sif-king/agent-infra "${GITHUB_WORKSPACE:-$(pwd)}/agent-infra" \
               || { echo "::warning::agent-infra 拉取失败，gap-guard 静态预检本轮跳过"; exit 0; }
           else
             echo "::warning::GAP_GUARD_TOKEN 未配，跳过跨仓拉取，gap-guard 静态预检暂不接入";

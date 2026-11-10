@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 """
 analyze.py — 把 runs.jsonl 拆成三张表：
   1. 逐题矩阵（哪一组过、哪一组不过，以及两次分别什么结果）

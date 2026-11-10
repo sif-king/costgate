@@ -1,4 +1,4 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 // 单一图标来源（决策 E）：全站内联 SVG，统一描边风格（stroke: currentColor，靠 .icon-svg 接管尺寸与描边）。
 // 背景：此前会话/技能/日志等页各自硬编码了一份导航 SVG，与 nav.js 的图标集重复且会漂移；

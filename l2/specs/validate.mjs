@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // 互通性验证 · node 侧（权威）
 // 证明：JSON (canonical) <-> YAML (human view) 双向无损，且符合 JSON Schema。

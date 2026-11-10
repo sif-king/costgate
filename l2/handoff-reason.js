@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 'use strict';
 // l2 · handoff-reason：同会话切模型/切 agent 的**交接触发器契约 + 循环熔断 guard**。

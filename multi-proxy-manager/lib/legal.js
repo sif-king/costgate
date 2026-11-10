@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // legal.js — 法务文本可达（D1）·纯状态/读取/渲染模块，可单测，绝不抛异常。
 // 背景（2026-10-19 首启信任页评审 §6-P1#1 / §3-P2#6 / OD-5）：consent 页把完整《用户服务协议》

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 'use strict';
 
 // 两把 DeepSeek key 是否同一账号 —— 用「花一笔看得见的钱看谁的余额掉」来判，而不是看余额相等就下结论。

@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // ==================== 能力门控唯一真源（lib/gates.js） ====================
 // 2026-10-24：外部审计把「README 承诺的功能是假的」这条反馈钉到了根因上——

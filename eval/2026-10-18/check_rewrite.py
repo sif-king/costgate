@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 """
 check_rewrite.py — 改写类题目的验收脚本（规矩一：验收脚本自己写，不用被测方提供的）。
 

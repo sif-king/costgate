@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // P0-2 → P0-1 最后一环：capability-derive（weave-os/router 对照借鉴，2026-10-13）
 // 纯函数判据，单测钉死四条边界：

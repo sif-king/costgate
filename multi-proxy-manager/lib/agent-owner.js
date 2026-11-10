@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // ==================== Agent 代理所有权冲突检测 ====================
 // 作用：开/关某个 agent 的 Proxy-rebuild 代理前，先判断该 agent 的

@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // 集成测试：/v1/chat/completions 入口的子 agent 上下文观测接线。
 // 复用 chat-failover.test.js 的 harness（隔离 HOME + providers.json + mock 全局 fetch），

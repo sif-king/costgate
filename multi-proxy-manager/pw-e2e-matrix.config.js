@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // multi-proxy — E2E MATRIX (50-case) isolated harness config
 // Authored for the 10-16 RESUME-MATRIX-REGEN task. Runs the stale 50-case

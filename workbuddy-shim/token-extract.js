@@ -1,5 +1,5 @@
 // token-extract.js — 只读、透明的 WorkBuddy token 定位辅助（手动运行）
-// Copyright © 2026 xiaoxian (Jason). Licensed under AGPL-3.0 (source).
+// Copyright © 2026 sif-king (Jason). Licensed under AGPL-3.0 (source).
 //
 // 它是「人肉取 token」的帮手，不是 shim 的一部分：
 //   · shim 本身绝不读桌面端私有存储（server.js 红线 ①）；

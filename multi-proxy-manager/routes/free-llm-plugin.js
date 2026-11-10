@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // ==================== 路由：免费模型聚合插件（free-llm） ====================
 // 把 free-llm 插件的「安装 / 卸载 / 状态」暴露到 manager 面板，遵循「一切皆插件」：

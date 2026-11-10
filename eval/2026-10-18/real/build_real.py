@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 """
 build_real.py — 生成「真稿改写」任务集。
 

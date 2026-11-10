@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 # Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 #
 # 把 Codex 的 base_url 从 18790（直连 codex-proxy）切到 18795（token-policy-bridge），

@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // 阶段二 pickFreeProvider 纯函数单测（门控/去前缀/跳过禁用/未命中回退）。
 // 关掉 model-sync，避免 require proxy.js 时触发上游拉取（本测试只测纯函数，不触网）。

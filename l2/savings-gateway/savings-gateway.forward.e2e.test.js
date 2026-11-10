@@ -1,4 +1,4 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 //
 // savings-gateway 真实 executor 端到端测试（二期缝·2026-10-08）

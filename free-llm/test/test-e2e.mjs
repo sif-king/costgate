@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // free-llm · 自检（E2E）：健康 + /v1/models 是否含 seed 的 free 模型 + 有 key 就真跑一次 chat
 // 跑法：node free-llm/test/test-e2e.mjs

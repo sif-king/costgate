@@ -1,4 +1,4 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source).
 //
 // credit-profile — 免费/便宜额度信号的纯函数层（阶段一：观测/记账）

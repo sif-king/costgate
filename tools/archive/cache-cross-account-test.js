@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 //
 // 🗄 归档 2026-10-22 —— 已废弃，保留仅作回源，不再维护、全仓零引用。
 //   为何废弃：agnes 平台不实现提示缓存（chat 端点不报缓存字段、messages 端点 cache_read 恒 0），

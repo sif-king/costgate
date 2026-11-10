@@ -1,4 +1,4 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 
 // Messages 协议翻译测试（P9）：Anthropic Messages ⇄ OpenAI ChatCompletions。

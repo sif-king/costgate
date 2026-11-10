@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // opencode-free — 本地 OpenAI 兼容代理：把上游 opencode Zen free 模型请求形态复刻。
 // 上游固定用 opencode 形态（core tools + x-opencode-* 头 + /inference/v1 + Bearer public + 强制流式），

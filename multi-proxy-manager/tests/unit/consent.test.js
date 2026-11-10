@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // consent.test.js — 首启法务同意门状态模块测试（3 态 + 幂等 + 撤销 + 注入式）
 // 镜像 update-check.js 的纯模块测试写法：可注入 home/markerPath/now，绝不依赖真实 HOME。

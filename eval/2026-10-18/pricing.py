@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 """
 pricing.py — 评测用的计费折算层（纯函数，不联网，自带自测）。
 

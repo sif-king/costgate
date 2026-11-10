@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // consent.js — 首启法务同意门·状态模块（纯模块，可单测，绝不抛异常）
 // 设计基线 D-1：首启须展示《用户服务协议》+《隐私政策》，可拒绝/可退出/可修改。

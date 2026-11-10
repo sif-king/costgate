@@ -1,7 +1,7 @@
 <!--
-multi-proxy — Copyright © 2026 xiaoxian (Jason)
+costgate — Copyright © 2026 sif-king (Jason)
 Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-This file is part of the multi-proxy project.
+This file is part of the costgate project.
 -->
 
 # T6 · M6 接真实路由 D4-D6 设计稿（落码前置清单 + DoD）

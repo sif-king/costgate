@@ -1,5 +1,5 @@
 // workbuddy-shim — WorkBuddy (CodeBuddy / copilot.tencent.com) → OpenAI-compatible adapter
-// Copyright © 2026 xiaoxian (Jason). Licensed under AGPL-3.0 (source).
+// Copyright © 2026 sif-king (Jason). Licensed under AGPL-3.0 (source).
 //
 // 这是什么：一个本机 OpenAI 兼容网关，把 multi-proxy 发来的标准 /v1/chat/completions
 // 请求，翻译成 WorkBuddy 私有 chat 协议（copilot.tencent.com/v2/chat/completions）。

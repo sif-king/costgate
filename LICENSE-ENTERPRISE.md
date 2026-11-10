@@ -1,7 +1,7 @@
 <!--
-multi-proxy — Copyright © 2026 xiaoxian (Jason)
+costgate — Copyright © 2026 sif-king (Jason)
 Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-This file is part of the multi-proxy project.
+This file is part of the costgate project.
 -->
 
 # 商业授权交付文件（Commercial License — Deliverable） — multi-proxy
@@ -59,9 +59,9 @@ This file is part of the multi-proxy project.
 ## 免责声明
 
 - 本文件不构成法律意见，亦非已生效合同；商业授权的生效以双方签署的书面协议为准。
-- 商业授权仅覆盖 owner（xiaoxian / Jason）拥有版权的代码，不包含第三方依赖（Express / Flask / SQLite / better-sqlite3 等均为 MIT/BSD 宽松许可，保留其版权声明即可）。
-- 商标（`multi-proxy`、owner 标识及其衍生标识）不随授权转移。
+- 商业授权仅覆盖 owner（sif-king / Jason）拥有版权的代码，不包含第三方依赖（Express / Flask / SQLite / better-sqlite3 等均为 MIT/BSD 宽松许可，保留其版权声明即可）。
+- 商标（`costgate`、owner 标识及其衍生标识）不随授权转移。
 - 专利另行书面约定，未写明即不包含。
 - 你在其上做的二次开发与改进，其开源部分的义务由你自己承担，与本授权无关。
 
-© 2026 xiaoxian (Jason). 保留所有权利。
+© 2026 sif-king (Jason). 保留所有权利。

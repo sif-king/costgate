@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 
 // P0-2 → P0-1 离线消费端：把 routing_feedback 聚合跑成「能力画像草稿」，供人工校准

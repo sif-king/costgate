@@ -1,4 +1,4 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 // 单一导航来源（P0-5）：dashboard / knowledge / proxy-config / floor 共用。
 // 主导航 8 项（真实页面/路由，统一中文化），键盘可激活（<a>/<button>）。

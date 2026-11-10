@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxianxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 /**
  * P6 wiring gate — model-id 级路由策略接进三条转发路由后的行为锁。

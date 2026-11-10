@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // free-llm · refresh-models.mjs — 动态刷新各家 provider 的模型清单（add-only）
 // 对应老板②「接各家路由厂商的全量模型列表、吃里面的免费」的「动态」半边：

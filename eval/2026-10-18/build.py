@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 # Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 """
 build.py — 生成 2026-10-18 这一轮评测的任务集（fixtures + prompts + tasks.json）。

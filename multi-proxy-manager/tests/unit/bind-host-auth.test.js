@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // D3（非回环强制鉴权 · fail-closed）：纯函数 shouldFailClosedBind 判定。
 // 启动块在 NODE_ENV=test 下不执行（jest 走 supertest），无法经 server 触发，故直测导出的纯函数。

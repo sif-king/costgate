@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 /**
  * memory-sync.cjs — agent 记忆对齐协议的「可执行同步」(v0.2)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // free-llm · key 录入向导（产品化）：领 key → 写 .env → 装进 18799 → 自检 → 状态报告
 // 用法：

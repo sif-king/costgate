@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // 守门：首启 / 可见页禁止把 Markdown 语法（**、反引号强调等）写进可见文案，
 // 否则浏览器原样露出 `**`（2026-10-19 老板截图投诉根因：consent.html:59 / skills.html:157）。

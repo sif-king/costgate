@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // consent-hardening.test.js — D2（2026-10-19 全角色评审）：同意记录加固（哈希/版本/IP + A 策略回填 + 内容变更重弹）
 // 纯模块测试：全 opts 注入（recordPath/legalHash/now/ip + 临时 docs 目录），绝不碰真实 HOME / 不依赖 docs/legal 是否存在。

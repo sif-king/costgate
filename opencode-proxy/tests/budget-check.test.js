@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxianxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 /**
  * P7-2：预算预检纯函数 + 三态 decide。全部注入 fetchImpl / 写到 tmp，不碰网络不碰真实数据目录。

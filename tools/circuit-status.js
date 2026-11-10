@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 /**
  * multi-proxy 熔断状态一览（2026-10-09）
@@ -18,7 +18,7 @@
  *
  * 只读：不发任何业务请求，只 GET /health。鉴权：env PROXY_AUTH_TOKEN → 头 x-proxy-auth。
  *
- * multi-proxy — Copyright © 2026 xiaoxian (Jason)
+ * costgate — Copyright © 2026 sif-king (Jason)
  * Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
  */
 'use strict';

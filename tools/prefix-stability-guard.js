@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 //
 // 🔴 状态（2026-10-22 标注）：**观测件，写完零接线**。全仓无任何 require（除本文件 :21 的用法示例
 //    和 :88 的自测入口），也就是说现在它**不产生任何运行时效果**，只在本文件被直接执行时自测。

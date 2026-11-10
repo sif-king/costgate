@@ -1,6 +1,6 @@
-// multi-proxy — Copyright © 2026 xiaoxian (Jason)
+// costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-// This file is part of the multi-proxy project.
+// This file is part of the costgate project.
 
 // multi-proxy E2E smoke（v1.0 收口）
 // 7 个壳页真浏览器加载断言：能渲染 + 有标题 + 无 pageerror（致命 JS 异常）。

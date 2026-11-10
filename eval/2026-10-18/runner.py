@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 """
 runner.py — 按 docs/EVAL-成本验收协议-2026-10-18.md 跑一轮评测。
 

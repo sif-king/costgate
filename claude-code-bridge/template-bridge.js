@@ -1,5 +1,5 @@
 // claude-code-bridge — subscription-backed provider 骨架（第二个候选实例）
-// Copyright © 2026 xiaoxian (Jason). Licensed under AGPL-3.0 (source).
+// Copyright © 2026 sif-king (Jason). Licensed under AGPL-3.0 (source).
 //
 // ⚠️ 这是骨架，不是可运行实现。详见同目录 README.md。
 // 目的是验证 vendor-agent-bridge 抽象（docs/vendor-agent-bridge.md）确实可套用到 Claude Code：

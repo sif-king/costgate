@@ -13,7 +13,7 @@
 #
 # 失败自动回滚：改完起不来（/health 10s 内不回 mode）就把 plist 还原并重载。
 #
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 # Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 set -uo pipefail
 

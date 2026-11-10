@@ -1,7 +1,7 @@
 <!--
-multi-proxy — Copyright © 2026 xiaoxian (Jason)
+costgate — Copyright © 2026 sif-king (Jason)
 Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
-This file is part of the multi-proxy project.
+This file is part of the costgate project.
 -->
 
 # N-04 全局状态条 · 四角色评估记录（2026-10-24）

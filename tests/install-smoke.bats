@@ -1,4 +1,4 @@
-# multi-proxy — Copyright © 2026 xiaoxian (Jason)
+# costgate — Copyright © 2026 sif-king (Jason)
 # install.sh smoke test — N-05 E2E gap #1
 # 验证安装/卸载脚本不破坏系统，且 dry-run 不写文件
 #
