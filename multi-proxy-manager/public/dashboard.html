@@ -534,6 +534,28 @@
       <p class="page-subtitle">管理所有代理服务的运行状态与控制</p>
     </div>
 
+    <!-- 快速开始 · 下一步（C2 首屏 onboarding，2026-11-10）
+         存在的理由：新面板打开就是「九行红字 + 一堆统计卡」，第一次进来的人不知道下一步点哪。
+         本卡只回答一个问题——我现在到第几步、下一步做什么——信号全部来自真实运行态（/api/readyz
+         + /api/cost/watchtower），不写死、不猜。三态与门控条同源、必须各说各话：
+           ① 读失败绝不渲染成「空/隐藏」：/api/readyz 挂了就明说「读不到」+ 重试，
+             因为「读不到」和「没有代理」长得一样，混了就是又一个假证明（读失败 ≠ 没有）。
+           ② 全没跑时明说「这不是故障」：复用健康页同款判据，否则首屏红字被读成「整机坏了」。
+           ③ 不带「自证清白」注脚：只说下一步做什么，不解释自己为什么对。
+         视觉复用 .hig-card 壳（与账本主权 / 统一接入同族），不引入新样式体系。 -->
+    <div class="hig-card" id="onboardingCard" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">快速开始 · 下一步</div>
+          <div class="hig-card-subtitle" id="onboardingSubtitle">按真实运行状态，告诉你现在该做哪一步</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="onboardingDismiss" type="button">不再提示</button>
+      </div>
+      <div class="hig-card-body" id="onboardingBody">
+        <div class="empty-state"><div class="empty-text">正在读取运行状态…</div></div>
+      </div>
+    </div>
+
     <!-- 能力门控状态条：由公共模块 gatebar.js 注入（全站 9 页同一份实现，避免各处漂移）。
          存在的理由：README 承诺的能力按非侵入铁律默认门控关闭，面板若不说，
          用户就会把「未开启」读成「没做 / 假功能」。这一条永远直说当前开没开。 -->
@@ -2387,6 +2409,187 @@
     }
   }
 
+  // ===== 首屏 onboarding（C2「看得懂」· 2026-11-10）=====
+  // 回答「我下一步点哪」，信号全部来自真实运行态，不写死、不猜。三态必须各说各话：
+  //   加载 / 下一步（含全没跑时的「这不是故障」说明）/ 读失败 → 重试（绝不渲染成空或隐藏）。
+  // 约束（对齐 UI-HANDOFF §三）：① 读失败绝不 fallback 成「空」；② 全没跑明说「不是故障」；
+  //   ③ 不带自证清白注脚；④ 不可达带「原因 + 处置」；⑤ 不新增前端配置副本（复用 PROXY_CONFIGS /
+  //   统一接入 URL / reasonText 等既有单一真源）。
+  var ONBOARD_DISMISS = 'mp-onboarding-dismissed';
+  var onboardDismissWired = false;
+
+  function isOnboardingDismissed() {
+    try { return localStorage.getItem(ONBOARD_DISMISS) === '1'; } catch (e) { return false; }
+  }
+
+  // 一次性关闭：诚实的「不再提示」，整卡隐藏，不做任何自证注脚。幂等——重复渲染不叠监听。
+  function wireOnboardDismiss() {
+    if (onboardDismissWired) return;
+    var btn = document.getElementById('onboardingDismiss');
+    if (!btn) return;
+    onboardDismissWired = true;
+    btn.addEventListener('click', function () {
+      try { localStorage.setItem(ONBOARD_DISMISS, '1'); } catch (e) {}
+      var c = document.getElementById('onboardingCard');
+      if (c) c.style.display = 'none';
+    });
+  }
+
+  // 主信号 /api/readyz（无 auth、最稳）：配了几个 / 几个在跑 / 哪个卡住。
+  // 次信号 /api/cost/watchtower 全时段请求数：best-effort——读失败或账本未开都不阻断主判据，
+  // 只是少一句「已跑通 N 笔」的确认。
+  function loadOnboarding() {
+    var card = document.getElementById('onboardingCard');
+    var body = document.getElementById('onboardingBody');
+    if (!card || !body) return;
+    // 诚实的一次性关闭：点过「不再提示」就整卡隐藏，不反复打扰。
+    if (isOnboardingDismissed()) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    wireOnboardDismiss();
+
+    // 加载态：内联「读取中」，不依赖 states.js（states.js 没及时到也不白屏）。
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">' +
+      '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>' +
+      '<div class="empty-text">正在读取运行状态…</div></div>';
+
+    fetchJSON('/api/readyz')
+      .then(function (rz) {
+        // 次信号 best-effort：读失败/未开账本都退回 req=null，不影响「下一步」判断。
+        return fetchJSON('/api/cost/watchtower?days=3650')
+          .then(function (w) {
+            var req = (w && w.spend && w.spend.requestCount) || 0;
+            renderOnboarding(rz, req);
+          })
+          .catch(function () { renderOnboarding(rz, null); });
+      })
+      .catch(function (err) {
+        // 读失败绝不渲染成「空/隐藏」：明说读不到 + 重试。用本面板既有的 showReadError
+        // （role=alert + 注册式重试，与 loadHealthPage 等同一套），不引入 MPStates 依赖——
+        // 面板读不到时仍给重试，绝不装「没有代理」。
+        showReadError('onboardingBody',
+          '运行状态读不到',
+          (err && err.message) || 'manager 不可达',
+          '这里显示的是「读不到」，不是「没有代理」——两者不能混。可点重试，或确认 manager 是否在运行。',
+          loadOnboarding);
+      });
+  }
+
+  // 把 readyz + 请求数算成「现在到第几步 / 下一步做什么」。
+  function renderOnboarding(rz, reqCount) {
+    var body = document.getElementById('onboardingBody');
+    var sub = document.getElementById('onboardingSubtitle');
+    var dismiss = document.getElementById('onboardingDismiss');
+    if (!body) return;
+
+    var proxies = (rz && rz.proxies) || {};
+    var total = proxies.total || 0;
+    var running = proxies.reachable || 0;
+    var details = proxies.details || [];
+    var done = (typeof reqCount === 'number' && reqCount > 0);
+
+    if (sub) sub.textContent = onboardStateLine(total, running, done, reqCount);
+
+    // 已跑通：整卡收成一行确认 + 看账本入口，不再列三步（不 nag）。
+    if (done) {
+      body.innerHTML =
+        '<div class="empty-state">' +
+          '<div class="empty-icon" style="color:var(--color-success);">' +
+            '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>' +
+          '</div>' +
+          '<div class="empty-text">已跑通 ' + reqCount + ' 笔请求 · 能力已在生效</div>' +
+          '<div class="empty-hint">每笔花销按 agent 归因、本地流量零成本、账本归你。</div>' +
+          '<button class="btn btn-outline btn-sm" type="button" style="margin-top:8px;" data-onboard-cost>查看账本 →</button>' +
+        '</div>';
+      if (dismiss) dismiss.style.display = 'none';
+      wireOnboardCtas(body);
+      return;
+    }
+
+    // 未跑通：列三步，高亮「现在该做」的那一步；全没跑时明说「这不是故障」。
+    body.innerHTML = onboardStepsHtml(total, running, details);
+    if (dismiss) dismiss.style.display = '';
+    wireOnboardCtas(body);
+  }
+
+  function onboardStateLine(total, running, done, reqCount) {
+    if (done) return '现在：' + running + ' 个代理在跑 · 已接入 ' + reqCount + ' 笔请求';
+    if (total === 0) return '现在：还没装任何代理';
+    if (running === 0) return '现在：配了 ' + total + ' 个代理，但一个都没在跑';
+    return '现在：' + running + ' 个代理在跑 · 还没发过请求';
+  }
+
+  // 三步黄金路径。current：0=还没装 / 1=该起代理 / 2=该接 agent 发请求。
+  // 文案全部是事实（哪一步、为什么），不自证、不装饰。
+  function onboardStepsHtml(total, running, details) {
+    var current = total === 0 ? 0 : (running === 0 ? 1 : 2);
+
+    // 全没跑时的「这不是故障」说明：九行红字本身不构成信息，第一次进来的人只会把
+    // 「都没在跑」读成「整机坏了」，所以必须当场把常态说破。
+    var note;
+    if (total === 0) {
+      note = '还没装任何代理 —— 这是「刚 clone 完、还没装代理」的常态，不是故障。'
+        + '先装：<code>bash install.sh --all</code>，再回到这里。';
+    } else if (running === 0) {
+      // 配了但一个没跑：把第一个卡住代理的「原因 + 该干什么」带出来（复用 health 页判据）。
+      var downOne = null;
+      for (var i = 0; i < details.length; i++) {
+        if (details[i] && !details[i].reachable) { downOne = details[i]; break; }
+      }
+      var why = downOne ? ' · ' + reasonText(downOne.reason, false) : '';
+      note = '没有任何代理在运行 —— 这是「装了但还没起」的常态，不是故障。'
+        + '起法：<code>bash manage.sh start</code>' + why + '。';
+    } else {
+      note = '还没发过请求 —— 代理已经在跑、能力随时可用，这不是故障。'
+        + '把 agent 指过来发一笔，下方「账本主权」卡就会亮出第一笔真实账单。';
+    }
+
+    var steps = [
+      { t: '起一个代理', d: '「代理状态」卡点「启动」，或终端跑 <code>bash manage.sh start</code>。' },
+      { t: '把 agent 指过来', d: '复制接入 URL，让 agent 的模型出口指向它——只改一个环境变量，不写 agent 文件。' },
+      { t: '发第一个请求', d: '发一次请求，回来在「账本主权」看第一笔真实账单，这就是「能力已生效」的证据。' }
+    ];
+
+    var rows = steps.map(function (s, i) {
+      var status, mark, color;
+      if (i < current) { status = 'done'; mark = '✓ 已完成'; color = 'success'; }
+      else if (i === current) { status = 'active'; mark = '● 现在做'; color = 'primary'; }
+      else { status = 'todo'; mark = '○ 待办'; color = 'text-tertiary'; }
+      return '<div class="onboard-step onboard-step-' + status + '" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--color-border-light);">' +
+        '<span style="min-width:64px;font-size:12px;font-weight:600;color:var(--color-' + color + ');">' + mark + '</span>' +
+        '<div style="flex:1;font-size:13px;color:var(--color-text-secondary);line-height:1.6;">' +
+          '<b style="color:var(--color-text);">' + esc(s.t) + '</b><br>' + s.d +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '<div style="padding:8px 12px;border-radius:8px;background:var(--color-bg-secondary);margin-bottom:10px;font-size:12px;line-height:1.6;color:var(--color-text-secondary);">' + note + '</div>' +
+      rows +
+      '<div style="display:flex;gap:8px;margin-top:12px;">' +
+        '<button class="btn btn-primary btn-sm" type="button" data-onboard-copy>复制接入 URL</button>' +
+        '<button class="btn btn-outline btn-sm" type="button" data-onboard-tour>3 分钟跑通</button>' +
+      '</div>';
+  }
+
+  // 接 agent 的 CTA 复用统一接入 URL（单一真源，不复制字面量）；「3 分钟跑通」复制一条
+  // 零副作用的演示命令（demo-tour.sh 自带「不改本机任何东西」的零副作用保证）。
+  // 全部 addEventListener 绑定（不写内联 onclick 调 IIFE 内函数——那会 ReferenceError）。
+  function wireOnboardCtas(body) {
+    var copyBtn = body.querySelector('[data-onboard-copy]');
+    if (copyBtn) copyBtn.addEventListener('click', copyUnifiedIngressUrl);
+    var tourBtn = body.querySelector('[data-onboard-tour]');
+    if (tourBtn) tourBtn.addEventListener('click', function () {
+      var cmd = 'bash scripts/demo-tour.sh';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cmd).then(function () { showToast('已复制：' + cmd, 'success', 1800); });
+      } else {
+        showToast('复制命令：' + cmd, 'info', 2000);
+      }
+    });
+    var costBtn = body.querySelector('[data-onboard-cost]');
+    if (costBtn) costBtn.addEventListener('click', function () { switchPage('cost'); });
+  }
+
   function renderSessionsList(sessions, containerId) {
     var container = document.getElementById(containerId);
     if (!container) return;
@@ -2861,6 +3064,7 @@
        loadSessions();
        loadProviderHealth();
        loadCostSovereignty();
+       loadOnboarding();
        // 门控状态条已由公共模块 gatebar.js 自动挂载（全站 9 页一致），此处不再单独调用。
        // Check API Key completeness
        fetch('/api/env-check')

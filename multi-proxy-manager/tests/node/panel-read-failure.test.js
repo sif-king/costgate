@@ -105,6 +105,7 @@ const PANEL_EXPORTS =
   ' loadVersion: loadVersion, updateVersionDisplay: updateVersionDisplay,' +
   ' loadRegistryPage: loadRegistryPage, loadProviderHealth: loadProviderHealth,' +
   ' loadCostPage: loadCostPage, loadWatchtower: loadWatchtower,' +
+  ' loadOnboarding: loadOnboarding,' +
   ' collectAlerts: window.collectAlerts, abortSessionFromDashboard: window.abortSessionFromDashboard';
 
 function extractScript(file) {
@@ -430,4 +431,64 @@ test('logs 页：读失败时带出后端 error 而非只说 HTTP 500', async ()
   if (html.indexOf('日志文件被锁') === -1) throw new Error('应带出后端 error，实际：' + html.slice(0, 300));
   if (html.indexOf('Upstream connection refused') !== -1) throw new Error('不该出现假 ERROR 日志');
 });
+
+// ===== 首屏 onboarding（C2「看得懂」· 2026-11-10）=====
+// 三态必须各说各话：① 读失败绝不渲染成「空/隐藏」；② 全没跑明说「这不是故障」；
+// ③ 已跑通收成一行确认。读失败用面板既有的 showReadError（不依赖 states.js）。
+
+test('onboarding：/api/readyz 读失败 → 显示「读不到」+ 重试，绝不渲染成空/隐藏', async () => {
+  registry.clear();
+  const fetchStub = makeFetch([
+    { match: /\/api\/readyz/, response: () => ({ ok: false, status: 500, json: async () => ({ error: 'readyz 挂了' }) }) }
+  ], { ok: true });
+  const api = runPanel('dashboard.html', fetchStub);
+  api.loadOnboarding();
+  await settle();
+  const body = getEl('onboardingBody').innerHTML;
+  const card = getEl('onboardingCard');
+  // 读失败 ≠ 没有代理：必须明说「读不到」，且整卡不许隐藏、不许装「已跑通/暂无」。
+  if (body.indexOf('运行状态读不到') === -1) throw new Error('应显示读不到，实际：' + body.slice(0, 200));
+  if (body.indexOf('readyz 挂了') === -1) throw new Error('应带出后端原因，实际：' + body.slice(0, 300));
+  if (body.indexOf('重试') === -1) throw new Error('读失败必须给重试');
+  if (card.style.display === 'none') throw new Error('读失败时不许把整卡隐藏成「没有」');
+  if (body.indexOf('已跑通') !== -1) throw new Error('读失败不许假报「已跑通」');
+});
+
+test('onboarding：全没跑（配了但 0 在跑）→ 明说「这不是故障」+ 带原因处置', async () => {
+  registry.clear();
+  const fetchStub = makeFetch([
+    { match: /\/api\/readyz/, response: () => ({ ok: true, status: 200, json: async () => ({
+        status: 'degraded',
+        proxies: { total: 3, reachable: 0, down: 3,
+          details: [{ name: 'codex', reachable: false, reason: 'ECONNREFUSED' }] } }) }) },
+    { match: /\/api\/cost\/watchtower/, response: () => ({ ok: true, status: 200, json: async () => ({ spend: { requestCount: 0 } }) }) }
+  ], { ok: true });
+  const api = runPanel('dashboard.html', fetchStub);
+  api.loadOnboarding();
+  await settle();
+  const body = getEl('onboardingBody').innerHTML;
+  // 「全没跑」九行红字不构成信息，必须当场把「不是故障」说破，并带第一个卡住代理的原因+处置。
+  if (body.indexOf('不是故障') === -1) throw new Error('全没跑必须说明「不是故障」，实际：' + body.slice(0, 300));
+  if (body.indexOf('连接被拒') === -1) throw new Error('不可达必须带原因（reasonText），实际：' + body.slice(0, 300));
+  if (body.indexOf('manage.sh start') === -1) throw new Error('应给出「起法」处置');
+  if (body.indexOf('已跑通') !== -1) throw new Error('0 请求不许假报「已跑通」');
+});
+
+test('onboarding：已发过请求 → 收成一行「已跑通 N 笔」，不再列三步 nag', async () => {
+  registry.clear();
+  const fetchStub = makeFetch([
+    { match: /\/api\/readyz/, response: () => ({ ok: true, status: 200, json: async () => ({
+        status: 'ready', proxies: { total: 3, reachable: 3, down: 0, details: [] } }) }) },
+    { match: /\/api\/cost\/watchtower/, response: () => ({ ok: true, status: 200, json: async () => ({ spend: { requestCount: 12 } }) }) }
+  ], { ok: true });
+  const api = runPanel('dashboard.html', fetchStub);
+  api.loadOnboarding();
+  await settle();
+  const body = getEl('onboardingBody').innerHTML;
+  if (body.indexOf('已跑通 12 笔') === -1) throw new Error('已发过请求应收成「已跑通 N 笔」，实际：' + body.slice(0, 300));
+  if (body.indexOf('现在做') !== -1) throw new Error('已跑通不该再列「现在做」三步 nag');
+  // 已跑通时「不再提示」按钮隐藏（整卡收小，不打扰老用户）。
+  if (getEl('onboardingDismiss').style.display !== 'none') throw new Error('已跑通应隐藏「不再提示」');
+});
+
 
