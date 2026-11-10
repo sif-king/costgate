@@ -5,11 +5,11 @@
 #
 # 用法（一键，推荐；在 PowerShell 里执行）：
 #   Set-ExecutionPolicy Bypass -Scope Process -Force
-#   irm https://raw.githubusercontent.com/xiaoxianxian/multi-proxy/main/tools/verify/verify.ps1 -OutFile $env:TEMP\mpv.ps1
+#   irm https://raw.githubusercontent.com/sif-king/costgate/main/tools/verify/verify.ps1 -OutFile $env:TEMP\mpv.ps1
 #   & "$env:TEMP\mpv.ps1"
 #
 # 或先克隆再跑：
-#   git clone https://github.com/xiaoxianxian/multi-proxy.git
+#   git clone https://github.com/sif-king/costgate.git
 #   cd multi-proxy; .\tools\verify\verify.ps1
 #
 # 可选：
@@ -23,7 +23,7 @@ $ErrorActionPreference = 'Continue'
 
 $Report = Join-Path $env:USERPROFILE 'multi-proxy-verify-report.txt'
 $Work   = Join-Path $env:USERPROFILE 'multi-proxy-verify'
-$Repo   = 'https://github.com/xiaoxianxian/multi-proxy.git'
+$Repo   = 'https://github.com/sif-king/costgate.git'
 $Keep   = if ($env:MP_KEEP -eq '1') { $true } else { $false }
 
 # 清空报告

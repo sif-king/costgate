@@ -33,8 +33,8 @@ const path = require('path');
 const tls = require('tls');
 
 const ROOT = path.join(__dirname, '..');
-const OWNER = process.env.MP_OWNER || 'xiaoxianxian';
-const REPO = process.env.MP_REPO || 'multi-proxy';
+const OWNER = process.env.MP_OWNER || 'sif-king';
+const REPO = process.env.MP_REPO || 'costgate';
 // 换成别的 host 就能拿假 API 试（本地起个假 GitHub 跑测试，不需要真网络）
 const API_HOST = process.env.MP_API_HOST || 'api.github.com';
 const TIMEOUT_MS = 4000;

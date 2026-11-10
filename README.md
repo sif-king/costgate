@@ -21,7 +21,7 @@ This file is part of the multi-proxy project.
 本机实测 7 秒到 97 秒，差别全在 npm 要不要现下依赖；脚本末尾会报这次的真实秒数，别把秒数当承诺。
 
 ```bash
-git clone https://github.com/xiaoxianxian/multi-proxy && cd multi-proxy
+git clone https://github.com/sif-king/costgate && cd costgate
 bash scripts/quickstart.sh
 ```
 

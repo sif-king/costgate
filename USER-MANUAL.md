@@ -10,7 +10,7 @@ costgate（原 multi-proxy）— 用户手册
 >
 > 装好只用一条命令，不用任何 API key。账本是磁盘上一个纯文本文件，另有一条只读命令把它读给你听——包括每项能力**真跑过几次**。
 
-（项目原名 `multi-proxy`，正在更名为 `costgate`——名字变了，因为它干的不只是「代理」，更在管出口、记一笔你能核查的账。下文品牌名用 costgate，**代码、端口、数据目录暂时还叫 multi-proxy**，等你看到它们别被绕晕：同一套东西，换个名。）
+（项目原名 `multi-proxy`，**已于 2026-11-11 更名为 `costgate`**——名字变了，因为它干的不只是「代理」，更在管出口、记一笔你能核查的账。GitHub 仓库现为 `sif-king/costgate`。下文品牌名用 costgate；**代码内部模块名、端口、数据目录暂时仍叫 multi-proxy**（尚未随改），等你看到它们别被绕晕：同一套东西，换个名。）
 
 ---
 
@@ -45,7 +45,7 @@ costgate（原 multi-proxy）— 用户手册
 **一条命令，看到第一笔真实账单。** 本机实测 7 秒到 97 秒，差别全在 npm 要不要现下依赖——脚本末尾会报这次的真实秒数，别把秒数当承诺。
 
 ```bash
-git clone https://github.com/xiaoxianxian/multi-proxy && cd multi-proxy
+git clone https://github.com/sif-king/costgate && cd costgate
 bash scripts/quickstart.sh
 ```
 
@@ -283,4 +283,4 @@ bash manage.sh {start|stop|restart|status}
 
 ---
 
-*本手册与 `README.md` 同源：README 讲差异点与验收证据，这份讲「一个新人该怎么从陌生走到放心」。项目名 `multi-proxy` 正在更名为 `costgate`，代码与数据目录暂未改名——看到它们别困惑，是同一套东西。*
+*本手册与 `README.md` 同源：README 讲差异点与验收证据，这份讲「一个新人该怎么从陌生走到放心」。项目 `multi-proxy` 已于 2026-11-11 更名为 `costgate`（GitHub 仓库 `sif-king/costgate`）；代码内部模块名与数据目录暂未随改——看到它们别困惑，是同一套东西。*

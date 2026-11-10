@@ -51,7 +51,7 @@ This file is part of the multi-proxy project.
 - 决策：opencode-free **不进公开仓**；走 safe-local-commit 本地留痕（老板点 A 选项，不脱敏）。
 - 实证：`git add -- opencode-free/` 预演=10 文件、`.env` 被 `.gitignore:9` 排除、与 76 处无关脏改动零重叠；
    本地 commit **`85c1b94`**（10 文件全进、76 处无关脏改动零触碰），**未 push**（`origin/main..HEAD = 1` 即该本地 commit，本地领先不推）。
-- 残留：本地领先 origin/main 1 个 commit（85c1b94），绝不 push 到 `xiaoxianxian/multi-proxy` 公开仓；要撤 `git reset --mixed HEAD~1`（文件内容在盘，可回退）。
+- 残留：本地领先 origin/main 1 个 commit（85c1b94），绝不 push 到 `sif-king/costgate` 公开仓（原 `xiaoxianxian/multi-proxy`，2026-11-11 更名）；要撤 `git reset --mixed HEAD~1`（文件内容在盘，可回退）。
 - 注：10 文件含本机信息（`/Users/xiaota/*`、`~/.hermes`、7897），仅本地、不进公开 = 无泄密；如需上公开需另行脱敏 + internal-asset-gate。
 
 ### 已知门（非插件 bug，沿用）

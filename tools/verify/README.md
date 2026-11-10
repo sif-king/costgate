@@ -36,14 +36,14 @@ This file is part of the multi-proxy project.
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xiaoxianxian/multi-proxy/main/tools/verify/verify.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sif-king/costgate/main/tools/verify/verify.sh | bash
 ```
 
 ### Windows（PowerShell，普通权限即可）
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-irm https://raw.githubusercontent.com/xiaoxianxian/multi-proxy/main/tools/verify/verify.ps1 -OutFile $env:TEMP\mpv.ps1
+irm https://raw.githubusercontent.com/sif-king/costgate/main/tools/verify/verify.ps1 -OutFile $env:TEMP\mpv.ps1
 & "$env:TEMP\mpv.ps1"
 ```
 
@@ -65,7 +65,7 @@ irm https://raw.githubusercontent.com/xiaoxianxian/multi-proxy/main/tools/verify
 如果想顺便跑完整测试套件（约 30~40 分钟），Linux 上这样：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xiaoxianxian/multi-proxy/main/tools/verify/verify.sh | MP_FULL=1 bash
+curl -fsSL https://raw.githubusercontent.com/sif-king/costgate/main/tools/verify/verify.sh | MP_FULL=1 bash
 ```
 
 Windows 暂未接全量回归开关（`MP_FULL` 只对 sh 版生效）。

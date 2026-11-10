@@ -5,10 +5,10 @@
 #       这条链路在真机上是否跑得通，并产出一份可直接回传的报告。
 #
 # 用法（一键，推荐）：
-#   curl -fsSL https://raw.githubusercontent.com/xiaoxianxian/multi-proxy/main/tools/verify/verify.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sif-king/costgate/main/tools/verify/verify.sh | bash
 #
 # 或先克隆再跑：
-#   git clone https://github.com/xiaoxianxian/multi-proxy.git
+#   git clone https://github.com/sif-king/costgate.git
 #   cd multi-proxy && bash tools/verify/verify.sh
 #
 # 可选环境变量：
@@ -22,7 +22,7 @@ set -u
 
 REPORT="${MP_REPORT:-$HOME/multi-proxy-verify-report.txt}"
 WORK="${MP_WORK:-$HOME/multi-proxy-verify}"
-REPO="${MP_REPO:-https://github.com/xiaoxianxian/multi-proxy.git}"
+REPO="${MP_REPO:-https://github.com/sif-king/costgate.git}"
 FULL="${MP_FULL:-0}"
 KEEP="${MP_KEEP:-0}"
 
