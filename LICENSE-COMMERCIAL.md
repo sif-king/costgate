@@ -4,9 +4,12 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 This file is part of the costgate project.
 -->
 
-# 商业许可（Commercial License） — multi-proxy
+# 商业许可（Commercial License） — costgate
 
-> multi-proxy 采用**双许可**：开源版以 **GNU AGPL-3.0**（见根目录 `LICENSE`，FSF 官方全文）；
+> **授权标的**：`costgate`（仓库 `github.com/sif-king/costgate`）。本项目 2026-11-11 之前名为
+> `multi-proxy`，更名前后为同一代码库、同一权利人，授权范围不因更名而改变。
+>
+> costgate 采用**双许可**：开源版以 **GNU AGPL-3.0**（见根目录 `LICENSE`，FSF 官方全文）；
 > 本文件定义双许可的**第二条通路**：当你的用法不打算走 AGPL 时，如何获取商业授权。
 > 依据：AGPL + 商业双许可，防大厂白嫖 + 保留收费权，Redis/MongoDB/Elastic 经典打法（许可策略内部文档不进公开仓）。
 >
@@ -45,7 +48,7 @@ This file is part of the costgate project.
 
 ## 二、商业授权条款（结构已定稿，参考价目已入表）
 
-本商业授权授予被授权方，在所选档位（§一）与授权期限内（永久或年度，以协议载明）将 `multi-proxy` 以**专有（闭源）**方式使用、分发或提供托管服务的权利，**无需**以 AGPL-3.0 反开源代码。「书面合规确认函」档位除外：它只授予一份书面判断，不转移前述使用权利。
+本商业授权授予被授权方，在所选档位（§一）与授权期限内（永久或年度，以协议载明）将 `costgate` 以**专有（闭源）**方式使用、分发或提供托管服务的权利，**无需**以 AGPL-3.0 反开源代码。「书面合规确认函」档位除外：它只授予一份书面判断，不转移前述使用权利。
 
 | 字段 | 值 |
 |------|-----|
@@ -102,7 +105,7 @@ This file is part of the costgate project.
 
 1. **只对 owner 拥有版权的代码有效。** 本项目依赖（Express / Flask / SQLite / better-sqlite3 等）经核均为 MIT / BSD 等宽松许可，保留其版权声明即可，不构成 AGPL 传染，也不在商业授权覆盖范围里——**买授权不会让你掠过任何第三方 copyleft**。
 2. **贡献者代码：当前不构成障碍，但属于未来风险点。** 商业授权只覆盖 owner 自己的版权。若本项目日后接受外部 PR，那些贡献者的版权默认归各自贡献者，不由 owner 转授权。**（2026-10-04 核实：贡献者仅 owner 一人，`git shortlog` 274 + 7 均为同一人的两个 identity，无外部 PR，故当前闭源分发与再分发场景不受此限制。）** 日后若开始收外部 PR，卖授权档位前须先落实贡献者授权（CI 挂 CLA 或 DCO）。
-3. **商标不随授权转移。** 不得使用 `multi-proxy`、owner 标识及其衍生标识作为你的闭源产品的名称或认证标识。
+3. **商标不随授权转移。** 不得使用 `costgate`（含曾用名 `multi-proxy`）、owner 标识及其衍生标识作为你的闭源产品的名称或认证标识。
 4. **专利另行书面约定。** 本授权为版权授权；涉及专利的授予与否，以单独书面条款为准，未写明即不包含。
 5. **你自己的修改怎么对外，是你的事。** 商业授权覆盖的是"使用本项目"这件事；你在其上做的二次开发与改进，若同时开源回上游，其开源部分的义务你自己承担，与本授权无关。
 

@@ -134,8 +134,8 @@ setup() {
   # 是把秒数从横幅里彻底拿掉，只由脚本末尾报本次真实耗时。
   # 这条守卫抓的是「示例输出与脚本真源不一致」——示例输出是最容易腐烂的副本。
   local banner
-  banner="$(grep -m1 '^bold "multi-proxy · ' "$ROOT/scripts/quickstart.sh" | sed 's/^bold "//; s/"$//')"
-  [ -n "$banner" ] || { echo "在 quickstart.sh 里找不到 bold \"multi-proxy · ...\" 横幅" >&2; return 1; }
+  banner="$(grep -m1 '^bold "costgate · ' "$ROOT/scripts/quickstart.sh" | sed 's/^bold "//; s/"$//')"
+  [ -n "$banner" ] || { echo "在 quickstart.sh 里找不到 bold \"costgate · ...\" 横幅" >&2; return 1; }
   run grep -qxF -- "$banner" "$README"
   [ "$status" -eq 0 ] || {
     echo "README 示例输出的横幅与脚本不一致（示例应逐字相同）：" >&2

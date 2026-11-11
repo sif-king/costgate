@@ -29,8 +29,15 @@ if [ "${1:-}" = "--install" ]; then
 local=$(git rev-parse --abbrev-ref HEAD)
 zero=0000000000000000000000000000000000000000
 fail=0
+bash scripts/check-legacy-refs.sh || fail=1
   while read -r _localref localsha _remoteref remotesha; do
   if [ "$localsha" = "$zero" ]; then continue; fi   # tag deletion 等
+  case "$_localref" in
+    refs/heads/backup*|refs/heads/local/no-push*|refs/heads/memory-records|refs/heads/e2e-stability*)
+      echo "[push-gate] 拒绝推送本地专用备份分支: $_localref（旧历史含内部资产，永不推）"
+      fail=1
+      continue ;;
+  esac
   echo "[push-gate] checking $localsha ($(git log -1 --format=%s "$localsha" 2>/dev/null | head -c 40))"
   bash scripts/push-gate-check.sh "$localsha" || fail=1
   echo "[secret-scan] $localsha"

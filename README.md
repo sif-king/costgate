@@ -4,7 +4,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 This file is part of the costgate project.
 -->
 
-# multi-proxy
+# costgate
 
 > **把你本机那些 AI 编码工具的模型请求收到一处，记一本你自己能查的花销账。**
 
@@ -34,8 +34,8 @@ MP_QS_CLIENT=claude bash scripts/quickstart.sh
 ```
 
 ```
-multi-proxy · 冷启：从零到第一笔真实账单
-仓库：/Users/xiaota/Documents/AI项目/multi-proxy
+costgate · 冷启：从零到第一笔真实账单
+仓库：~/Documents/AI项目/multi-proxy
 数据：/tmp/qs-readme-home/.multi-proxy-manager
 
 [1/5] 检查端口
@@ -71,7 +71,7 @@ multi-proxy · 冷启：从零到第一笔真实账单
 冷启完成，用时 26s
 ```
 
-> 上面是 2026-11-08 03:42 在本机的真实输出，除了末尾「下一步」那几行提示外**一字未改**。为了不污染你自己的账本、也不和你已经在跑的服务抢端口，那次用的是空的 `HOME` 和 18886/18885 两个端口——**默认是 18792/18790**，其余输出与默认跑法完全一致。
+> 上面是 2026-11-08 03:42 在本机的一次真实输出：数值与步骤逐字保留，只把品牌名同步为更名后的 `costgate`、把本机路径脱敏成 `~`，末尾「下一步」几行提示未收录。为了不污染你自己的账本、也不和你已经在跑的服务抢端口，那次用的是空的 `HOME` 和 18886/18885 两个端口——**默认是 18792/18790**，其余输出与默认跑法完全一致。
 >
 > 换 `MP_QS_CLIENT=claude` 那次同样真跑：14 秒，账本里落地的是 `代理 claude-proxy`、用量 50/26。
 >
@@ -466,7 +466,7 @@ Windows 走 `.\install.ps1` 与 `.\manage.ps1`，原生 PowerShell，不需要 W
 2. **核心网关是单次转发，没有 failover / 重试 / 熔断**。这三条只在 cursor-proxy 的路由模式里（round-robin / failover 两档）。所以"高可用路由"不是开箱能力，别按这个预期用。
 3. **Key 级配额只有总量，没有日 / 周 / 月滚动窗口**。只能设硬上限。
 4. **一个代理实例绑一个上游**，"一个虚拟模型名映射到多个 Key 自动负载均衡"还做不到。
-5. **Windows 只有安装脚本，没有对应的零 key 冷启脚本**。
+5. **Windows 的原生 PowerShell 通道只有安装脚本（`install.ps1` / `manage.ps1`），没有对应的零 key 冷启向导**；若已装 Git Bash，上面那条 `bash scripts/quickstart.sh` 可以直接跑——它是 bash 脚本，需要 Git Bash（或 WSL）提供的 shell 环境。
 
 ---
 

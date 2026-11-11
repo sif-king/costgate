@@ -1,7 +1,8 @@
-# multi-proxy 轻档镜像 · MVP（第一笔钱 · h3web 镜像形态）
-# 性质：对外可 build 的最小形态——manager 调度层 + L2 h3web 适配器 + 判据探针。
+# costgate 轻档镜像 · MVP（第一笔钱 · h3web 镜像形态）
+# 性质：容器内 manager 调度层 + L2 h3web 适配器 + 判据探针。
+#       ⚠️ 当前【不可直接 build】，干净 clone 会失败，见下方核查；README 不承诺容器部署。
 #
-# ⚠️ 2026-11-09 核查：上面这句「对外可 build」**当前不成立**，静态可证：
+# ⚠️ 2026-11-09 核查（2026-11-11 复核仍在）：从干净 clone 构建必然失败，静态可证：
 #   .dockerignore 排除了 dist 与 node_modules（第 1-2 行），而本文件第 24 行
 #   `COPY cursor-proxy/dist` 依赖的正是被排除的 dist ⇒ 从干净 clone 构建到这一步必然失败。
 #   且即便补上 dist，容器里也没有 cursor-proxy/node_modules，代理注册后一启动就会

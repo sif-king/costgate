@@ -340,7 +340,7 @@ NODE
 
 usage() {
   cat <<EOF
-multi-proxy · 冷启 —— 一条命令,看到第一笔真实账单
+costgate · 冷启 —— 一条命令,看到第一笔真实账单
 
 用法:
   bash scripts/quickstart.sh              冷启(默认 codex-proxy / OpenAI wire)
@@ -484,7 +484,7 @@ esac
 
 # ---------- 主流程 ----------
 
-bold "multi-proxy · 冷启：从零到第一笔真实账单"
+bold "costgate · 冷启：从零到第一笔真实账单"
 dim "仓库：$ROOT"
 dim "数据：$DATA_DIR"
 
