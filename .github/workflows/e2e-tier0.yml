@@ -19,7 +19,7 @@ on:
 jobs:
   e2e-tier0:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20  # 11-11 加重试后，apt DNS 故障场景 3 次重试 + 间隔可能拉长，留 buffer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,7 +40,19 @@ jobs:
       - name: Install Playwright chromium
         run: |
           cd multi-proxy-manager
-          npx playwright install --with-deps chromium
+          # GitHub runner 的 apt 源 (azure.archive.ubuntu.com) 偶发 DNS 抽风——2026-11-11 连续 3 次
+          # attempt 卡在这一步（测试本身一次都没跑），根因在 GitHub 侧网络，非代码。
+          # 加有界重试扛住间歇抖动；持续故障才真失败。
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then
+              echo "playwright ok on attempt $attempt"
+              exit 0
+            fi
+            echo "playwright install failed (attempt $attempt/3), retry in 30s"
+            sleep 30
+          done
+          echo "giving up after 3 attempts"
+          exit 1
       - name: Run tier0 E2E (PR gate)
         run: |
           cd multi-proxy-manager
