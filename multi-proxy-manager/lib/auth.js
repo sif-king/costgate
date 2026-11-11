@@ -11,7 +11,9 @@ const os = require('os');
 const path = require('path');
 
 // ==================== JWT Secret ====================
-const JWT_SECRET_FILE = path.join(os.homedir(), '.multi-proxy-jwt-secret');
+// 缺省仍读旧路径 ~/.multi-proxy-jwt-secret（零行为变更）；JWT_SECRET_FILE 可覆盖。
+// 迁移到新路径 ~/.costgate-jwt-secret 由 `manage.sh migrate` 手动触发（见 lib/migrate.js）。
+const JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || path.join(os.homedir(), '.multi-proxy-jwt-secret');
 
 /**
  * Load JWT secret: async-first, with sync fallback for module-load-time use.
@@ -69,7 +71,9 @@ function getOrGenerateJwtSecret() {
 const AUTH_SECRET = getOrGenerateJwtSecret();
 
 const TOKEN_EXPIRY = '8h';
-const PASSWORD_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'password');
+// 数据目录缺省仍 ~/.multi-proxy-manager（零行为变更）；MP_DATA_DIR 可覆盖。
+const DATA_DIR = process.env.MP_DATA_DIR || path.join(os.homedir(), '.multi-proxy-manager');
+const PASSWORD_FILE = path.join(DATA_DIR, 'password');
 
 function getPassword() {
   try {

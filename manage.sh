@@ -2,7 +2,7 @@
 set -e
 
 # costgate - 一键管理脚本（新版扁平目录结构）
-# 用法: ./manage.sh [start|stop|restart|bootout|status|logs]
+# 用法: ./manage.sh [start|stop|restart|bootout|status|logs|migrate]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -943,6 +943,13 @@ case "${1:-status}" in
   logs)
     show_logs "${2:-all}"
     ;;
+  migrate)
+    # Phase 0 手动迁移：默认 dry-run，透传 --apply 给 node CLI 才动盘。
+    # set -e 下用 `|| _rc=$?` 兜住，把 CLI 的退出码（failed=1）原样传出去。
+    _rc=0
+    node "$SCRIPT_DIR/multi-proxy-manager/lib/migrate.js" "${@:2}" || _rc=$?
+    exit "$_rc"
+    ;;
   codex)
     case "${2:-status}" in
       start) start_codex ;;
@@ -1119,6 +1126,7 @@ case "${1:-status}" in
     echo "  bootout     卸载 launchd 托管服务（bootout + 删 plist）"
     echo "  status      查看服务状态"
     echo "  logs [all|codex|hermes|cursor|manager]  查看日志"
+    echo "  migrate [--apply]  迁移旧数据目录/JWT 密钥（默认 dry-run，仅预览）"
     echo ""
     echo "单个服务管理:"
     echo "  $0 codex [start|stop|restart|bootout|status|logs]"
