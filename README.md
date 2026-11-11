@@ -12,6 +12,15 @@ This file is part of the costgate project.
 
 <sub>English: One local gateway for all your AI coding tools — with a ledger you can audit yourself.</sub>
 
+[![E2E Tier0 (PR Gate)](https://github.com/sif-king/costgate/actions/workflows/e2e-tier0.yml/badge.svg)](https://github.com/sif-king/costgate/actions/workflows/e2e-tier0.yml)
+[![P0 Security Gate](https://github.com/sif-king/costgate/actions/workflows/p0-security-gate.yml/badge.svg)](https://github.com/sif-king/costgate/actions/workflows/p0-security-gate.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![License: Commercial](https://img.shields.io/badge/License-Commercial-red.svg)](LICENSE-COMMERCIAL.md)
+
+> **想审计它的人，先看这三页**：[`COMPATIBILITY.md`](COMPATIBILITY.md)（它认哪些协议、到哪个版本、哪些不认）·
+> [`SECURITY.md`](SECURITY.md)（它拦什么、放什么、你的数据去哪）· [`CHANGELOG.md`](CHANGELOG.md)（现在能用什么、已知限制）。
+> 不写「我们很安全 / 支持一切」——写的是实测过的形态，没实测的写「未验」。
+
 如果你正在同时用 Claude Code、Codex CLI、Cursor、opencode、Cline、Aider 里的两个以上，并且说不清这个月 AI 花了多少、这些工具之间有没有互相抢配置——这就是给它用的。
 
 ---
@@ -90,6 +99,7 @@ costgate · 冷启：从零到第一笔真实账单
 > - 免费池会把 prompt 用于服务改进，别发敏感内容；脚本只发一句 `pong`。
 > - 想数据不出本机：先装 [Ollama](https://ollama.com)，脚本自动优先用它，并挑**体积最小**的模型（机器上有 27B 和 4B 时不会挑 27B）。`MP_QS_UPSTREAM=ollama` 可强制走本地。
 > - 停掉：`bash scripts/quickstart.sh --stop`。
+> - **完整安全口径**（它拦什么、拦不住什么、你的数据去哪）：[`SECURITY.md`](SECURITY.md)。一句话先记住：**默认冷启会发往第三方免费池，想纯本地走 Ollama**。
 
 ---
 
@@ -107,6 +117,18 @@ costgate · 冷启：从零到第一笔真实账单
 统一入口只做转发：它指向的那个代理没起时，`/v1/models` 会如实返回 `502`，不是入口坏了（`curl` 加 `--noproxy '*'` 再看，否则可能是你本机代理在替你连）。
 
 **另外六个代理是可选组件**：claude / cursor / hermes / dsh / opencode / generic 各是一个独立进程，装哪个用哪个，能单独卸载，互不依赖。冷启动只要 codex-proxy + manager 两个，多一个都不用装。
+
+---
+
+## 依赖与复现
+
+这是 monorepo：根目录**没有** `package.json`——这是有意的，不假装有一个。每个代理是独立进程、各有自己的
+`package-lock.json`（codex-proxy / claude-proxy / multi-proxy-manager / cursor-proxy / dsh-proxy / generic-openai-proxy 六份）。
+
+- **一键验证（冒烟路径）**：`bash scripts/quickstart.sh`——从干净 clone 跑通「装依赖 → 起两个进程 → 发一条真请求 → 核对账本落盘」；账本没多一行就以**退出码 2 报错**，不报假成功。任何人几分钟内可独立复现。
+- **锁定版本 + 漏洞扫描**：进任意子目录 `cd multi-proxy-manager && npm ci && npm audit`（走 lockfile，可复现）；CI 在干净环境对 manager 做 `npm ci`。
+- **全链路冒烟**：`bash scripts/verify-lanes.sh`（6 条代理链路各发一条真请求，`usage` 是上游回的真数字）。
+- **CI 双门**（顶部徽章）：`E2E Tier0 (PR Gate)` 真浏览器跑 7 壳页 + 门控条语义；`P0 Security Gate` 跑安全守卫。
 
 ---
 
