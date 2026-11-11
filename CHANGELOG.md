@@ -21,6 +21,19 @@ This file is part of the costgate project.
   （见 `COMPATIBILITY.md`）。
 - CI 双门：`E2E Tier0 (PR Gate)`（真浏览器 7 壳页 + 门控条语义）+ `P0 Security Gate`。
 
+### 当前 HEAD 实测记录（2026-11-12，HEAD `c38cc0e`）
+
+让一个陌生人**三条命令内独立复现绿灯**（结果来自真跑，非文档摘录）：
+
+| 命令 | 实测结果 |
+|---|---|
+| `bash scripts/quickstart.sh`（本机） | 第一笔真实账单：入 18 / 出 56 tokens，¥0，12962ms；冷启 34s（含首次 npm 下包） |
+| `bash scripts/test-all.sh --fast` | 合计 **145 PASS / 0 FAIL**（l2 118 + dsh-proxy 27 + workbuddy-shim 退出码 + meta-guard mcp-gate 成对成立），退出码 0 |
+| CI 双门（`main`） | `E2E Tier0 (PR Gate)` **success**（53s）+ `P0 Security Gate` **success** |
+
+> CI 历史里能看到 `cancelled` / `failed`：那是 PR 迭代中的红→绿循环（含 GitHub runner 网络抖动触发的自动重试），
+> 非当前 main 状态——当前 HEAD 双门全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退本地占位，跑测试无需手动设密码。
+
 ### 已知限制（明确、可在代码里指认，非「没想过」）
 - **hermes 不转发请求**：只改写 `~/.hermes/config.yaml`，用量不进账本，不在「转发+记账」范围。
 - **无 failover / 重试 / 熔断**：只在 cursor-proxy 的路由模式里有两档，非开箱高可用。

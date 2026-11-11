@@ -17,6 +17,8 @@ This file is part of the costgate project.
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![License: Commercial](https://img.shields.io/badge/License-Commercial-red.svg)](LICENSE-COMMERCIAL.md)
 
+<sub>徽章图例：点开 CI 会看到历史里有 `cancelled` / `failed` 条目——那是 PR 迭代中的红→绿循环（含 GitHub runner 网络抖动触发的自动重试），**不是当前 main 的状态**；当前 HEAD 双门全绿。失败条目的上下文见 [`CHANGELOG.md`](CHANGELOG.md)。</sub>
+
 > **想审计它的人，先看这三页**：[`COMPATIBILITY.md`](COMPATIBILITY.md)（它认哪些协议、到哪个版本、哪些不认）·
 > [`SECURITY.md`](SECURITY.md)（它拦什么、放什么、你的数据去哪）· [`CHANGELOG.md`](CHANGELOG.md)（现在能用什么、已知限制）。
 > 不写「我们很安全 / 支持一切」——写的是实测过的形态，没实测的写「未验」。
@@ -100,6 +102,7 @@ costgate · 冷启：从零到第一笔真实账单
 > - 想数据不出本机：先装 [Ollama](https://ollama.com)，脚本自动优先用它，并挑**体积最小**的模型（机器上有 27B 和 4B 时不会挑 27B）。`MP_QS_UPSTREAM=ollama` 可强制走本地。
 > - 停掉：`bash scripts/quickstart.sh --stop`。
 > - **完整安全口径**（它拦什么、拦不住什么、你的数据去哪）：[`SECURITY.md`](SECURITY.md)。一句话先记住：**默认冷启会发往第三方免费池，想纯本地走 Ollama**。
+> - **上游完整性不在范围**（`SECURITY.md §3`）：costgate 对上游是**透明转发**——不校验返回的工具调用签名、不对上游做版本 pin。要「上游可信」请在上游侧解决（TLS 证书 pinning / 自建上游），这层不做背书。
 
 ---
 
@@ -128,6 +131,7 @@ costgate · 冷启：从零到第一笔真实账单
 - **一键验证（冒烟路径）**：`bash scripts/quickstart.sh`——从干净 clone 跑通「装依赖 → 起两个进程 → 发一条真请求 → 核对账本落盘」；账本没多一行就以**退出码 2 报错**，不报假成功。任何人几分钟内可独立复现。
 - **锁定版本 + 漏洞扫描**：进任意子目录 `cd multi-proxy-manager && npm ci && npm audit`（走 lockfile，可复现）；CI 在干净环境对 manager 做 `npm ci`。
 - **全链路冒烟**：`bash scripts/verify-lanes.sh`（6 条代理链路各发一条真请求，`usage` 是上游回的真数字）。
+- **全部单测/链路一条命令**：`bash scripts/test-all.sh --fast`（约 50 秒，只跑零依赖入口）或全量（jest 四入口，分钟级）——一条命令给一行「合计 N PASS / 0 FAIL」，退出码 0 即全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退到本地占位值，reviewer 无需手动设密码，不会整批 401 误挂。
 - **CI 双门**（顶部徽章）：`E2E Tier0 (PR Gate)` 真浏览器跑 7 壳页 + 门控条语义；`P0 Security Gate` 跑安全守卫。
 
 ---
