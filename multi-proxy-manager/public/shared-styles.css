@@ -996,3 +996,22 @@ body {
 
 .mp-shell-foot .legal-link:hover { color: var(--color-text); }
 .mp-shell-foot .legal-link svg { width: 15px; height: 15px; }
+
+/* ===== costgate mark (concept B: hexagon badge) ===== */
+/* B 的六边形徽标自带渐变底，须让承载它的盒子透明，否则六边形会压在蓝底方块上（四角露蓝）。
+   !important 用于压过 3 个页面（knowledge/sessions/skills）内联重定义的 .logo-icon 蓝底。 */
+.logo-icon.cg-badge,
+.mark.logo-icon.cg-badge,
+.brand-icon.cg-badge {
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.logo-icon.cg-badge::after,
+.brand-icon.cg-badge::after { content: none !important; }
+.logo-icon.cg-badge > svg,
+.brand-icon.cg-badge > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

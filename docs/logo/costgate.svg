@@ -5,13 +5,12 @@
       <stop offset="1" stop-color="#1d4ed8"/>
     </linearGradient>
   </defs>
-  <rect x="4" y="4" width="56" height="56" rx="15" fill="url(#cgGrad)"/>
-  <!-- gate: a single arch opening (one egress) -->
-  <path d="M22 46 V30 a10 10 0 0 1 20 0 V46" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-  <!-- the one audited ledger passing through the gate -->
-  <circle cx="32" cy="33" r="6.2" fill="#ffffff"/>
-  <circle cx="32" cy="33" r="6.2" fill="none" stroke="#1d4ed8" stroke-width="1.4"/>
-  <text x="32" y="36.6" font-size="8" font-weight="800" fill="#1d4ed8" text-anchor="middle" font-family="sans-serif">&#165;</text>
+  <!-- hexagon badge (modern, strong favicon identity) -->
+  <path d="M32 4 L56 18 V46 L32 60 L8 46 V18 Z" fill="url(#cgGrad)"/>
+  <!-- gate: a single opening to the right (one egress) -->
+  <path d="M30 20 a12 12 0 1 0 0 24" fill="none" stroke="#ffffff" stroke-width="5.2" stroke-linecap="round"/>
+  <!-- the one audited ledger passing through -->
+  <line x1="30" y1="32" x2="46" y2="32" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
   <!-- audit tick: this charge is verified -->
-  <path d="M25 50 l4.2 4.2 l8.4 -9.2" fill="none" stroke="#34d399" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 28 l4 4 l6 -8" fill="none" stroke="#34d399" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
