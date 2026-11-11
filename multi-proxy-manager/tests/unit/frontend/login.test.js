@@ -28,13 +28,13 @@ describe('Login Page', () => {
     it('should serve the login HTML page', () => {
       expect(html).toBeDefined();
       expect(html).toContain('<!DOCTYPE html>');
-      expect(html).toContain('Multi-Proxy Manager - 登录');
+      expect(html).toContain('costgate - 登录');
     });
 
     it('should have brand section', () => {
       expect(html).toContain('class="branding"');
       expect(html).toContain('class="brand-name"');
-      expect(html).toContain('Proxy Manager');
+      expect(html).toContain('costgate');
     });
 
     it('should have a card wrapper for forms', () => {

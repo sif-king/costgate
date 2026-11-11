@@ -1,4 +1,4 @@
-# manage.ps1 - Multi-Proxy Manager Windows 管理脚本（等价 manage.sh）
+# manage.ps1 - costgate Windows 管理脚本（等价 manage.sh）
 # 用法: .\manage.ps1 [start|stop|restart|status|logs] [codex|hermes|cursor|dsh|manager|all]
 [CmdletBinding()]
 param(
@@ -55,7 +55,7 @@ function StopProxy($name) {
 }
 function ShowStatus() {
   Write-Host "=========================================="
-  Write-Host "  Multi-Proxy Manager 状态"
+  Write-Host "  costgate 状态"
   Write-Host "=========================================="
   foreach ($name in $Ports.Keys) {
     $port = $Ports[$name]

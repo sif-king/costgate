@@ -11,7 +11,7 @@ const app = require('../server');
 const AUTH_TOKEN = jwt.sign({ authenticated: true, ts: Date.now() }, process.env.JWT_SECRET, { expiresIn: '8h' });
 const authed = (req) => req.set('x-auth-token', AUTH_TOKEN);
 
-describe('Multi-Proxy Manager API', () => {
+describe('costgate API', () => {
   // 2026-10-28：CI manager fixture 全局设了 MANAGER_PASSWORD（让 12 个「无 token→401」套件过）。
   // 但本文件整组预设「无密码回环放行」（多处裸 request(app) 期望非 401）。
   // 故本 describe 进前显式建立「无密码」基线、跑完还原，防跨文件 env 泄漏。

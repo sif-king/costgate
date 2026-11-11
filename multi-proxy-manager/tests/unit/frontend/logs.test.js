@@ -33,7 +33,7 @@ describe('Logs Page', () => {
 
     it('should serve the logs HTML page', () => {
       expect(html).toBeDefined();
-      expect(html).toContain('Proxy Manager - 日志');
+      expect(html).toContain('costgate - 日志');
     });
 
     it('should include shared CSS files', () => {

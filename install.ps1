@@ -1,4 +1,4 @@
-# install.ps1 - Multi-Proxy Manager Windows 安装器（等价 install.sh --all + --autostart）
+# install.ps1 - costgate Windows 安装器（等价 install.sh --all + --autostart）
 # 用法:
 #   .\install.ps1           安装依赖 + 启动 + 配置登录自启
 #   .\install.ps1 -Start    仅启动

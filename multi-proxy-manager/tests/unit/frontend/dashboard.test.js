@@ -29,7 +29,7 @@ describe('Dashboard Page', () => {
     it('should serve the dashboard HTML page', () => {
       expect(html).toBeDefined();
       expect(html).toContain('<!DOCTYPE html>');
-      expect(html).toContain('Multi-Proxy Manager - 总览');
+      expect(html).toContain('costgate - 总览');
     });
 
     it('should include shared CSS files', () => {
@@ -42,7 +42,7 @@ describe('Dashboard Page', () => {
       expect(html).toContain('class="sidebar"');
       expect(html).toContain('class="sidebar-brand"');
       expect(html).toContain('class="sidebar-nav"');
-      expect(html).toContain('Proxy Manager');
+      expect(html).toContain('costgate');
     });
 
     it('should source sidebar nav from single nav.js and cover key pages (P0-5)', () => {

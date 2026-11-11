@@ -4,7 +4,7 @@
 
 'use strict';
 
-// Multi-Proxy Manager — Electron 壳（P5，MVP）。
+// costgate — Electron 壳（P5，MVP）。
 // 作用：把已落地、已接线的 Express 管理后台（server.js）装进桌面壳，
 //      双击即可「打开应用 → 拉起/复用 Web 后端 → 装载 UI」，整体安装/卸载。
 //
@@ -85,7 +85,7 @@ function openManagerWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
-    title: 'Multi-Proxy Manager',
+    title: 'costgate',
     webPreferences: {
        // 本地受信源，contextIsolation 保持；不开启 nodeIntegration，不注入远端代码。
       contextIsolation: true,

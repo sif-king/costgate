@@ -3,7 +3,7 @@
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 // This file is part of the costgate project.
 
-// Multi-Proxy Manager Shell — 组装层。
+// costgate Shell — 组装层。
 // 业务实现拆分在 lib/（auth/logger/process-manager/forward）与 routes/ 下，
 // 本文件只负责 express 应用组装：中间件顺序 + 路由挂载 + 错误处理 + SPA fallback。
 const express = require('express');
@@ -376,7 +376,7 @@ if (process.env.NODE_ENV !== "test") {
           : '已启用鉴权，请确认防火墙/反向代理访问控制。'));
     }
     console.log('\n========================================');
-    console.log('  Multi-Proxy Manager Shell');
+    console.log('  costgate Shell');
     console.log(`  Access: http://${BIND_HOST}:${PORT}`);
     console.log(`  Managed proxies: ${Object.keys(pm.getProxyConfigs()).join(', ') || 'none'}`);
     console.log('========================================\n');

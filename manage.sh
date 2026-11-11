@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Multi-Proxy Manager - 一键管理脚本（新版扁平目录结构）
+# costgate - 一键管理脚本（新版扁平目录结构）
 # 用法: ./manage.sh [start|stop|restart|bootout|status|logs]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -305,7 +305,7 @@ start_cursor() {
 # 启动 Manager Shell
 start_manager() {
   if [ ! -f "$MANAGER_DIR/server.js" ]; then
-    print_error "Multi-Proxy Manager 未安装: $MANAGER_DIR/server.js 不存在"
+    print_error "costgate 未安装: $MANAGER_DIR/server.js 不存在"
     return 1
   fi
 
@@ -315,7 +315,7 @@ start_manager() {
   fi
 
   cd "$MANAGER_DIR" || exit 1
-  print_status "启动 Multi-Proxy Manager Shell..."
+  print_status "启动 costgate Shell..."
   nohup node server.js > "$LOG_DIR/manager.log" 2>&1 &
   local pid=$!
 
@@ -650,7 +650,7 @@ svc_port() {
 # 查看状态（N-4：改为遍历 SERVICES，根除此前手写 9 块硬编码的状态清单漂移）
 show_status() {
   echo "=========================================="
-  echo "  Multi-Proxy Manager 状态"
+  echo "  costgate 状态"
   echo "=========================================="
   echo ""
 
@@ -1108,7 +1108,7 @@ case "${1:-status}" in
     exec npx electron main.js
      ;;
   *)
-    echo "Multi-Proxy Manager 管理脚本"
+    echo "costgate 管理脚本"
     echo ""
     echo "用法: $0 [command]"
     echo ""

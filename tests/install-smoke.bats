@@ -69,7 +69,7 @@ done
   run bash "$PROJ_DIR/install.sh" --all --dry-run
   [ "$status" -eq 0 ]
   for name in "Codex Proxy" "Claude Proxy" "OpenCode Proxy" "Generic OpenAI Proxy" \
-              "DSH Proxy" "Hermes Proxy" "Cursor Multi-Model Proxy" "Multi-Proxy Manager"; do
+              "DSH Proxy" "Hermes Proxy" "Cursor Multi-Model Proxy" "costgate"; do
     if [[ "$output" != *"$name"* ]]; then
       echo "missing in --all output: $name"
       return 1

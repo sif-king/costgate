@@ -1,5 +1,5 @@
 #!/bin/bash
-# Multi-Proxy Manager — 一键安装/卸载/重装/启停
+# costgate — 一键安装/卸载/重装/启停
 # 用法:
 #   ./install.sh              # 交互式安装
 #   ./install.sh --all        # 静默安装全部
@@ -302,7 +302,7 @@ install_cursor() {
 }
 
 install_manager() {
-  print_step "安装 Multi-Proxy Manager..."
+  print_step "安装 costgate..."
   local dir="$ROOT_DIR/multi-proxy-manager"
 
   if [ -n "$FORWARD_DRY_RUN" ]; then
@@ -311,17 +311,17 @@ install_manager() {
   fi
 
   if [ ! -f "$dir/server.js" ]; then
-    print_err "Multi-Proxy Manager 文件不存在: $dir/server.js"
+    print_err "costgate 文件不存在: $dir/server.js"
     return 1
   fi
 
   if has_node; then
     if [ -d "$dir/node_modules" ]; then
-      print_ok "Multi-Proxy Manager 依赖已安装"
+      print_ok "costgate 依赖已安装"
     else
       print_info "安装 Node.js 依赖..."
       (cd "$dir" && npm install)
-      print_ok "Multi-Proxy Manager 依赖安装完成"
+      print_ok "costgate 依赖安装完成"
     fi
   fi
 
@@ -483,10 +483,10 @@ uninstall_dsh() {
 }
 
 uninstall_manager() {
-  print_step "卸载 Multi-Proxy Manager..."
+  print_step "卸载 costgate..."
   local dir="$ROOT_DIR/multi-proxy-manager"
   preserve_env "$dir"
-  print_info "$(fmt "Multi-Proxy Manager 文件保留（如需完全删除请手动 rm -rf %s）" "$dir")"
+  print_info "$(fmt "costgate 文件保留（如需完全删除请手动 rm -rf %s）" "$dir")"
 }
 
 # 提取 plist 的 Label：plutil 优先（对含特殊字符注释的 plist 最稳），python3 兜底，grep 终极兜底
@@ -681,7 +681,7 @@ stop_all_services() {
 }
 
 show_status() {
-  print_bold "=== Multi-Proxy Manager 状态 ==="
+  print_bold "=== costgate 状态 ==="
   echo ""
 
   if is_port_in_use $CODEx_PORT; then
@@ -859,7 +859,7 @@ setup_autostart_systemd() {
 
   cat > "$unit" << UNIT_EOF
 [Unit]
-Description=Multi-Proxy Manager (user)
+Description=costgate (user)
 After=network.target
 
 [Service]
@@ -906,7 +906,7 @@ uninstall_systemd() {
 interactive_install() {
   echo ""
   print_bold "============================================"
-  print_bold "  Multi-Proxy Manager — 一键安装"
+  print_bold "  costgate — 一键安装"
   print_bold "============================================"
   echo ""
 
@@ -927,7 +927,7 @@ interactive_install() {
   echo "  ${CYAN}[5]${NC} DSH Proxy"
   echo "  ${CYAN}[6]${NC} Hermes Proxy"
   echo "  ${CYAN}[7]${NC} Cursor Multi-Model Proxy"
-  echo "  ${CYAN}[8]${NC} Multi-Proxy Manager（共享管理后台，强制）"
+  echo "  ${CYAN}[8]${NC} costgate（共享管理后台，强制）"
   echo ""
   read -p "请输入选项 (空格分隔, 默认全部 1-8): " choice
 
@@ -1107,7 +1107,7 @@ do_check_update() {
 do_update() {
   echo ""
   print_bold "============================================"
-  print_bold "  Multi-Proxy Manager — 更新"
+  print_bold "  costgate — 更新"
   print_bold "============================================"
   echo ""
 
@@ -1191,7 +1191,7 @@ do_update() {
 # ===================== 主入口 =====================
 
 usage() {
-  print_bold "Multi-Proxy Manager — 一键管理工具"
+  print_bold "costgate — 一键管理工具"
   echo ""
   echo "用法: $0 [命令]"
   echo ""
@@ -1254,7 +1254,7 @@ main() {
       # 静默安装全部组件
       echo ""
       print_bold "============================================"
-      print_bold "  Multi-Proxy Manager — 一键安装全部"
+      print_bold "  costgate — 一键安装全部"
       print_bold "============================================"
       echo ""
 
@@ -1359,7 +1359,7 @@ main() {
     --uninstall)
       echo ""
       print_bold "============================================"
-      print_bold "  卸载 Multi-Proxy Manager"
+      print_bold "  卸载 costgate"
       print_bold "============================================"
       echo ""
 

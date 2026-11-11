@@ -150,7 +150,7 @@ setup() {
 @test "docs do not promise a first-run consent page while that gate is off" {
   # 中文口径：quickstart 原来写「面板（首启会展示协议页）」，README 写「首次访问
   # 引导设密码」——两处都与现实不符。2026-11-08 实测（全新 HOME、回环访问）：
-  #   GET /                → 200，直接是总览页（title「Multi-Proxy Manager - 总览」）
+  #   GET /                → 200，直接是总览页（title「costgate - 总览」）
   #   GET /api/auth/status → {"needsSetup":false,"hasPassword":false,"loopbackBypass":true}
   # 原因是 server.js 里那行同意门重定向被注释掉了（2026-10-22 拍板：「都拦」会把人
   # 锁在门外，取「都不拦」）。文档承诺一个永远不会出现的页面，陌生人会以为装坏了。

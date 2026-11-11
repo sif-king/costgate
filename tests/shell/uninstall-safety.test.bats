@@ -159,7 +159,7 @@ setup() {
   run bash "$INSTALL_SH" --uninstall --dry-run
   [ "$status" -eq 0 ]
   for name in "Codex Proxy" "Hermes Proxy" "Cursor Proxy" "Claude Proxy" \
-              "OpenCode Proxy" "Generic OpenAI Proxy" "DSH Proxy" "Multi-Proxy Manager"; do
+              "OpenCode Proxy" "Generic OpenAI Proxy" "DSH Proxy" "costgate"; do
     echo "$output" | grep -q "$name" || {
       echo "dry-run output is missing: $name" >&2
       return 1
