@@ -161,3 +161,34 @@ section_body() {
     return 1
   }
 }
+
+@test "README stays short enough to be read (details live in docs/)" {
+  # 2026-11-12 老板原话：「readme 特别长，阅读体验不好」。
+  # 当时 693 行 / 44KB，前 200 行之外全是工具接线与内部机制——都是真的，
+  # 但都不是第一次打开它的人当下要的。压到 ~350 行后给出上限 450，
+  # 留出正常增长余量；再想加长，就先问「这段该不该在 docs/」。
+  # 计数用 wc -l（数换行符）。别用 `grep -c ''`：它对末尾连续空行会少算，
+  # 2026-11-12 注入验证时踩到——撑到 451 行仍判通过，守卫等于没写。
+  local n
+  n="$(wc -l < "$README" | tr -d ' ')"
+  [ "$n" -le 450 ] || {
+    echo "README 已 $n 行（上限 450）：把细节拆到 docs/ 再在 README 留一句摘要+链接" >&2
+    return 1
+  }
+}
+
+@test "sections split out of README are still present and still linked" {
+  # 拆出去不是扔掉：三个文件必须存在且非空，且 README 必须有指向它们的链接。
+  # 否则就是「为了短而删」——那是最容易发生的退化，也是这个守卫存在的理由。
+  local f
+  for f in docs/08-user/connect-tools.md docs/08-user/self-verify.md docs/04-tech/implementation-notes.md; do
+    [ -s "$ROOT/$f" ] || {
+      echo "拆分文件不见了或为空：$f" >&2
+      return 1
+    }
+    grep -qF "$f" "$README" || {
+      echo "README 没有链接到 $f（拆出去的内容找不到了）" >&2
+      return 1
+    }
+  done
+}

@@ -12,6 +12,12 @@
 setup() {
   ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
   README="$ROOT/README.md"
+  # 2026-11-12：README 从 693 行压到 ~350 行，把三节拆到 docs/。
+  # 拆出去的仍是「用户会照着敲的东西」，所以这些断言必须跟着搬家——
+  # 只盯 README 的话，断言会变成「检查空集」：绿着，但什么都不保护。
+  DOC_CONNECT="$ROOT/docs/08-user/connect-tools.md"
+  DOC_SELFVERIFY="$ROOT/docs/08-user/self-verify.md"
+  DOC_TECH="$ROOT/docs/04-tech/implementation-notes.md"
 }
 
 @test "README exists and is not empty" {
@@ -63,8 +69,8 @@ setup() {
 @test "README does not point at line numbers (they rot; symbols do not)" {
   # 中文口径：正文里出现 `file.js:123` 这种锚点一律算退化——行号每改一次代码就会漂，
   # 而假的坐标比没有坐标更糟。实现细节表已改成给函数名/字段名。
-  run grep -nE '`[A-Za-z0-9_./-]+\.(js|sh|py|json):[0-9]+`' "$README"
-  [ "$status" -ne 0 ] || { echo "README 又写死行号了：$output" >&2; return 1; }
+  run grep -nE '`[A-Za-z0-9_./-]+\.(js|sh|py|json):[0-9]+`' "$README" "$DOC_TECH"
+  [ "$status" -ne 0 ] || { echo "又写死行号了：$output" >&2; return 1; }
 }
 
 @test "providers.json example is a bare array, not a {providers:[...]} wrapper" {
@@ -76,8 +82,12 @@ setup() {
   # 必须提到那个形状。判据只该落在**示例代码块**上，所以解析 fenced json 再判。
   run node -e '
     const fs = require("fs");
-    const md = fs.readFileSync(process.argv[1], "utf8");
-    const blocks = [...md.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]);
+    const files = process.argv.slice(1);
+    const blocks = [];
+    for (const f of files) {
+      const md = fs.readFileSync(f, "utf8");
+      for (const m of md.matchAll(/```json\n([\s\S]*?)```/g)) blocks.push(m[1]);
+    }
     const withPid = blocks.filter((b) => b.includes("provider_id"));
     if (!withPid.length) { console.log("NO_EXAMPLE"); process.exit(2); }
     for (const b of withPid) {
@@ -85,7 +95,7 @@ setup() {
       if (!t.startsWith("[")) { console.log("WRAPPED: " + t.slice(0, 30)); process.exit(1); }
     }
     console.log("ok " + withPid.length + " example(s)");
-  ' "$README"
+  ' "$README" "$DOC_CONNECT"
   [ "$status" -eq 0 ] || { echo "$output" >&2; return 1; }
 }
 
@@ -95,14 +105,14 @@ setup() {
   # 请求由 Hermes 自己打上游 —— 所以它既不该出现在「把 base_url 指向这」的表格里，
   # 也不产生账本记录。README 曾把它写成 `| Hermes | http://127.0.0.1:18793 |`，
   # 用户照着接，/v1/models 还 200，看起来完全正常，一发请求才 404。
-  run grep -qE '^\|[[:space:]]*Hermes[[:space:]]*\|[[:space:]]*`?http' "$README"
-  [ "$status" -ne 0 ] || { echo "README 又把 hermes 写成可填 base_url 的代理了" >&2; return 1; }
-  # 说明本身必须在，别为了过检查把整段删了
-  run grep -q '不转发请求' "$README"
+  run grep -qE '^\|[[:space:]]*Hermes[[:space:]]*\|[[:space:]]*`?http' "$README" "$DOC_CONNECT"
+  [ "$status" -ne 0 ] || { echo "又把 hermes 写成可填 base_url 的代理了" >&2; return 1; }
+  # 说明本身必须在，别为了过检查把整段删了（2026-11-12 起这段在 connect-tools.md）
+  run grep -q '不转发请求' "$README" "$DOC_CONNECT"
   [ "$status" -eq 0 ]
-  run grep -q '/v1/chat/completions` 是 \*\*404\*\*' "$README"
+  run grep -q '/v1/chat/completions` 是 \*\*404\*\*' "$README" "$DOC_CONNECT"
   [ "$status" -eq 0 ]
-  run grep -q 'Hermes 的用量不进账本' "$README"
+  run grep -q 'Hermes 的用量不进账本' "$README" "$DOC_CONNECT"
   [ "$status" -eq 0 ]
 }
 
@@ -113,18 +123,18 @@ setup() {
   # 放在同一个标题下——最主力的客户端照做，请求根本不会经过代理，而屏幕上
   # 看不出任何异常。断言三件事：① 有 toml 片段 ② 声明了 wire_api
   # ③ 环境变量那行不再挂在 Codex CLI 名下。
-  run grep -q 'model_provider = "multi-proxy"' "$README"
-  [ "$status" -eq 0 ] || { echo "README 缺 Codex CLI 的 config.toml 片段" >&2; return 1; }
-  run grep -qF 'wire_api = "responses"' "$README"
+  run grep -q 'model_provider = "multi-proxy"' "$README" "$DOC_CONNECT"
+  [ "$status" -eq 0 ] || { echo "缺 Codex CLI 的 config.toml 片段（README 或 connect-tools.md）" >&2; return 1; }
+  run grep -qF 'wire_api = "responses"' "$README" "$DOC_CONNECT"
   [ "$status" -eq 0 ] || { echo "README 没写 wire_api（Codex 默认走 /v1/responses）" >&2; return 1; }
   # 「Codex CLI / OpenAI SDK」这种合写标题就是把环境变量按到 Codex 头上
-  run grep -qE 'Codex CLI[^）]{0,10}/ *OpenAI SDK' "$README"
+  run grep -qE 'Codex CLI[^）]{0,10}/ *OpenAI SDK' "$README" "$DOC_CONNECT"
   [ "$status" -ne 0 ] || { echo "又把 Codex CLI 和认环境变量的工具合写成一个标题了" >&2; return 1; }
   # 明确说清它不认环境变量（否则下一个人还会「顺手统一一下」）
   # 注意必须 -E：BSD grep 的 BRE 不认 `\|`，写成 grep 'a\|b' 恒不匹配，
   # 这条断言会永远假红（2026-11-08 踩到）。
-  run grep -qE '不认环境变量|不认这个变量' "$README"
-  [ "$status" -eq 0 ] || { echo "README 没点明 Codex CLI 不认环境变量" >&2; return 1; }
+  run grep -qE '不认环境变量|不认这个变量' "$README" "$DOC_CONNECT"
+  [ "$status" -eq 0 ] || { echo "没点明 Codex CLI 不认环境变量" >&2; return 1; }
 }
 
 @test "the banner in README's sample output matches what quickstart actually prints" {
