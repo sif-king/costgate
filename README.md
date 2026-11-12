@@ -23,7 +23,60 @@ This file is part of the costgate project.
 > [`SECURITY.md`](SECURITY.md)（它拦什么、放什么、你的数据去哪）· [`CHANGELOG.md`](CHANGELOG.md)（现在能用什么、已知限制）。
 > 不写「我们很安全 / 支持一切」——写的是实测过的形态，没实测的写「未验」。
 
+**跳着看**：[30 秒看懂它](#30-秒看懂它) · [跑起来](#一条命令看到第一笔真实账单) · [和别的东西什么关系](#它和别的东西什么关系) · [接上你的工具](#接上你的工具) · [数据不出本机](#数据不出本机) · [常见问题](#常见问题) · [还没做的](#现在还没做的)
+
 如果你正在同时用 Claude Code、Codex CLI、Cursor、opencode、Cline、Aider 里的两个以上，并且说不清这个月 AI 花了多少、这些工具之间有没有互相抢配置——这就是给它用的。
+
+---
+
+## 30 秒看懂它
+
+一句话：**它站在你的工具和模型之间，只做两件事——把出口收成一个，把花销记成一本账。**
+
+```mermaid
+flowchart LR
+  subgraph TOOLS["① 你的工具（下游）"]
+    direction TB
+    T1["Claude Code"]
+    T2["Codex CLI"]
+    T3["Cursor"]
+    T4["Cline / Aider / OpenCode …"]
+  end
+
+  subgraph CG["② costgate（本机进程）"]
+    direction TB
+    U["统一入口 :18880<br/>按路径分发（可选）"]
+    P["代理进程<br/>codex :18790 · claude :18791<br/>cursor :18794 · dsh :18797<br/>opencode :18798 · generic :18799"]
+    M["manager :18792<br/>账本 · 门控 · 面板"]
+  end
+
+  subgraph UP["③ 上游（模型提供方）"]
+    direction TB
+    K["Kilo 匿名免费池<br/>免 key"]
+    Y["你自己的 key<br/>OpenAI / Anthropic / DeepSeek …"]
+    O["本机 Ollama<br/>127.0.0.1:11434"]
+  end
+
+  T1 --> U
+  T2 --> U
+  T3 --> U
+  T4 --> U
+  U --> P
+  T1 -. 也可以直连代理端口 .-> P
+  P --> K
+  P --> Y
+  P -->|privacy 规则命中| O
+  P -->|每次真实 usage| M
+  M --> L[("cost-ledger.jsonl<br/>纯文本，一行一笔")]
+```
+
+三句话读完这张图：
+
+1. **上面是你在用的工具**——它们只认一个 `base_url`，不关心背后是谁。
+2. **中间是 costgate**——代理进程转发请求并拿到上游返回的真实 `usage`，manager 把它记成一行账。这层不做模型推理，也不改你的工具配置（只读；发现被别的工具占用时报告冲突，不抢不覆写）。
+3. **下面是上游**——免费池 / 你自己的 key / 本机 Ollama。打上隐私标记的请求只落 `127.0.0.1`，这是路由表里的一档条件，不是临时开关。
+
+> 图里没有 `hermes :18793`：它不在这条请求链路上——只改写 `~/.hermes/config.yaml` 的当前模型，不转发请求、不记账（细节见[「接上你的工具」](#接上你的工具)）。
 
 ---
 
@@ -82,6 +135,9 @@ costgate · 冷启：从零到第一笔真实账单
 冷启完成，用时 26s
 ```
 
+<details>
+<summary><b>上面这些数字为什么每次不一样（点开：实测环境、分段耗时、装失败了怎么办）</b></summary>
+
 > 上面是 2026-11-08 03:42 在本机的一次真实输出：数值与步骤逐字保留，只把品牌名同步为更名后的 `costgate`、把本机路径脱敏成 `~`，末尾「下一步」几行提示未收录。为了不污染你自己的账本、也不和你已经在跑的服务抢端口，那次用的是空的 `HOME` 和 18886/18885 两个端口——**默认是 18792/18790**，其余输出与默认跑法完全一致。
 >
 > 换 `MP_QS_CLIENT=claude` 那次同样真跑：14 秒，账本里落地的是 `代理 claude-proxy`、用量 50/26。
@@ -94,6 +150,8 @@ costgate · 冷启：从零到第一笔真实账单
 >
 > 万一 `npm install` 本身失败，脚本会把 npm 的**原话**打到屏幕上（`首次安装没完成，npm 报的是：…`），见到这行先查自己的网络/代理，别当成安装器坏了。
 
+</details>
+
 那条命令背后真正发生的事：你的请求 → codex-proxy 转发到上游 → 上游返回 `usage` → 上报 manager → 追加写进 `~/.multi-proxy-manager/cost-ledger.jsonl`。
 
 **token 数来自上游返回的 `usage` 字段**，不是估算、不是模拟。请求成功但账本没多一行，脚本会**以退出码 2 报错**并告诉你去哪看日志——"没记上"不会被说成"成功"。
@@ -103,6 +161,35 @@ costgate · 冷启：从零到第一笔真实账单
 > - 停掉：`bash scripts/quickstart.sh --stop`。
 > - **完整安全口径**（它拦什么、拦不住什么、你的数据去哪）：[`SECURITY.md`](SECURITY.md)。一句话先记住：**默认冷启会发往第三方免费池，想纯本地走 Ollama**。
 > - **上游完整性不在范围**（`SECURITY.md §3`）：costgate 对上游是**透明转发**——不校验返回的工具调用签名、不对上游做版本 pin。要「上游可信」请在上游侧解决（TLS 证书 pinning / 自建上游），这层不做背书。
+
+---
+
+## 它和别的东西什么关系
+
+这一段回答「我已经在用 X 了，还需要这个吗」。**先说它不是什么**，比说它是什么省时间：
+
+- **不是多租户网关**：没有虚拟 key、没有按用户分账、没有 SSO。它服务**一台机器上的一个人**。
+- **不是高可用路由**：核心链路是单次转发，没有 failover / 重试 / 熔断（详见[「现在还没做的」](#现在还没做的)）。
+- **不是托管服务**：没有云端版本。除了你自己选的上游，请求不经过任何第三方中转。
+
+| 你可能已经在用 | 它主要解决 | 和 costgate 重叠在哪 | 差在哪 —— 所以什么时候该用它 |
+|---|---|---|---|
+| [LiteLLM](https://github.com/BerriAI/litellm) | 团队自托管的 AI Gateway：100+ 模型统一成 OpenAI 格式、虚拟 key、按人/项目分账、负载均衡 | 都在「自托管出口层」，都记成本 | 它面向**平台团队**（多租户、发 key、企业级观测）；costgate 面向**一个人一台机器**。要给同事发 key、按项目分账 → 选它 |
+| [Portkey Gateway](https://github.com/Portkey-AI/gateway) | 统一 API + guardrails（内容护栏）+ 条件路由 + 缓存 | 都是「一个地址接多个模型」 | 它的强项是**生产级路由与护栏**；costgate 明确没有 failover / 重试 / 熔断，也不做内容过滤。要上生产容灾 → 选它 |
+| [one-api](https://github.com/songquanpeng/one-api) | 多家模型 API 的 key 管理与**二次分发**（给别人发额度） | 都统一多家上游、都管 key | 它是**分发与计费系统**（多用户、令牌额度）；costgate 不分发，账本只给自己看 |
+| [cc-switch](https://github.com/farion1231/cc-switch) | 桌面 App：切换某个 agent 用哪个上游 | 都会影响 agent 的 `base_url` | **互补**：它管「用哪个上游」，costgate 管「多个 agent 同时跑时的出口和账」。能一起用（见 [FAQ](#常见问题)），撞车点只有同一个 agent 的 `base_url` |
+| [OpenRouter](https://openrouter.ai) | 托管式聚合 API（云服务） | 都提供「一个入口接多个模型」 | 它是**云**：请求必经它的服务器、按它的价目计费；costgate 跑在你本机，账本在你磁盘上 |
+
+### 放在你的技术栈里看
+
+- **下游（谁调它）**：Claude Code / Codex CLI / Cursor / Cline / Aider / OpenCode / OpenHands——任何认 `base_url` 或 `OPENAI_BASE_URL` 的工具。
+- **上游（它调谁）**：Kilo 匿名免费池、你自己的 OpenAI / Anthropic / DeepSeek key、本机 Ollama。
+- **它自己**：一组本机进程 + 一个纯文本账本。不引入数据库，不引入云，停掉进程就回到原样。
+
+一句话定位自己的位置：**它在「你的机器」和「模型」之间那一层，管出口和账本；不管分发给别人，也不管生产级容灾。**
+
+> 对比表里的每一行都能点开自己核。写这张表的规矩（先留出处、再写对比、不贬损对手）在
+> [`docs/12-docs/DOCS-METHODOLOGY.md`](docs/12-docs/DOCS-METHODOLOGY.md) §2 R6 / §5。
 
 ---
 
@@ -550,7 +637,7 @@ bats tests/shell/*.bats                                    # shell 行为测试
 cd multi-proxy-manager && npx playwright test              # e2e（需系统 Chrome）
 ```
 
-`MANAGER_PASSWORD` 不能省：不设的话，那批「无 token → 401」的用例会因回环免鉴权整批误挂（看着像你改坏了，其实只是没给环境变量）。
+`MANAGER_PASSWORD` 现在不用手动设：`jest.setup.js` 会补一个本地占位值，避免那批「无 token → 401」的用例因回环免鉴权整批误挂（2026-11-06 起）。想显式给也行——CI 就是这么对齐的。
 
 最近一次全量真跑：2026-11-08，manager **114 suites / 1710 tests**，其中 1 条 `health-graph` 因并发抖动挂了、单跑 12/12 全绿（这类环境抖动我们不藏，也不拿它当通过）。2026-11-08 同一批还补了守卫（门控表、运行证据、门控条、README、shell），每一条都用**注入回归**验证过"改坏了真会变红"——没验证过会变红的守卫等于没写。测试数字会变，命令不会：想核当前值就自己跑一遍。
 
