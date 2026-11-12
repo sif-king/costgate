@@ -9,7 +9,7 @@ This file is part of the costgate project.
 本项目尚未打正式版本 tag。当前 `main` 是可交付状态，本文件记录「现在能用什么、已知限制」，
 而非逐 commit 的开发流水。打 `v0.1.0` 是发布动作，需维护者拍板。
 
-## [Unreleased] · 当前 main（截至 2026-11-11）
+## [Unreleased] · 当前 main（截至 2026-11-12）
 
 ### 可交付（已实测）
 - 零 key 一条命令冷启：`git clone … && bash scripts/quickstart.sh`，看到第一笔真实账单。
@@ -19,9 +19,14 @@ This file is part of the costgate project.
 - 数据出境显式披露 + 纯本地 Ollama 替代路径（见 `SECURITY.md §2`）。
 - 协议边界如实声明：主路径 OpenAI/Anthropic 兼容；MCP bridge 仅 `2025-03-26`、默认关
   （见 `COMPATIBILITY.md`）。
-- CI 双门：`E2E Tier0 (PR Gate)`（真浏览器 7 壳页 + 门控条语义）+ `P0 Security Gate`。
+- 面板 `/context` 的「工具 schema 来源」Top-5（估算轨，纯前端累加 `toolsBySource`，不碰记账热路径）；
+  算法有 E2E 回归钉死（`e2e/context-toolsrc.spec.js`）。
+- CI 双门：`E2E Tier0 (PR Gate)`（真浏览器 8 壳页 + 门控条语义，共 9 页）+ `P0 Security Gate`。
 
-### 当前 HEAD 实测记录（2026-11-12，HEAD `c38cc0e`）
+### 实测记录（2026-11-12 · `main`）
+
+> sha 会随后续提交前进，所以这里**不钉死某一个 sha**——判断这份记录是否仍适用看两条：热路径（代理转发/记账）
+> 有没有改、CI 徽章是否仍绿。本次记录取自 `c38cc0e`，其后提交为文档与前端展示改动，行为未变。
 
 让一个陌生人**三条命令内独立复现绿灯**（结果来自真跑，非文档摘录）：
 
@@ -29,7 +34,7 @@ This file is part of the costgate project.
 |---|---|
 | `bash scripts/quickstart.sh`（本机） | 第一笔真实账单：入 18 / 出 56 tokens，¥0，12962ms；冷启 34s（含首次 npm 下包） |
 | `bash scripts/test-all.sh --fast` | 合计 **145 PASS / 0 FAIL**（l2 118 + dsh-proxy 27 + workbuddy-shim 退出码 + meta-guard mcp-gate 成对成立），退出码 0 |
-| CI 双门（`main`） | `E2E Tier0 (PR Gate)` **success**（53s）+ `P0 Security Gate` **success** |
+| CI 双门（`main` @ `a6ae2c4`） | `E2E Tier0 (PR Gate)` **success**（53s）+ `P0 Security Gate` **success** |
 
 > CI 历史里能看到 `cancelled` / `failed`：那是 PR 迭代中的红→绿循环（含 GitHub runner 网络抖动触发的自动重试），
 > 非当前 main 状态——当前 HEAD 双门全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退本地占位，跑测试无需手动设密码。

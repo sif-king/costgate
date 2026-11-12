@@ -132,7 +132,7 @@ costgate · 冷启：从零到第一笔真实账单
 - **锁定版本 + 漏洞扫描**：进任意子目录 `cd multi-proxy-manager && npm ci && npm audit`（走 lockfile，可复现）；CI 在干净环境对 manager 做 `npm ci`。
 - **全链路冒烟**：`bash scripts/verify-lanes.sh`（6 条代理链路各发一条真请求，`usage` 是上游回的真数字）。
 - **全部单测/链路一条命令**：`bash scripts/test-all.sh --fast`（约 50 秒，只跑零依赖入口）或全量（jest 四入口，分钟级）——一条命令给一行「合计 N PASS / 0 FAIL」，退出码 0 即全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退到本地占位值，reviewer 无需手动设密码，不会整批 401 误挂。**它不跑 E2E 与安全门**——那是下方 CI 双门的活：`--fast` 是「陌生人快速判断健康度」，CI 双门才是「完整门禁」，两者分工不同，别把前者的全绿当成后者。
-- **CI 双门**（顶部徽章）：`E2E Tier0 (PR Gate)` 真浏览器跑 7 壳页 + 门控条语义；`P0 Security Gate` 跑安全守卫。完整门禁以徽章为准。
+- **CI 双门**（顶部徽章）：`E2E Tier0 (PR Gate)` 真浏览器跑 8 壳页 + 门控条语义（9 页）；`P0 Security Gate` 跑安全守卫。完整门禁以徽章为准。
 
 ---
 
@@ -480,7 +480,7 @@ Windows 走 `.\install.ps1` 与 `.\manage.ps1`，原生 PowerShell，不需要 W
 管理器靠 `lsof` 查端口。Node 子进程 PATH 里没有 `/usr/sbin` 时会误判，所以用的是完整路径——如果你的系统 `lsof` 不在标准位置，`manage.sh status` 会说查不到。
 
 **现在稳定吗？**
-还是 v1.x：单机单用户，接口会变（版本号看 tags，别信 README 里写死的数字）。多租户、SSO、企业分账都不在这个仓库里（见 License）。当自用工具是稳的，当基础设施上生产请先读下面「现在还没做的」。
+还没发正式版本号：**当前不打 tag，以 `main` 为准**（判据 IV 的第三方复跑仍在等，发版动作压在它后面）。单机单用户，接口会变——别信 README 里写死的数字；想要版本锚点，等 tag 出来再看。多租户、SSO、企业分账都不在这个仓库里（见 License）。当自用工具是稳的，当基础设施上生产请先读下面「现在还没做的」。
 
 ---
 

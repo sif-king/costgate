@@ -3,7 +3,7 @@
 // This file is part of the costgate project.
 
 // multi-proxy E2E smoke（v1.0 收口）
-// 7 个壳页真浏览器加载断言：能渲染 + 有标题 + 无 pageerror（致命 JS 异常）。
+// 8 个壳页真浏览器加载断言：能渲染 + 有标题 + 无 pageerror（致命 JS 异常）。
 // 口径克制：不依赖具体业务选择器（避免与 1529 jest 重复），只验「真浏览器加载不崩」。
 // functional 交互 E2E（点按钮/调 API）为后续独立任务，不在本 smoke 范围。
 const { test, expect } = require('@playwright/test');
@@ -18,6 +18,9 @@ const shellPages = [
   '/knowledge',
   '/skills',
   '/settings',
+  // 2026-11-12：/context 原先只被 gatebar.spec 覆盖（验门控条），页面自身的渲染与
+  // 内联脚本一旦写错无人拦——本轮给它加「工具 schema 来源」面板时正是靠这条才发现无覆盖。
+  '/context',
 ];
 
 for (const route of shellPages) {

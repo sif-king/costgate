@@ -93,6 +93,10 @@
     <div class="stack" id="stack"></div>
     <div class="legend" id="legend"></div>
 
+    <h3 class="sec">工具 schema 来源（窗口 Top-5 · 估算轨 · 可作懒加载候选）</h3>
+    <div class="stack" id="toolsrc-stack"></div>
+    <div class="legend" id="toolsrc-legend"></div>
+
     <h3 class="sec">每请求趋势（最近 40 条 · 堆叠=七类）</h3>
     <div class="trend" id="trend"></div>
 
@@ -156,6 +160,46 @@
       return '<div class="kpi"><div class="k">' + esc(c[0]) + '</div><div class="v">' + esc(c[1]) + '</div><div class="s">' + esc(c[2]) + '</div></div>';
     }).join('');
   }
+  // 工具 schema 来源（估算轨）：把窗口内每请求的 toolsBySource 累加，取 Top-5。
+  // 数据源＝recent 行（context-store.js 已带出 toolsBySource），纯前端累加，不碰后端与 fold 内核。
+  // 同一根堆叠条内每段必须可区分，所以按既有 COLORS 调色板逐段取色，不用单一色蒙过去。
+  var TOOLSRC_COLORS = CATS.map(function (c) { return COLORS[c]; });
+  var TOOLSRC_REST = '#64748b';
+  function toolLabel(k) {
+    if (k === 'named') return '命名工具';
+    if (k === 'unnamed') return '未识别';
+    if (String(k).indexOf('mcp:') === 0) return 'MCP · ' + String(k).slice(4);
+    return String(k);
+  }
+  function toolsSrcHtml(rows) {
+    var win = {};
+    rows.forEach(function (r) {
+      var src = r.toolsBySource;
+      if (!src || typeof src !== 'object') return;
+      Object.keys(src).forEach(function (k) { win[k] = (win[k] || 0) + Number(src[k] || 0); });
+    });
+    var entries = Object.keys(win).map(function (k) { return [k, win[k]]; });
+    var total = entries.reduce(function (a, x) { return a + x[1]; }, 0);
+    if (!total) return { stack: '<div class="empty">窗口内无工具 schema 计数（估算轨；门控 PROXY_CONTEXT_TRACK 关闭时也为空）</div>', legend: '' };
+    entries.sort(function (a, b) { return b[1] - a[1]; });
+    var top = entries.slice(0, 5);
+    var rest = entries.slice(5).reduce(function (a, x) { return a + x[1]; }, 0);
+    var stackH = '', legendH = '';
+    top.forEach(function (x, i) {
+      var color = TOOLSRC_COLORS[i % TOOLSRC_COLORS.length];
+      var share = Math.round(x[1] / total * 100);
+      stackH += '<div style="width:' + Math.max(0.5, x[1] / total * 100).toFixed(2) + '%;background:' + color +
+        '" title="' + esc(toolLabel(x[0]) + ': ' + nf(x[1]) + ' tokens (' + share + '%)') + '"></div>';
+      legendH += '<span class="item"><span class="sw" style="background:' + color + '"></span>' + esc(toolLabel(x[0])) +
+        ' <span class="n">' + nf(x[1]) + '</span> <span style="color:var(--color-text-tertiary)">' + share + '%</span></span>';
+    });
+    if (rest > 0) {
+      stackH += '<div style="width:' + (rest / total * 100).toFixed(2) + '%;background:' + TOOLSRC_REST +
+        '" title="' + esc('其他 ' + nf(rest) + ' tokens') + '"></div>';
+      legendH += '<span class="item" style="color:var(--color-text-tertiary)">其他 ' + nf(rest) + '</span>';
+    }
+    return { stack: stackH, legend: legendH };
+  }
   function trendHtml(rows) {
     if (!rows.length) return '<div class="empty">窗口内无请求记录</div>';
     var max = 0;
@@ -211,7 +255,7 @@
     // 注册式重试：避免 innerHTML 重绘丢失监听；首次进入在 MPStates 就绪后（见底部守卫）
     MPStates.registerRetry('context:load', load);
     // 加载骨架：fetch 回来前先占位，避免「白板」被误读成「没有数据」
-    ['kpi', 'stack', 'legend', 'trend', 'events'].forEach(function (id) {
+    ['kpi', 'stack', 'legend', 'toolsrc-stack', 'toolsrc-legend', 'trend', 'events'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.innerHTML = MPStates.skeleton({ variant: 'text', count: 3 });
     });
@@ -233,6 +277,9 @@
           .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
           .then(function (d) {
             var rows = d.rows || [];
+            var ts = toolsSrcHtml(rows);
+            document.getElementById('toolsrc-stack').innerHTML = ts.stack;
+            document.getElementById('toolsrc-legend').innerHTML = ts.legend;
             document.getElementById('trend').innerHTML = trendHtml(rows);
             document.getElementById('events').innerHTML = eventsHtml(rows);
           });
@@ -246,7 +293,7 @@
       .catch(function (e) {
         document.getElementById('meta').textContent = '加载失败：' + e.message;
         // 读失败 ≠ 没有数据：每个数据容器单独给错误态 + 重试，而不是留白
-        ['kpi', 'stack', 'legend', 'trend', 'events'].forEach(function (id) {
+        ['kpi', 'stack', 'legend', 'toolsrc-stack', 'toolsrc-legend', 'trend', 'events'].forEach(function (id) {
           var el = document.getElementById(id);
           if (el) el.innerHTML = MPStates.error({
             title: '读取失败',
