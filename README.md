@@ -131,8 +131,8 @@ costgate · 冷启：从零到第一笔真实账单
 - **一键验证（冒烟路径）**：`bash scripts/quickstart.sh`——从干净 clone 跑通「装依赖 → 起两个进程 → 发一条真请求 → 核对账本落盘」；账本没多一行就以**退出码 2 报错**，不报假成功。任何人几分钟内可独立复现。
 - **锁定版本 + 漏洞扫描**：进任意子目录 `cd multi-proxy-manager && npm ci && npm audit`（走 lockfile，可复现）；CI 在干净环境对 manager 做 `npm ci`。
 - **全链路冒烟**：`bash scripts/verify-lanes.sh`（6 条代理链路各发一条真请求，`usage` 是上游回的真数字）。
-- **全部单测/链路一条命令**：`bash scripts/test-all.sh --fast`（约 50 秒，只跑零依赖入口）或全量（jest 四入口，分钟级）——一条命令给一行「合计 N PASS / 0 FAIL」，退出码 0 即全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退到本地占位值，reviewer 无需手动设密码，不会整批 401 误挂。
-- **CI 双门**（顶部徽章）：`E2E Tier0 (PR Gate)` 真浏览器跑 7 壳页 + 门控条语义；`P0 Security Gate` 跑安全守卫。
+- **全部单测/链路一条命令**：`bash scripts/test-all.sh --fast`（约 50 秒，只跑零依赖入口）或全量（jest 四入口，分钟级）——一条命令给一行「合计 N PASS / 0 FAIL」，退出码 0 即全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退到本地占位值，reviewer 无需手动设密码，不会整批 401 误挂。**它不跑 E2E 与安全门**——那是下方 CI 双门的活：`--fast` 是「陌生人快速判断健康度」，CI 双门才是「完整门禁」，两者分工不同，别把前者的全绿当成后者。
+- **CI 双门**（顶部徽章）：`E2E Tier0 (PR Gate)` 真浏览器跑 7 壳页 + 门控条语义；`P0 Security Gate` 跑安全守卫。完整门禁以徽章为准。
 
 ---
 
