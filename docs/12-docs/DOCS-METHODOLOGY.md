@@ -153,6 +153,9 @@ This file is part of the costgate project.
 | cc-switch | https://github.com/farion1231/cc-switch | 切换某个 agent 用哪个上游；与本仓是互补关系（仓库语言 Rust，与本仓 `AGENTS.md` 记的 Tauri 形态一致） | 2026-11-12 |
 | magpie | https://github.com/yetone/magpie | 官方 README 原文（2026-11-13 抓取）：桌面菜单栏 App + 本地网关 `127.0.0.1:3425`、四协议翻译、agent 自动探测并改写配置、订阅共享、routing group（`smart`/`order`/`rotate`/`usage`）与 intent routing；Usage 页按会话记 token 与成本，Local network 可给每个客户端发带日/周/月限额的命名 key；MIT；GitHub API 同日：★35,354 / fork 3,140 / 3,930 open issues / pushed 2026-11-12 | 2026-11-13 |
 | OpenRouter | https://openrouter.ai | 托管式聚合 API（云服务）：统一入口接多家模型，按它的价目计费 | 2026-11-12 |
+| CodeBurn | https://github.com/getagentseal/codeburn | GitHub API（2026-11-13）：描述 "Free, local tool to track AI coding token usage and cost across 37 tools and agents (Claude Code, Cursor, Codex, Gemini and more), by model, project, and task. npx codeburn"；★11,776 / fork 909 / MIT / TypeScript / created 2026-04-13 / pushed 2026-11-09；实现方式是读各 agent 已落盘的日志，不进请求链路 | 2026-11-13 |
+| AgentsView | https://github.com/kenn-io/agentsview | GitHub API（2026-11-13）：描述 "Local-first session search, analytics, insights, and token use statistics for coding agents, supporting Claude Code, Codex, and more than 50 other agents"；★6,431 / Go；同样是读日志的事后分析，不进请求链路 | 2026-11-13 |
+| Astra Gate | https://astra-gate.si/en | 官网原文（2026-11-13 抓取）：本机网关 `127.0.0.1:17321`，"28 AI tools … 28 built-in providers or 16 plugin subscriptions"；按请求记 token 与成本，按 client / token / model 汇总；隐私守卫在出网前本地扫描密钥、私钥、邮箱、电话、内网地址、卡号、证件号，可 detect / block / mask（打码后回复里还原）；支持订阅共享、团队令牌、Cloudflare 隧道远程访问、MCP 聚合（默认关，`/mcp` 返回 404）。npm `@aidotnet/astra-gate` 0.14.3105，`license: MIT`（CLI 壳，服务端为 `@aidotnet/server-<platform>` 预编译二进制），维护者 aidotnet / token@routin.ai | 2026-11-13 |
 
 > 写作时若引用**具体数字**（支持多少模型、多少 star），必须重新抓一次并改日期。
 > 这类数字天天变，本文档只保证“抓取当天为真”。

@@ -89,13 +89,20 @@ test.describe('E2E Group 2: Dashboard Interactions', () => {
     });
 
   test('should have sidebar navigation with core sections', async ({ page }) => {
-     // P1: 真实 sidebar = 12 个功能 section(总览/健康状态/告警中心/.../设置), 非 4 项。
-     // 不强卡 count, 断核心 section 在。
+     // 2026-11-13 导航重排：侧栏只放真页面（总览/实时盘面/代理配置/任务管理/日志/知识库/技能/设置），
+     // 健康状态与告警中心改成 dashboard 页内 tab。所以这里分两处断言：
+     // 侧栏守「页面在」，页内 tab 守「子视图在」。原来两处都查侧栏，重排后会假红。
     const navItems = page.locator('.sidebar-nav .nav-item');
     await expect(navItems).not.toHaveCount(0);
     const labels = await navItems.allTextContents();
-    expect(labels.some(l => l.includes('健康状态'))).toBe(true);
-    expect(labels.some(l => l.includes('告警中心'))).toBe(true);
+    expect(labels.some(l => l.includes('代理配置'))).toBe(true);
     expect(labels.some(l => l.includes('设置'))).toBe(true);
+    // 子视图不该再出现在侧栏里（放回去就是「一屏 22 个入口」那个老问题）
+    expect(labels.some(l => l.includes('健康状态'))).toBe(false);
+
+    const tabs = page.locator('#viewTabs .section-tab');
+    const tabLabels = await tabs.allTextContents();
+    expect(tabLabels.some(l => l.includes('健康状态'))).toBe(true);
+    expect(tabLabels.some(l => l.includes('告警中心'))).toBe(true);
     });
 });

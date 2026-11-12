@@ -33,6 +33,47 @@
   --hig-glass-border: rgba(255, 255, 255, 0.08);
 }
 
+/* 页内 tab（2026-11-13）：与 proxy-config 的 .section-tab 同一套视觉，避免两处 tab 长得不一样。
+   键盘可达：用 <button>，不靠 div + onclick。 */
+.section-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+  margin: 0 0 20px;
+  scrollbar-width: none;
+}
+
+.section-tabs::-webkit-scrollbar { display: none; }
+
+.section-tab {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.section-tab:hover { color: var(--color-text); }
+
+.section-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
+.section-tab:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  border-radius: 6px 6px 0 0;
+}
+
 /* Apple-style card */
 .hig-card {
   background: var(--color-bg);
@@ -497,7 +538,7 @@
   <nav class="sidebar-nav" id="sidebarNav"></nav>
   <script>
     if (window.renderNav) {
-      renderNav(document.getElementById('sidebarNav'), { current: 'dashboard', spa: true, proxyNav: true });
+      renderNav(document.getElementById('sidebarNav'), { current: 'dashboard', proxyNav: true, proxyCollapsed: true });
     }
   </script>
 
@@ -526,6 +567,35 @@
     <span>部分代理未配置 API Key，功能可能受限。请编辑各模块的 .env 文件。</span>
     <button class="apikey-banner-close" onclick="dismissApiKeyBanner()" aria-label="关闭横幅">&times;</button>
   </div>
+
+  <!-- 页内 tab（2026-11-13 重排）：这 5 个视图本来就不是独立页面，之前却把入口塞进侧栏，
+       点下去地址不变、右边换一块，用户分不清它和真页面的区别。改成页内 tab 后，
+       侧栏只放页面，页内切换留在页内。清单来自 nav.js 的 MPSpaViews，这里不抄第二份。 -->
+  <div class="section-tabs" id="viewTabs" role="tablist" aria-label="总览视图">
+    <button type="button" class="section-tab active" role="tab" data-page="dashboard" aria-selected="true">概览</button>
+  </div>
+  <script>
+    (function () {
+      var wrap = document.getElementById('viewTabs');
+      var views = window.MPSpaViews || [];
+      for (var i = 0; i < views.length; i++) {
+        (function (v) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'section-tab';
+          b.setAttribute('role', 'tab');
+          b.setAttribute('data-page', v.id);
+          b.setAttribute('aria-selected', 'false');
+          b.textContent = v.label;
+          if (v.title) b.title = v.title;
+          // 这里不绑 click：switchPage 在本页 IIFE 里，脚本外拿不到（第一版绑了，
+          // 结果按钮渲染出来、点下去报 ReferenceError，正是「控件齐全、点击无声」）。
+          // 点击由下方 #viewTabs 的委托监听统一处理，和侧栏同一条路径。
+          wrap.appendChild(b);
+        })(views[i]);
+      }
+    })();
+  </script>
 
   <!-- ==================== Dashboard Page ==================== -->
   <div class="page active" id="page-dashboard">
@@ -1296,6 +1366,15 @@
     for (var j = 0; j < navItems.length; j++) {
       navItems[j].classList.remove('active');
     }
+    // 页内 tab 和侧栏是同一件「当前在哪」的两种表示，必须一起更新。
+    // 漏了这一步的症状：从侧栏点进来，tab 高亮还停在上一次点的那个视图上，
+    // 屏幕内容和高亮对不上（比没有高亮更误导）。
+    var tabs = document.querySelectorAll('#viewTabs .section-tab');
+    for (var t = 0; t < tabs.length; t++) {
+      var tabOn = tabs[t].getAttribute('data-page') === pageId;
+      tabs[t].classList.toggle('active', tabOn);
+      tabs[t].setAttribute('aria-selected', tabOn ? 'true' : 'false');
+    }
 
     var page = document.getElementById('page-' + pageId);
     if (page) page.classList.add('active');
@@ -1352,6 +1431,18 @@
     } catch (e) {
       if (alert) { alert.style.display = 'block'; alert.textContent = '加载失败：' + (e && e.message || e); }
     }
+  }
+
+  // 页内 tab 的点击也走委托，理由同上：按钮由内联脚本生成，但 switchPage 只在这个 IIFE 里，
+  // 生成方不能自己绑 handler。委托放在这里，新增 tab 只改 nav.js 的 SPA_VIEWS 即可。
+  var viewTabsEl = document.getElementById('viewTabs');
+  if (viewTabsEl) {
+    viewTabsEl.addEventListener('click', function(e) {
+      var tab = e.target.closest('.section-tab');
+      if (!tab) return;
+      var tabPage = tab.dataset.page;
+      if (tabPage) switchPage(tabPage);
+    });
   }
 
   document.getElementById('sidebarNav').addEventListener('click', function(e) {

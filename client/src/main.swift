@@ -533,12 +533,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func buildMenu() {
         let appMenu = NSMenu()
-        appMenu.addItem(NSMenuItem(title: "打开 DSH（若已安装）", action: #selector(openDSH), keyEquivalent: "d"))
+        // 2026-11-13：DSH 那几件从主菜单收进「可选集成」子菜单。
+        // 理由：DSH 是可选的下游，没装的人看到这一条只会疑惑「这跟我有什么关系」。
+        // 主菜单只留「让网关跑起来」相关的动作。
         appMenu.addItem(NSMenuItem(title: "检查并启动网关", action: #selector(recheck), keyEquivalent: "r"))
         appMenu.addItem(NSMenuItem(title: "重新加载面板", action: #selector(reloadPanel), keyEquivalent: "R"))
         let agentItem = NSMenuItem(title: "开机自动启动本客户端", action: #selector(toggleAgent), keyEquivalent: "s")
         agentItem.state = FileManager.default.fileExists(atPath: AGENT_PLIST) ? .on : .off
         appMenu.addItem(agentItem)
+
+        appMenu.addItem(NSMenuItem.separator())
+        let integrations = NSMenuItem(title: "可选集成", action: nil, keyEquivalent: "")
+        let integrationsMenu = NSMenu()
+        integrationsMenu.addItem(NSMenuItem(title: "打开 DSH（若已安装）", action: #selector(openDSH), keyEquivalent: "d"))
+        integrations.submenu = integrationsMenu
+        appMenu.addItem(integrations)
+
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(NSMenuItem(title: "关于 \(APP_NAME)", action: #selector(about), keyEquivalent: ""))
         appMenu.addItem(NSMenuItem(title: "退出", action: #selector(quitApp), keyEquivalent: "q"))

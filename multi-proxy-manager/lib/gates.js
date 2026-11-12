@@ -74,6 +74,20 @@ const GATES = [
     impact: '引擎路由建议是否接管真实路由。默认 0 = 只建议不动流量（非侵入铁律）。',
   },
   {
+    // 2026-11-13 补登记：这个门控从 10-12 P6 起就在 codex-proxy 主路径上判，
+    // 但一直没进本表 ⇒ 面板门控条看不见它，用户只能靠读源码才知道「模型级白名单」存在。
+    // 与 sandbox-egress 漏登记同一条教训：状态条漏一层，和它说谎等价。
+    id: 'routing-policy',
+    env: 'PROXY_ROUTING_POLICY',
+    label: '模型级路由策略',
+    group: '编排',
+    kind: 'opt-in',
+    scope: 'codex-proxy',
+    observable: false,
+    source: 'codex-proxy/proxy.js:251',
+    impact: '关闭时恒走网关路由（proxy，即今天的行为）。开启后按 routing-policy.json 逐 model 决定 proxy / direct / deny 三种动作。',
+  },
+  {
     id: 'llm-decompose',
     env: 'PROXY_LLM_DECOMPOSE',
     label: 'LLM 任务拆解',
@@ -164,6 +178,20 @@ const GATES = [
     kind: 'opt-in',
     source: 'lib/provider-health.js:91',
     impact: '关闭时只判定不隔离（observe）；开启才真把故障 provider 摘出路由。',
+  },
+  {
+    // 2026-11-13 补登记：README 曾写「没有熔断」——不实。熔断在 codex-proxy / claude-proxy
+    // 的主路径上是真的（per-provider 计数，5xx/429/408 才喂，4xx 不喂），只是默认关 + 默认
+    // observe。默认关不等于不存在，漏登记会让读者得到和漏一层门控同样的错结论。
+    id: 'circuit-breaker',
+    env: 'PROXY_CIRCUIT_BREAKER',
+    label: '上游熔断',
+    group: '稳定性',
+    kind: 'opt-in',
+    scope: 'codex-proxy',
+    observable: false,
+    source: 'codex-proxy/proxy.js:424',
+    impact: '关闭时每次转发都真打上游。开启后按 provider 记连续失败；PROXY_CIRCUIT_MODE=block 才返回 503 CIRCUIT_OPEN，默认 observe 只记账不拦。',
   },
   {
     id: 'sandbox-egress',

@@ -10,6 +10,8 @@ This file is part of the costgate project.
 
 装上只用一条命令，不需要任何 API key。账本是磁盘上的一个纯文本文件，另有一条只读命令把它读出来，包括每项能力真跑过几次。
 
+账本是默认开的那一档。同一个仓库里还有**路由、熔断、重试、任务编排**，它们默认关着，开了才改行为，所以第一次用看不到。要看这部分，跳到[除了账本，它还能路由和编排](#除了账本它还能路由和编排)。
+
 <sub>English: One local gateway for all your AI coding tools, with a ledger you can audit yourself.</sub>
 
 [![E2E Tier0 (PR Gate)](https://github.com/sif-king/costgate/actions/workflows/e2e-tier0.yml/badge.svg)](https://github.com/sif-king/costgate/actions/workflows/e2e-tier0.yml)
@@ -21,7 +23,7 @@ This file is part of the costgate project.
 
 审计入口：[`COMPATIBILITY.md`](COMPATIBILITY.md)（认哪些协议、到哪个版本、哪些不认）· [`SECURITY.md`](SECURITY.md)（拦什么、放什么、你的数据去哪）· [`CHANGELOG.md`](CHANGELOG.md)（现在能用什么、已知限制）。
 
-**跳着看**：[30 秒看懂它](#30-秒看懂它) · [跑起来](#一条命令看到第一笔真实账单) · [和别的东西什么关系](#它和别的东西什么关系) · [接上你的工具](#接上你的工具) · [数据不出本机](#数据不出本机) · [常见问题](#常见问题) · [还没做的](#现在还没做的)
+**跳着看**：[30 秒看懂它](#30-秒看懂它) · [跑起来](#一条命令看到第一笔真实账单) · [除了账本还能做什么](#除了账本它还能路由和编排) · [和别的东西什么关系](#它和别的东西什么关系) · [接上你的工具](#接上你的工具) · [数据不出本机](#数据不出本机) · [常见问题](#常见问题) · [还没做的](#现在还没做的)
 
 如果你同时在用 Claude Code、Codex CLI、Cursor、opencode、Cline、Aider 里的两个以上，说不清这个月 AI 花了多少，也说不清这些工具之间有没有互相抢配置，那这个项目是给你用的。
 
@@ -72,9 +74,17 @@ flowchart LR
 
 1. 上面是你在用的工具。它们只认一个 `base_url`，不关心背后是谁。
 2. 中间是 costgate。代理进程转发请求并拿到上游返回的真实 `usage`，manager 把它记成一行账。这层不做模型推理，也不改你的工具配置（只读；发现被别的工具占用时报告冲突，不抢不覆写）。
-3. 下面是上游：免费池、你自己的 key、本机 Ollama。打上隐私标记的请求只落 `127.0.0.1`，这是路由表里的一档条件，不是临时开关。
+3. 下面是上游：免费池、你自己的 key、本机 Ollama。标了隐私的请求可以只落本机，这一档目前只在 cursor-proxy 的路由规则里（`privacy == true` → 本机 `qwen3.8:27b-mlx`），不是六个代理都通用。
 
 `hermes :18793` 不在图的请求链路上。它不转发请求，只改写 `~/.hermes/config.yaml` 的当前模型，细节见[接上你的工具](#接上你的工具)。
+
+**账本之外，路由、熔断、编排也都在这棵树里，没有一行是"装了 magpie 才有"的。** 它们默认关着，所以你第一次打开只看得到账：
+
+- **路由**：按 model 名找 provider 这一跳一直在跑（`findProvider`）；再多一层"哪些 model 走代理、哪些直连、哪些拒绝"由 `PROXY_ROUTING_POLICY` 打开；按能力标签选 adapter 的引擎在 `l2/route-engine.js`，默认只算不发。
+- **熔断与重试**：六个代理都接了同一个 `l2/circuit-breaker.js`，默认 `observe` 只记不拦，`PROXY_CIRCUIT_MODE=block` 才真返 503；重试在 `l2/http-retry.js`。核心转发仍是单次，没有自动换上游的 failover，这一条写在"现在还没做的"里。
+- **编排**：一句话拆成子任务 DAG 派给 adapter，实现在 `l2/orchestrator.js`，`PROXY_ORCHESTRATION` 打开后才放行接口，且默认影子模式。
+
+逐条的门控名、代码位置、自己验的命令，都在[除了账本，它还能路由和编排](#除了账本它还能路由和编排)；面板顶部那条门控条读的是同一份真源。
 
 ---
 
@@ -175,17 +185,23 @@ token 数来自上游返回的 `usage` 字段，不是估算，也不是模拟�
 如果你已经在用下面某一件东西，这一节回答“还需不需要它”。先看它不是什么：
 
 - 不是多租户网关：没有虚拟 key、没有按用户分账、没有 SSO。它服务一台机器上的一个人。
-- 不是高可用路由：核心链路是单次转发，没有 failover / 重试 / 熔断（见[现在还没做的](#现在还没做的)）。
+- 不是高可用路由：核心链路是单次转发，失败不会自动换下一个上游。熔断有（按 provider 计数，默认关且默认只记录），重试只在编排侧。要生产容灾请看[现在还没做的](#现在还没做的)。
 - 不是托管服务：没有云端版本。除了你自己选的上游，请求不经过任何第三方中转。
 
 | 你可能已经在用 | 它主要解决 | 和 costgate 重叠在哪 | 差在哪，所以什么时候该用它 |
 |---|---|---|---|
 | [LiteLLM](https://github.com/BerriAI/litellm) | 团队自托管的 AI Gateway：100+ 模型统一成 OpenAI 格式、虚拟 key、按人/项目分账、负载均衡 | 都在自托管出口层，都记成本 | 它面向平台团队（多租户、发 key、企业级观测）；costgate 面向一个人一台机器。要给同事发 key、按项目分账 → 选它 |
-| [Portkey Gateway](https://github.com/Portkey-AI/gateway) | 统一 API + guardrails（内容护栏）+ 条件路由 + 缓存 | 都是“一个地址接多个模型” | 它的强项是生产级路由与护栏；costgate 没有 failover / 重试 / 熔断，也不做内容过滤。要上生产容灾 → 选它 |
+| [Portkey Gateway](https://github.com/Portkey-AI/gateway) | 统一 API + guardrails（内容护栏）+ 条件路由 + 缓存 | 都是“一个地址接多个模型” | 它的强项是生产级路由与护栏；costgate 没有 failover（失败换上游），熔断默认关，也不做内容过滤。要上生产容灾 → 选它 |
 | [one-api](https://github.com/songquanpeng/one-api) | 多家模型 API 的 key 管理与二次分发（给别人发额度） | 都统一多家上游、都管 key | 它是分发与计费系统（多用户、令牌额度）；costgate 不分发，账本只给自己看 |
 | [magpie](https://github.com/yetone/magpie) | 桌面菜单栏 App + 本地网关（默认 3425）：四协议翻译、50+ agent 自动探测并改写配置、订阅共享、routing group | 都把多个 agent 的出口收成一处，都看得到 token 与花费 | 它把“装上就能用”做到了极致，还自带订阅共享与隐私打码；costgate 的隔离单位是进程和端口（每个 agent 一个代理进程），账本按 agent / 模型 / 总量三个口径记账。要一个装完就忘的菜单栏工具 → 选它；已经有服务在跑、要自己核账 → 选这个 |
 | [cc-switch](https://github.com/farion1231/cc-switch) | 桌面 App：切换某个 agent 用哪个上游 | 都会影响 agent 的 `base_url` | 互补：它管“用哪个上游”，costgate 管“多个 agent 同时跑时的出口和账”。能一起用（见 [FAQ](#常见问题)），撞车点只有同一个 agent 的 `base_url` |
+| [Astra Gate](https://astra-gate.si/en) | 本机网关 `127.0.0.1:17321`：28 个客户端 + 28 家供应商 + 16 个订阅插件，协议转换、按请求记 token 与成本（按客户端 / 令牌 / 模型汇总）、隐私守卫（出网前扫密钥/邮箱/内网地址，可检测、阻断或打码）、订阅共享、团队令牌、Cloudflare 隧道远程访问、MCP 聚合 | 几乎完全重叠：都把多个 agent 出口收成一处、都记真实 usage、都做“数据不出本机”的检查 | 它比本仓完整。隐私守卫本仓没有（只有 cursor-proxy 一档 `privacy` 路由），订阅共享、按人分账、远程访问也都没有。本仓能对打的只有三条：零 key 一条命令跑到真账单、账本是能 `tail` 的纯文本、每个 agent 一进程一端口互不影响。想要一个装完就用的完整网关，选它 |
 | [OpenRouter](https://openrouter.ai) | 托管式聚合 API（云服务） | 都提供“一个入口接多个模型” | 它是云：请求必经它的服务器、按它的价目计费；costgate 跑在你本机，账本在你磁盘上 |
+| [CodeBurn](https://github.com/getagentseal/codeburn) / [AgentsView](https://github.com/kenn-io/agentsview) 这类本地账单阅读器 | 读各 agent 已经写在磁盘上的日志，零配置算出花销（CodeBurn 覆盖 37 个工具、AgentsView 50+；截至 2026-11-13 分别约 1.2 万 / 6.4 千 star） | 目标一样：让你知道这个月花在哪、哪个工具花的 | 它们事后读日志，不碰请求；日志里没写 usage 的就没有，日志格式一变就失准，也拦不住任何一次请求。costgate 站在请求路径上，`usage` 取自上游响应。只想“看清楚花了多少” → 用它们，比本仓省心得多；要“发出去之前就在链路上管住” → 得有个东西站在链路上 |
+
+这张表的最后一行值得多说一句：**两类工具不是同一场比赛**。日志阅读器覆盖面比我宽得多（它们只需要为每个工具写一个解析器，我每加一个 agent 就是一条真的数据链路），所以“支持多少工具”这个数永远追不上，也不该去追。差别只在两个问题上：这笔钱是谁花的（我按进程和端口分，账本每行带 `agent`），以及能不能在请求出去之前就把它挡住。
+
+第二个问题得说清现状，别听成已经做到了：链路上真能拒绝请求的只有两档，`PROXY_ROUTING_POLICY` 的 `deny` 和熔断的 `block`，都默认关。预算闸门（`budget-guard.js`）现在只出判定、供面板和 API 读，**没有接在转发路径上**，所以它挡不住请求。
 
 ### 放在你的技术栈里看
 
@@ -206,7 +222,7 @@ token 数来自上游返回的 `usage` 字段，不是估算，也不是模拟�
 | 五六个工具各配一个 base_url，端口记不住 | 一个地址接所有：`http://127.0.0.1:18880` 按路径自动分发到对应代理 | `curl --noproxy '*' http://127.0.0.1:18880/v1/models` |
 | 月底问“AI 花了多少、哪个工具花的”，答不上来 | 一本账，按 agent / 模型 / 总量三个口径都能查（Cline、Aider、OpenHands 分得开） | `tail -3 ~/.multi-proxy-manager/cost-ledger.jsonl` |
 | cc-switch、Cursor 自带代理、你的代理同时认领一个 agent，流量去向说不清 | 同一条 `base_url` 同一时刻只允许一个所有者，被占用就拒开，不抢不覆写 | `bash tools/agent-proxy-switch` |
-| 有些请求不能出这台机器 | 本地是一档路由条件：打上隐私标记的请求只落 `127.0.0.1`，不上云 | `MP_QS_UPSTREAM=ollama bash scripts/quickstart.sh` |
+| 有些请求不能出这台机器 | 在 cursor-proxy 的路由规则里有一档 `privacy == true`，命中就走本机模型，不落云（不是全代理通用） | `MP_QS_UPSTREAM=ollama bash scripts/quickstart.sh` |
 
 三个口径的落地方式：账本每行带 `agent` 字段（取不到时退回代理名），预算守卫按 `total` / `model:<名>` / `agent:<名>` 三种 scope 分别比对上限（`multi-proxy-manager/lib/budget-guard.js`）。
 
@@ -330,24 +346,65 @@ bash manage.sh {start|stop|restart|status}
 
 ---
 
+## 除了账本，它还能路由和编排
+
+账本默认开着，所以第一次打开面板只看见账。路由和编排在同一个仓库里，按“非侵入”的规矩默认关着：默认关、显式开、开了才改行为。按状态分三档。
+
+**一直开着的**（不用设任何开关）
+
+| 能力 | 代码 | 它做什么 |
+|---|---|---|
+| 模型到上游的路由 | `codex-proxy/proxy.js` 的 `findProvider()` | 按 model 名找 provider：先看你面板里配的（精确命中优先，其次 model 名含 `provider_id`），再落到内置三家 DeepSeek / Kimi / Agnes |
+| 协议翻译 | `l2/messages-translate.js`、`l2/responses-translate.js` | Responses API、ChatCompletions、Anthropic Messages 三种格式，上游不认哪个就翻哪个 |
+| 预算守卫 | `multi-proxy-manager/lib/budget-guard.js` | 按 `total` / `model:<名>` / `agent:<名>` 三个口径比上限 |
+| 出网脱敏与沙箱巡检 | `multi-proxy-manager/lib/redact.js`、`packs/sandbox-egress/` | 默认开，可以关 |
+
+**默认关着的**（每条独立门控，关了逐字回到原行为）
+
+| 开什么 | 门控 | 开了会发生什么 |
+|---|---|---|
+| 模型级路由策略 | `PROXY_ROUTING_POLICY` | 按 `~/.multi-proxy-manager/routing-policy.json` 逐 model 决定 `proxy` / `direct` / `deny`。白名单（只代理这几个，其余直连）和黑名单是同一套机制的两个方向 |
+| 上游熔断 | `PROXY_CIRCUIT_BREAKER` | 按 provider 记连续失败，5xx / 429 / 408 才算，4xx 不喂（一个用错 key 的客户端不该把所有流量熔掉）。默认 `observe` 只记；`PROXY_CIRCUIT_MODE=block` 才真返回 `503 CIRCUIT_OPEN` |
+| L2 编排 | `PROXY_ORCHESTRATION` | 放行 `/api/orchestration/*`：一句话拆成子任务 DAG，按能力派给 adapter。默认 `shadowMode=true`，只算不真打上游 |
+| LLM 拆解 | `PROXY_LLM_DECOMPOSE` | 拆解从内置模板换成调 LLM，失败自动降级回模板 |
+| 路由接管 | `PROXY_ROUTE_OVERRIDE` | 引擎的建议真接管 cursor 的路由（此前只建议、不动流量） |
+| MCP 插件注入 | `PROXY_L2_MCP` | 把 3 个 L2 adapter 注册进插件运行时，对外提供 MCP 服务 |
+| 技能 / 知识库 / 记忆合并 | `PROXY_L2_SKILL`、`PROXY_KNOWLEDGE_BASE`、`PROXY_L2_MEMORY` | 各自的接口放行；知识库另需 `PROXY_KNOWLEDGE_BASE_DIR` 才落盘 |
+| 故障隔离 | `PROXY_HEALTH_ISOLATE` | 判定故障后真把 provider 摘出路由（此前只记录） |
+
+每项的当前状态在面板顶部门控条里，跨进程的那几项会明说“由哪个进程持有”。
+
+自己验，不用信这张表：
+
+```bash
+# 编排关着时 403，开了才放行
+curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18792/api/orchestration/
+# 门控条读的是同一份真源
+curl -s --noproxy '*' http://127.0.0.1:18792/api/gates | head -c 300
+```
+
+**只算不动的**：`/api/orchestration/run` 默认 `shadowMode: true`，拆解、选 adapter、算成本都走一遍，不调真实上游。它算出了什么，看面板里的“路由预演”页或 `GET /api/l2/shadow-map`。
+
+**和 magpie、cc-switch 的关系**：不需要先装它们。这些能力都在本仓代码里，没有外部依赖。两者都能串（magpie 的 provider 接受任何 OpenAI 兼容地址，它自己的网关是 `127.0.0.1:3425/v1`；costgate 的入口是 `18880`），任一方向加进对方的上游列表即可，代价是两层各记一份账。差别在归因单位：magpie 按客户端 key 和会话分，costgate 按进程和端口分，账本每行带 `agent` 字段。
+
+还没做完的：多 agent 真分工（派活、验收、复用记忆）目前只到“一次 DAG 跑完”这一步，没接进日常主路径。
+
+---
+
 ## 现在还没做的
 
 不是历史 bug，是明确知道、能在代码里指认的缺口。
 
 1. 零 key 冷启验过 6 个代理，第 7 个（hermes）不属于这一类。2026-11-08 逐个实测：codex / claude / opencode / generic / dsh / cursor 都在“独立临时目录 + 上游指向 Kilo 匿名池”的条件下跑通了一条真请求，`usage` 是上游回的真数字（输入都是 50 tokens，输出 24–32）。这 6 条可以自己复现：`bash scripts/verify-lanes.sh`。一处例外得记清：hermes 不做转发（`/v1/models` 200、`/v1/chat/completions` 是 **404**），它只改写 `~/.hermes/config.yaml` 的当前模型，Hermes 的用量不进账本。这些只验到“能通、有真 usage”，流式与工具调用没在每条链上都压过。
-2. 核心网关是单次转发，没有 failover / 重试 / 熔断。这三条只在 cursor-proxy 的路由模式里（round-robin / failover 两档）。所以“高可用路由”不是开箱能力。
-3. Key 级配额只有总量，没有日 / 周 / 月滚动窗口，只能设硬上限。
+2. 高可用路由不是开箱能力。这三件事要分开记，混成一句就会有人读成“三样都没有”：
+   - **没有** failover。核心转发是一次，上游失败不会自动换下一个。
+   - **有，但默认关**的是熔断。codex / claude / dsh / opencode / generic 五个代理都 `require` 了 `l2/circuit-breaker.js`，`PROXY_CIRCUIT_BREAKER` 未设就不构造，默认 `observe` 只计数，`PROXY_CIRCUIT_MODE=block` 才真返 503。
+   - **有，但在编排侧**的是重试。`l2/http-retry.js`，l1 adapter 在用。
+   - cursor-proxy 另有 round-robin / failover 两档路由模式。
+3. Key 级配额只有总量，没有日 / 周 / 月滚动窗口，只能设硬上限。预算闸门（`multi-proxy-manager/lib/budget-guard.js`）目前只算判定给面板和 API 看，**没有接在转发路径上**：越过上限不会拒请求。这是本仓最该补的一处“该拦没拦”。
 4. 一个代理实例绑一个上游，“一个虚拟模型名映射到多个 Key 自动负载均衡”还做不到。
 5. Windows 的原生 PowerShell 通道只有安装脚本（`install.ps1` / `manage.ps1`），没有对应的零 key 冷启向导；已装 Git Bash 的话，`bash scripts/quickstart.sh` 可以直接跑。
 6. 还没有安装包，也没有制品签名和 SBOM。现在唯一入口是 `git clone` + 脚本，属源码运行。要做成可分发的安装包，得先解决三件事，缺一件都属于“用户没法验证自己装的是什么”：制品签名或 provenance（能确认这个包就是从这棵树构建的）、SBOM（扫描工具能回答里面有哪些第三方代码、有没有已知 CVE）、升级与卸载约定（配置和账本迁不迁、`~/.multi-proxy-manager/` 清不清）。这三件不做完，不会打 `v0.1.0`。
-
----
-
-## 下一步：让它开始调度（在做，还没完成）
-
-现在它管出口和记账。下一层是让多个 agent 真的分工：拆任务、派活、验收、复用记忆，代码在 `l2/`。
-
-这一层默认关闭、影子模式：开了也只记录、不改你的真实流量。它没完成之前，不会成为这个项目的第一句话。
 
 ---
 

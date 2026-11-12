@@ -29,9 +29,12 @@ for (const view of spaViews) {
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
 
-    const btn = page.locator(`.nav-item[data-page="${view.id}"]`);
-    // 按钮不存在 = 侧栏没渲染出这个入口，直接红（不静默跳过）
-    await expect(btn, `侧栏应有「${view.label}」入口`).toBeVisible({ timeout: 15000 });
+    // 2026-11-13 导航重排：这 5 个视图从侧栏挪到 dashboard 页内 tab。
+    // 断言目标跟着改，但守的东西没变：点了必须真切换、真渲染、不卡加载态。
+    // 别把这条放宽成「元素存在就算过」——那样「控件齐全、点击无声」会重新变成盲区。
+    const btn = page.locator(`#viewTabs .section-tab[data-page="${view.id}"]`);
+    // 按钮不存在 = 页内 tab 没渲染出这个入口，直接红（不静默跳过）
+    await expect(btn, `页内 tab 应有「${view.label}」入口`).toBeVisible({ timeout: 15000 });
 
     await btn.click();
 

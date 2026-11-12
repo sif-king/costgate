@@ -29,21 +29,45 @@
 
   var ICON = (global.MPIcons && global.MPIcons.nav) || ICON_FALLBACK;
 
-  // ===== 主导航（真实页面/路由）—— 4 页一致 =====
+  // ===== 主导航（真实页面/路由）—— 全页一致 =====
   // 标签去黑话 / 去内部代号（OOBE P1-1.4）：Floor 盘面·开发者 → 实时盘面（用户不需要知道是给开发者的）
-  var PRIMARY = [
-    { id: 'dashboard', label: '总览',     href: '/dashboard',     icon: ICON.overview },
-    { id: 'floor',     label: '实时盘面', href: '/floor',        icon: ICON.floor },
-    { id: 'proxy',     label: '代理配置',  href: '/proxy-config',  icon: ICON.proxy },
-    { id: 'sessions',  label: '任务管理',  href: '/sessions',      icon: ICON.sessions },
-    { id: 'knowledge', label: '知识库',    href: '/knowledge',     icon: ICON.knowledge },
-    { id: 'skills',    label: '技能',      href: '/skills',        icon: ICON.skills },
-    { id: 'logs',      label: '日志',      href: '/logs',          icon: ICON.logs },
-    { id: 'settings',  label: '设置',      href: '/settings',      icon: ICON.settings }
+  //
+  // 2026-11-13 重排（老板选方案 2）：上一版把 8 个页面 + 5 个页内子视图 + 9 条代理入口
+  // 全平铺在侧栏，一屏 22 个入口，老板的原话是「功能还是很杂」。改法是把三种不同性质的
+  // 东西分开：**页面**按用途分组留在侧栏，**页内子视图**回到页面里做 tab，**代理列表**折叠
+  // 成一行（要用时展开）。功能一个没删，只是不再同时出现在第一屏。
+  var GROUPS = [
+    {
+      label: '',            // 首组不额外加标题，紧跟在品牌区下面
+      items: [
+        { id: 'dashboard', label: '总览',     href: '/dashboard', icon: ICON.overview },
+        { id: 'floor',     label: '实时盘面', href: '/floor',     icon: ICON.floor }
+      ]
+    },
+    {
+      label: '运行',
+      items: [
+        { id: 'proxy',    label: '代理配置', href: '/proxy-config', icon: ICON.proxy },
+        { id: 'sessions', label: '任务管理', href: '/sessions',     icon: ICON.sessions },
+        { id: 'logs',     label: '日志',     href: '/logs',         icon: ICON.logs }
+      ]
+    },
+    {
+      label: '可选能力',    // 默认关闭的 L2 能力归到这里，不跟日常用的页面混排
+      items: [
+        { id: 'knowledge', label: '知识库', href: '/knowledge', icon: ICON.knowledge },
+        { id: 'skills',    label: '技能',   href: '/skills',    icon: ICON.skills }
+      ]
+    }
   ];
 
-  // ===== dashboard 页内 SPA 子视图（仅 dashboard 渲染，保持功能不丢）=====
-  // 去黑话（OOBE P1-1.4）：Agent 注册表 → Agent 清单；影子模式 → 路由预演（加只读说明）
+  // 设置单独放末尾：它不是日常来回切的页面，混在分组里会让分组意义变淡
+  var SETTINGS_ITEM = { id: 'settings', label: '设置', href: '/settings', icon: ICON.settings };
+
+  // ===== dashboard 页内 SPA 子视图（2026-11-13 起不在侧栏渲染）=====
+  // 这 5 个本来就不是独立页面，是 dashboard 内部的视图。之前塞进侧栏的结果是
+  // 「侧栏里点一个按钮，地址不变、右边换一块」，用户分不清它和真页面的区别。
+  // 现在由 dashboard 自己渲染成页内 tab，这里只负责把清单交出去。
   var SPA_VIEWS = [
     { id: 'health',   label: '健康状态', icon: ICON.health },
     { id: 'alerts',   label: '告警中心', icon: ICON.alerts },
@@ -60,48 +84,94 @@
       .replace(/"/g, '&quot;');
   }
 
+  // 高亮判定：按 id 或按路径都比一次。
+  // 历史 bug：proxy-config 页传的是 current:'proxy-config'，而菜单项 id 是 'proxy'，
+  // 于是「代理配置」这一项在它自己的页面上从来不高亮。改成路径兜底后自动对上。
+  function isActive(item, current) {
+    if (!current) return false;
+    if (item.id === current) return true;
+    return item.href === '/' + current;
+  }
+
   function linkItem(item, current) {
-    var active = item.id === current ? ' active' : '';
+    var active = isActive(item, current) ? ' active' : '';
     return '<a class="nav-item' + active + '" href="' + esc(item.href) + '">' +
       item.icon + '<span>' + esc(item.label) + '</span></a>';
   }
 
-  function spaItem(item, current) {
-    var active = item.id === current ? ' active' : '';
-    var title = item.title ? ' title="' + esc(item.title) + '"' : '';
-    return '<button type="button" class="nav-item' + active + '" data-page="' + esc(item.id) + '"' + title + '>' +
-      item.icon + '<span>' + esc(item.label) + '</span></button>';
+  // 代理列表折叠头：右箭头 + 数量。数量由 MutationObserver 从列表里数出来，
+  // 这样三个页面各自的填充逻辑都不用改。
+  var CHEVRON = '<svg class="nav-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="9 6 15 12 9 18"/></svg>';
+
+  function proxyGroup(collapsed) {
+    return '<div class="nav-group" data-collapsed="' + (collapsed ? '1' : '0') + '">' +
+      '<button type="button" class="nav-group-toggle" id="proxySectionLabel" ' +
+        'aria-expanded="' + (collapsed ? 'false' : 'true') + '" style="display:none;">' +
+        CHEVRON + '<span>代理服务</span><span class="nav-count" id="proxyNavCount"></span>' +
+      '</button>' +
+      '<div id="proxyNavItems" class="nav-group-body"' + (collapsed ? ' hidden' : '') + '></div>' +
+      '</div>';
+  }
+
+  // 导航专用样式：从这里注入而不是每个页面各写一份。
+  // 十个页面都引用 nav.js，样式跟着导航走才不会两边漂移（历史教训：侧栏样式曾散落在
+  // shared-styles / dashboard 内联 / proxy-config 内联三处）。
+  var NAV_CSS = '' +
+    '.nav-group-toggle{display:flex;align-items:center;gap:6px;width:100%;padding:9px 12px;' +
+      'background:none;border:0;font:inherit;font-size:13px;color:var(--color-text-secondary,' +
+      '#64748b);cursor:pointer;border-radius:8px;text-align:left}' +
+    '.nav-group-toggle:hover{background:var(--color-bg-hover,rgba(127,127,127,.08));' +
+      'color:var(--color-text,#111)}' +
+    '.nav-group-toggle .nav-chevron{width:14px;height:14px;flex:0 0 14px;fill:none;' +
+      'stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;' +
+      'transition:transform .16s ease}' +
+    '.nav-group[data-collapsed="0"] .nav-group-toggle .nav-chevron{transform:rotate(90deg)}' +
+    '.nav-count{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums;' +
+      'color:var(--color-text-tertiary,#94a3b8);background:var(--color-bg-tertiary,rgba(127,127,127,.12));' +
+      'border-radius:9px;padding:1px 7px}' +
+    '.nav-count:empty{display:none}' +
+    '.nav-group-body[hidden]{display:none}' +
+    '.nav-group-body .nav-item{padding-left:26px}';
+
+  function injectNavStyles() {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('mp-nav-styles')) return;
+    var st = document.createElement('style');
+    st.id = 'mp-nav-styles';
+    st.textContent = NAV_CSS;
+    (document.head || document.documentElement).appendChild(st);
   }
 
   /**
    * 渲染侧栏导航到指定容器。
    * @param {HTMLElement} container 目标（通常是 <nav id="sidebarNav">）
-   * @param {Object} opts { current, spa, proxyNav }
-   *   current  : 当前页 id（高亮）
-   *   spa      : 是否渲染 dashboard 页内 SPA 子视图按钮
-   *   proxyNav : 是否渲染动态代理容器 #proxyNavItems（dashboard 用）
+   * @param {Object} opts { current, spa, proxyNav, proxyCollapsed }
+   *   current        : 当前页 id（高亮；也可传页面名，按路径兜底匹配）
+   *   spa            : 兼容旧调用；子视图已改为页内 tab，此参数不再参与渲染
+   *   proxyNav       : 是否渲染代理列表容器 #proxyNavItems
+   *   proxyCollapsed : 代理列表是否默认折叠（dashboard 折叠，代理配置页展开）
    */
   function renderNav(container, opts) {
     if (!container) return;
     opts = opts || {};
     var current = opts.current || '';
-    var spa = !!opts.spa;
-    var proxyNav = !!opts.proxyNav;
+    injectNavStyles();
 
     var html = '';
-    html += '<div class="nav-label">总览</div>';
-    PRIMARY.forEach(function (it) { html += linkItem(it, current); });
-
-    if (spa) {
-      html += '<div class="nav-label">仪表盘视图</div>';
-      SPA_VIEWS.forEach(function (it) { html += spaItem(it, current); });
-    }
-    if (proxyNav) {
-      html += '<div class="nav-label" id="proxySectionLabel" style="display:none;">代理服务</div>';
-      html += '<div id="proxyNavItems"></div>';
-    }
+    GROUPS.forEach(function (g) {
+      if (g.label) html += '<div class="nav-label">' + esc(g.label) + '</div>';
+      g.items.forEach(function (it) {
+        html += linkItem(it, current);
+        // 代理列表挂在「代理配置」下面：它导航到的就是这一页的子状态，
+        // 放到末尾会和「设置」抢位置，读起来像另一个分组的开头。
+        if (it.id === 'proxy' && opts.proxyNav) html += proxyGroup(opts.proxyCollapsed === true);
+      });
+    });
+    html += linkItem(SETTINGS_ITEM, current);
 
     container.innerHTML = html;
+
+    if (opts.proxyNav) wireProxyGroup(container);
 
     // 注入统一外壳底部：主题三态切换器 + 法务入口（P0-1/P0-2 修复）
     renderShellFooter(container.parentElement, opts);
@@ -112,6 +182,36 @@
     try {
       document.dispatchEvent(new CustomEvent('mp-nav-rendered', { detail: { container: container } }));
     } catch (e) {}
+  }
+
+  // 折叠交互 + 数量同步。数量用 MutationObserver 数，避免改三个页面的填充函数。
+  function wireProxyGroup(container) {
+    var group = container.querySelector('.nav-group');
+    var toggle = document.getElementById('proxySectionLabel');
+    var body = document.getElementById('proxyNavItems');
+    if (!group || !toggle || !body) return;
+
+    if (!group.dataset.wired) {
+      group.dataset.wired = '1';
+      toggle.addEventListener('click', function () {
+        var collapsed = group.getAttribute('data-collapsed') === '1';
+        group.setAttribute('data-collapsed', collapsed ? '0' : '1');
+        toggle.setAttribute('aria-expanded', collapsed ? 'true' : 'false');
+        body.hidden = !collapsed;
+      });
+    }
+
+    var count = document.getElementById('proxyNavCount');
+    function sync() {
+      if (!count) return;
+      var n = body.querySelectorAll('.proxy-nav-item').length;
+      count.textContent = n > 0 ? String(n) : '';
+    }
+    sync();
+    if (window.MutationObserver && !body.dataset.observed) {
+      body.dataset.observed = '1';
+      new MutationObserver(sync).observe(body, { childList: true });
+    }
   }
 
   // 法务图标（与 PRIMARY 同一套内联 SVG 风格）
@@ -170,4 +270,6 @@
 
   global.renderNav = renderNav;
   global.syncThemeSwitch = syncThemeSwitch;
+  // dashboard 用它渲染页内 tab：子视图清单只有这一份，页面不再自己抄一遍
+  global.MPSpaViews = SPA_VIEWS;
 })(window);

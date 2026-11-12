@@ -121,8 +121,15 @@ describe('lib/gates.js — 门控真源', () => {
         });
 
         it('unknown 项不计入 on/off 统计，只计入 unknown', () => {
-            const s = fresh().summary();
-            expect(s.unknown).toBe(1);
+            const g = fresh();
+            // 期望值从门控表推导，不写死数字（2026-11-13）：这条守的是「未知项不进
+            // on/off 统计」这个语义，不是「此刻恰好有几条读不到」。跨进程门控每补登记
+            // 一条就红一次的话，守卫会被人当成噪音改数字，最后变成摆设。
+            const expectedUnknown = g.list().filter((r) => r.observable === false).length;
+            // 一条都没有时这条断言就没有守的对象，直接判红，别静默通过
+            expect(expectedUnknown).toBeGreaterThan(0);
+            const s = g.summary();
+            expect(s.unknown).toBe(expectedUnknown);
             expect(s.total).toBe(s.observable + s.unknown);
         });
 
