@@ -3,15 +3,26 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.multi-proxy.dashboard</string>
+    <string>com.sifking.costgate.client</string>
     <key>CFBundleName</key>
-    <string>MultiProxy</string>
+    <string>costgate</string>
     <key>CFBundleDisplayName</key>
-    <string>MultiProxy 底座</string>
+    <string>costgate</string>
     <key>CFBundleExecutable</key>
-    <string>MultiProxy</string>
+    <string>costgate</string>
+    <key>CFBundleIconFile</key>
+    <string>costgate</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <!-- 版本号在 build.sh 里从 VERSION 首行与 git HEAD 覆写，源文件不写死 -->
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>0</string>
+    <key>CGCommit</key>
+    <string>dev</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>LSMinimumSystemVersion</key>

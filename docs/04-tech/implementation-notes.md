@@ -33,7 +33,7 @@ This file is part of the costgate project.
 <details>
 <summary><b>门控体系与默认态</b></summary>
 
-唯一真源是 `multi-proxy-manager/lib/gates.js`，`GET /api/gates` 消费它，面板门控条展示它。判定范式四种，别合并：`opt-in`（1/true/on 才开）、`opt-out`（0/false/off 才关）、`opt-out-off-only`（只认 `off`）、`strict-1`（只认 `1`）。
+门控的真源只有 `multi-proxy-manager/lib/gates.js` 一处，`GET /api/gates` 消费它，面板门控条展示它。判定范式四种，别合并：`opt-in`（1/true/on 才开）、`opt-out`（0/false/off 才关）、`opt-out-off-only`（只认 `off`）、`strict-1`（只认 `1`）。
 
 装完不配任何环境变量时是**开箱默认态**：opt-in 能力全关。这不是功能没做，是刻意的非侵入默认：面板顶部状态条会直说"你在默认态，以下 N 项需显式开启"，并给出能真正翻转状态的命令（不是无脑 `=1`）。
 

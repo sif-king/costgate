@@ -490,7 +490,7 @@
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand">
-    <div class="mark logo-icon cg-badge"><svg class="cg-glyph" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="cgGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs><path d="M32 4 L56 18 V46 L32 60 L8 46 V18 Z" fill="url(#cgGrad)"/><path d="M30 20 a12 12 0 1 0 0 24" fill="none" stroke="#ffffff" stroke-width="5.2" stroke-linecap="round"/><line x1="30" y1="32" x2="46" y2="32" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/><path d="M40 28 l4 4 l6 -8" fill="none" stroke="#34d399" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="mark logo-icon cg-badge"><svg class="cg-glyph" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="cgGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs><path d="M32 4 L56 18 V46 L32 60 L8 46 V18 Z" fill="url(#cgGrad)"/><path d="M37 20 H30 A12 12 0 0 0 30 44 H37" fill="none" stroke="#ffffff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 32 H50" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round"/><path d="M43 27 L46 30 L53 21" fill="none" stroke="#34d399" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <strong>costgate</strong>
   </div>
 
@@ -616,7 +616,7 @@
       </div>
     </div>
 
-    <!-- 账本主权 Hero（2026-10-21）：把成本 digest 提到总览首屏，差异化于 Magpie 的「模型切换」叙事 -->
+    <!-- 账本主权 Hero（2026-10-21）：把成本 digest 提到总览首屏。对外只讲自己能证明的事，不评价别人的玩法（2026-11-13 改） -->
     <div class="hig-card" id="costSovereigntyCard" style="margin-bottom:20px;">
       <div class="hig-card-header">
         <div>
@@ -1027,7 +1027,7 @@
     </div>
     <details style="margin-bottom:16px;padding:8px 14px;border-radius:8px;font-size:12px;line-height:1.6;background:var(--color-bg-secondary);border:1px solid var(--color-border);color:var(--muted-foreground);">
       <summary style="cursor:pointer;">为什么这样算？· 账本主权</summary>
-      <div style="margin-top:8px;">本页讲的是 <b>账本主权</b>，不是「怎么切便宜模型」。我们<b>不靠绕开订阅条款省钱</b>（那是 Magpie 的灰色玩法，厂商账号风控一收紧就失灵，且踩 ToS）。multi-proxy 的「省」来自：每一笔花销<b>按 agent 归因</b>、本地模型流量<b>零成本</b>、<b>账本归你</b>——可复核、可导出、不绑架你的账号。</div>
+      <div style="margin-top:8px;">本页讲的是 <b>账本主权</b>：钱花在哪个 agent、哪个模型上，你自己能查、能导、能对账。costgate 的「省」来自三处：每一笔花销<b>按 agent 归因</b>、本地模型流量<b>零成本</b>、<b>账本归你</b>。省下来的数字都写在账本里，谁都能复核。</div>
     </details>
     <div class="hig-card" style="margin-bottom:20px;">
       <div class="hig-card-header">
@@ -2387,7 +2387,7 @@
           }).join('') + '</div>' +
           '<details style="font-size:12px;line-height:1.6;color:var(--muted-foreground);padding:8px 12px;border-radius:8px;background:var(--color-bg-secondary);border:1px solid var(--color-border);">' +
           '<summary style="cursor:pointer;">为什么这样算？· 账本主权</summary>' +
-          '<div style="margin-top:6px;"><b>不拼「切模型」，拼账本主权。</b>我们不做绕订阅条款省钱的灰色玩法（Magpie 那套，账号风控一收紧就失灵）。multi-proxy 的「省」来自：每一笔花销<b>按 agent 归因</b>、本地模型流量<b>零成本</b>、<b>账本归你</b>——可复核、可导出、不绑架你的账号。</div>' +
+          '<div style="margin-top:6px;"><b>账本主权。</b>钱花在哪个 agent、哪个模型上，你自己能查、能导、能对账。省下来的数字都写在账本里，谁都能复核。</div>' +
           '</details>';
       })
       .catch(function() {

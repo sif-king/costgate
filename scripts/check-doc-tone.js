@@ -60,6 +60,18 @@ const RULES = {
   D3: { name: '元话语', limit: 0.6, unit: '‰', hard: true },
   D4: { name: '套话 / 对举', limit: 0, unit: '次', hard: true },
   D5: { name: '直角引号「」', limit: 0, unit: '次', hard: true },
+  // —— 以下五条是「句子形状」层（2026-11-13 老板第二轮：标点干净了，读起来还是不像人写的）——
+  // 出处：文章体系 去AI味操作手册 §二（三个可数指标）、§三 改法 2/6、写作自进化机制 门禁 B8/B14。
+  // 35%：118 篇成稿实测中位 37%、p25 27.8%（分母＝≥2 句且 ≥40 汉字的普通段落）。
+  // 卡在 35 的意思是「你得比作者一半以上的旧文更不像模板」，不是凭空拍的整数。
+  D6: { name: '判断式开头段', limit: 35, unit: '%', hard: true, minParas: 5 },
+  // D7 只报数不判红：机器分不清「源码运行，不是安装包」（事实区分，删了伤准确性）
+  // 和「不是降级开关，是认知」（修辞对举，纯节奏）。硬卡会逼作者删掉前者。
+  // 出处：去AI味操作手册 §八 停手线第 2 条——对称句「不要为凑数硬拆」。
+  D7: { name: '对称对举句', limit: 2.0, unit: '‰', absMax: 8, hard: false },
+  D8: { name: '绝对化词', limit: 0.4, unit: '‰', absMax: 3, hard: true },
+  D9: { name: '计数/分层套话', limit: 0, unit: '次', hard: true },
+  D10: { name: '超长段', limit: 0, unit: '次', hard: true },
 };
 
 // D3：向读者报路线、拉着读者走的句子。判定不看单个词，看这几个固定说法。
@@ -92,6 +104,39 @@ const CLICHE_PATTERNS = [
   /不是[^。，\n]{1,20}而是/g,
 ];
 
+// D7：对称对举。骨架能前后互换的句子，读的时候读者能预判下半句。
+// D4 已经管「不是……而是……」的严格形，这里补两种更松的变体。
+const PARALLEL_PATTERNS = [
+  /不是[^。\n]{1,24}?[，,]\s*是/g,
+  /[^。\n]{2,24}?[，,]\s*不是[^。，\n]{1,24}?[。\n]/g,
+];
+
+// D8：绝对化词。文档里真讲不变量时可以用，但必须少；
+// 「永远」「绝不」在讲「我们保证永不」这类承诺时是合法的，所以只限密度不限零。
+const ABSOLUTE_PATTERNS = [
+  /无一例外/g,
+  /唯一(?!的?标识|索引|键)/g,
+  /必然/g,
+  /绝对(?!路径|值)/g,
+  /永远不/g,
+  /从来不会/g,
+];
+
+// D9：把定性内容套上「计数 / 分层 / 极值」外壳（去AI味操作手册 改法 6 的完整词表）。
+// 这些几乎不会被技术文档真正需要：真在讲财务会写金额，真在讲架构会写层次名。
+const COUNTING_PATTERNS = [
+  /算[^。，\n]{0,4}[一二三四五六七八九十几多\d]\s*笔账/g,
+  /\d+\s*层(?!协议|缓存|网络|应用|传输)/g,
+  /分\s*[一二三四五六七八九十几多]\s*层/g,
+  /最值钱的/g,
+  /标个刻度/g,
+  /一把尺子/g,
+  /(落在|交到)哪一格/g,
+  /(能|数得)数出来的/g,
+  /同一件事/g,
+  /同一道题/g,
+];
+
 function stripProse(md) {
   return (
     md
@@ -101,7 +146,9 @@ function stripProse(md) {
       .replace(/<!--\s*doc-tone:off\s*-->[\s\S]*?<!--\s*doc-tone:on\s*-->/g, '')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/^```[\s\S]*?^```/gm, '')
-      .replace(/`[^`\n]*`/g, '')
+      // 行内代码换成等长的中性占位符：直接删掉会让句子看起来变短，
+      // D6 会把「**协议版本口径**：OpenAI 侧认 `X` 与 `Y`」误判成 15 字以内的短判断句。
+      .replace(/`[^`\n]*`/g, (m) => '□'.repeat(Math.min(m.length, 16)))
       .replace(/\]\([^)]*\)/g, ']')
       .replace(/https?:\/\/\S+/g, '')
   );
@@ -128,6 +175,35 @@ function hits(patterns, text) {
     }
   }
   return out.sort((a, b) => a.at - b.at);
+}
+
+/// 只取「普通正文段落」：标题、表格、列表、引用、代码围栏都不算。
+/// D6/D10 判的是段落形状，把表格行混进来会让占比失去意义。
+function plainParagraphs(prose) {
+  const blocks = prose.split(/\n\s*\n/);
+  const out = [];
+  for (const b of blocks) {
+    const lines = b.split('\n').filter((l) => l.trim() !== '');
+    if (!lines.length) continue;
+    const isPlain = lines.every(
+      (l) => !/^\s*(#{1,6}\s|\||[-*+]\s|\d+\.\s|>|<\/?[a-zA-Z])/.test(l)
+    );
+    if (isPlain) out.push(lines.join(''));
+  }
+  return out;
+}
+
+/// 句长按「字符数」算（去掉空白与标点），不按汉字数：
+/// 技术句里混着英文标识符，只数汉字会把一句完整的话算成短的。
+function charLen(s) {
+  return s.replace(/[\s，。、；：""''（）()《》【】「」…·,.;:!?]/g, '').length;
+}
+
+function sentencesOf(p) {
+  return p
+    .split(/(?<=[。！？])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 function lineOf(text, idx) {
@@ -170,18 +246,50 @@ function checkFile(rel) {
     .join('\n');
   const questionMarks = (nonHeading.match(/？/g) || []).length;
 
-  const dash = (prose.match(/——/g) || []).length;
+  const dashHits = hits([/——/g], prose);
+  const dash = dashHits.length;
   const meta = hits(META_PATTERNS, prose);
   const cliche = hits(CLICHE_PATTERNS, prose);
   const corner = (prose.match(/「/g) || []).length;
+  const parallel = hits(PARALLEL_PATTERNS, prose);
+  const absolute = hits(ABSOLUTE_PATTERNS, prose);
+  const counting = hits(COUNTING_PATTERNS, prose);
+
+  // 段落形状：只看「≥2 句且 ≥40 汉字」的普通段落——
+  // 一句成段（列表式短段）没有「开头判断 + 后文解释」的结构，不计入分母，
+  // 否则短文档会被结构本身判成超标。
+  // FAQ / 术语条目是问答体（「**要全装吗？**不用。」），短答句是它的正常形状，
+  // 拿「判断式开头」去判它属于口径错，和方法论文档里 D2 对 FAQ 的豁免是同一条道理。
+  const isFaq = (p) => /^\s*(?:[-*]\s+)?\*\*[^*]*[？?]\*\*/.test(p);
+  const paras = plainParagraphs(prose).filter((p) => !isFaq(p));
+  const shaped = paras
+    .map((p) => ({ p, s: sentencesOf(p), han: countHan(p) }))
+    .filter((x) => x.s.length >= 2 && x.han >= 40);
+  const judgementOpen = shaped.filter((x) => charLen(x.s[0]) <= 15);
+  const longParas = paras
+    .map((p) => ({ p, s: sentencesOf(p), han: countHan(p) }))
+    .filter((x) => x.han > 150 && x.s.length >= 3);
+  const openRatio = shaped.length ? (judgementOpen.length / shaped.length) * 100 : 0;
+  // 段落太少时占比会在 0/50/100 之间跳，判它没有意义（实测里 2 段文档常被误判）。
+  const d6Enough = shaped.length >= (RULES.D6.minParas || 5);
 
   const dens = (n) => (n / han) * 1000;
   const results = [
-    { id: 'D1', value: dash, density: dens(dash), samples: [] },
+    {
+      id: 'D1',
+      value: dash,
+      density: dens(dash),
+      all: dashHits.map((h) => `L${lineOf(prose, h.at)}: ${prose.slice(Math.max(0, h.at - 12), h.at + 12).replace(/\n/g, ' ')}`),
+      samples: [],
+    },
     {
       id: 'D2',
       value: questionMarks,
       density: dens(questionMarks),
+      all: nonHeading
+        .split('\n')
+        .filter((l) => l.includes('？'))
+        .map((l) => l.trim().slice(0, 60)),
       samples: [],
     },
     {
@@ -202,14 +310,60 @@ function checkFile(rel) {
       density: corner,
       samples: [],
     },
+    {
+      id: 'D6',
+      skip: !d6Enough,
+      value: Number(openRatio.toFixed(1)),
+      density: openRatio,
+      all: judgementOpen.map(
+        (x) => `${x.s[0]}｜后文：${x.s.slice(1).join('').slice(0, 34)}`
+      ),
+      samples: judgementOpen
+        .slice(0, 3)
+        .map((x) => `${judgementOpen.length}/${shaped.length} 段以短判断句开头：${x.s[0]}`),
+    },
+    {
+      id: 'D7',
+      value: parallel.length,
+      density: dens(parallel.length),
+      all: parallel.map((h) => `L${lineOf(prose, h.at)}: ${h.text.trim()}`),
+      samples: parallel.slice(0, 3).map((h) => `L${lineOf(prose, h.at)}: ${h.text.trim()}`),
+    },
+    {
+      id: 'D8',
+      value: absolute.length,
+      density: dens(absolute.length),
+      all: absolute.map((h) => `L${lineOf(prose, h.at)}: ${h.text}`),
+      samples: absolute.slice(0, 3).map((h) => `L${lineOf(prose, h.at)}: ${h.text}`),
+    },
+    {
+      id: 'D9',
+      value: counting.length,
+      density: counting.length,
+      all: counting.map((h) => `L${lineOf(prose, h.at)}: ${h.text}`),
+      samples: counting.slice(0, 3).map((h) => `L${lineOf(prose, h.at)}: ${h.text}`),
+    },
+    {
+      id: 'D10',
+      value: longParas.length,
+      density: longParas.length,
+      all: longParas.map((x) => `${x.han} 汉字 / ${x.s.length} 句：${x.p.slice(0, 50)}…`),
+      samples: longParas.slice(0, 3).map((x) => `超长段 ${x.han} 汉字 / ${x.s.length} 句：${x.p.slice(0, 40)}…`),
+    },
   ];
-  return { rel, han, exempt, results };
+  return { rel, han, exempt, results, paras: shaped.length };
 }
 
 function main() {
   const args = process.argv.slice(2);
   const json = args.includes('--json');
-  const files = args.filter((a) => !a.startsWith('--'));
+  const explainIdx = args.indexOf('--explain');
+  const explain = explainIdx >= 0 ? args[explainIdx + 1] : null;
+  // 只排掉 --explain 的值；explainIdx 为 -1 时不能顺手排掉 args[0]，
+  // 否则「只查一个文件」会静默退化成「查全集」——测试里注入的坏句子因此从没变红过。
+  const files = args.filter(
+    (a, i) => !a.startsWith('--') && !(explainIdx >= 0 && i === explainIdx + 1)
+  );
   const list = files.length ? files : TARGETS;
   const allow = loadAllow();
 
@@ -239,19 +393,29 @@ function main() {
       const overDensity = rule.unit === '‰' ? item.density > rule.limit : item.value > rule.limit;
       const overAbs = rule.absMax !== undefined && item.value > rule.absMax;
       const over = overDensity || overAbs;
-      const isBad = over && !allowed && rule.hard;
+      const isBad = over && !allowed && rule.hard && !item.skip;
       if (isBad) bad.push(item.id);
-      const shown = rule.unit === '‰' ? `${item.density.toFixed(2)}‰` : `${item.value} 次`;
+      const shown =
+        rule.unit === '‰'
+          ? `${item.density.toFixed(2)}‰`
+          : rule.unit === '%'
+            ? `${item.value}%`
+            : `${item.value} 次`;
       const caps =
         rule.absMax !== undefined ? `上限 ${rule.limit}${rule.unit} 且 ≤${rule.absMax} 次` : `上限 ${rule.limit}${rule.unit}`;
-      const mark = allowed ? '·' : isBad ? '✗' : '✓';
+      const mark = item.skip ? '·' : allowed ? '·' : isBad ? '✗' : '✓';
       if (!json) {
         console.log(
           `  ${mark} ${item.id} ${rule.name.padEnd(12, ' ')} ${shown.padStart(9, ' ')}（${caps}）` +
             (allowed ? `｜白名单：${allowReason}` : '') +
+            (item.skip ? `｜样本不足（${r.paras} 段），本条不判` : '') +
             (overAbs && !overDensity ? '｜超绝对值' : '')
         );
-        for (const s of item.samples) console.log(`      ${s}`);
+        if (explain && explain === item.id && item.all) {
+          for (const s of item.all) console.log(`      ${s}`);
+        } else {
+          for (const s of item.samples) console.log(`      ${s}`);
+        }
       }
     }
     if (bad.length) failed++;

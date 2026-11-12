@@ -6,7 +6,7 @@ import Foundation
 func log(_ s: String) {
     let home = NSHomeDirectory()
     let dir  = "\(home)/Library/Logs"
-    let path = "\(dir)/MultiProxy-client.log"
+    let path = "\(dir)/costgate-client.log"
     if !FileManager.default.fileExists(atPath: dir) {
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     }
@@ -30,15 +30,20 @@ func log(_ s: String) {
 /// 底座目录按「环境变量 MULTIPROXY_DIR → 若干候选目录探测（含 codex-proxy/proxy.js 落点校验）」解析。
 /// 别人 clone 后把目录改成任意名字都能跑；本机（~/Documents/AI项目/multi-proxy）命中第一个候选。
 let PROXY_DIR: String = {
-    if let d = ProcessInfo.processInfo.environment["MULTIPROXY_DIR"], !d.isEmpty { return d }
+    for key in ["COSTGATE_DIR", "MULTIPROXY_DIR"] {
+        if let d = ProcessInfo.processInfo.environment[key], !d.isEmpty { return d }
+    }
     let fm = FileManager.default
     let home = NSHomeDirectory()
     let candidates = [
-        home + "/Documents/AI项目/multi-proxy",
+        home + "/Documents/AI项目/costgate",
+        home + "/Documents/AI项目/multi-proxy",   // 改名前的本地目录名，留着兼容
+        home + "/Documents/costgate",
         home + "/Documents/multi-proxy",
+        home + "/costgate",
         home + "/multi-proxy",
-        home + "/Developer/multi-proxy",
-        "/opt/multi-proxy",
+        home + "/Developer/costgate",
+        "/opt/costgate",
     ]
     for c in candidates {
         var isDir: ObjCBool = true
@@ -52,7 +57,9 @@ let CODEX_DIR   = "\(PROXY_DIR)/codex-proxy"
 let PROXY_JS    = "\(CODEX_DIR)/proxy.js"
 /// node：环境变量 MULTIPROXY_NODE → 托管版本候选 → which node。
 let NODE: String = {
-    if let n = ProcessInfo.processInfo.environment["MULTIPROXY_NODE"], !n.isEmpty { return n }
+    for key in ["COSTGATE_NODE", "MULTIPROXY_NODE"] {
+        if let n = ProcessInfo.processInfo.environment[key], !n.isEmpty { return n }
+    }
     let fm = FileManager.default
     let home = NSHomeDirectory()
     for c in [home + "/.workbuddy/binaries/node/versions/22.22.2-3/bin/node",
@@ -64,8 +71,12 @@ let NODE: String = {
 }()
 let HEALTH      = "http://127.0.0.1:18790/health"
 let DASHBOARD   = "http://127.0.0.1:18792/dashboard.html"
-let APP_NAME    = "MultiProxy 底座"
-let AGENT_ID    = "com.multi-proxy.dashboard"
+let APP_NAME    = "costgate"
+/// 版本与构建号从自己的 Info.plist 读（build.sh 从 VERSION + git HEAD 写进去），
+/// 代码里不重复一份，免得哪天两处对不上。
+let APP_VERSION = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
+let APP_COMMIT  = (Bundle.main.infoDictionary?["CGCommit"] as? String) ?? "dev"
+let AGENT_ID    = "com.sifking.costgate.client"
 let DSH_APP     = "DeepSeek Harness"
 let PATCH_FILE  = "\(NSHomeDirectory())/.dsh/profiles/desktop/cordis.patch.yml"
 let SETTINGS    = "\(NSHomeDirectory())/.dsh/settings.yaml.imported"
@@ -107,7 +118,7 @@ func childEnvironment() -> [String: String] {
 /// 改法：子进程 stdout/stderr 直接指向临时文件（非管道 ⇒ 没有 EOF 概念 ⇒ 不会卡），
 /// 父进程只在「子进程自己退出」后才去读文件。
 func runShell(_ cmd: String, timeout: TimeInterval = 90) -> String {
-    let dir = "\(NSHomeDirectory())/Library/Logs/MultiProxy-client-tmp"
+    let dir = "\(NSHomeDirectory())/Library/Logs/costgate-client-tmp"
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     let outPath = "\(dir)/\(UUID().uuidString).txt"
     FileManager.default.createFile(atPath: outPath, contents: nil)
@@ -214,13 +225,13 @@ func healthOK() -> Bool {
 /// 从 GUI 客户端的 bash 子进程里跑就会卡死（输出 0 字节、进程不退出，实测复现多次）。
 /// 绕开 shell，客户端直接用 node 起 proxy.js，行为可控、日志自己能收。
 func startBase() -> (ok: Bool, output: String) {
-    if healthOK() { return (true, "底座本来就在跑") }
+    if healthOK() { return (true, "网关本来就在跑") }
     guard FileManager.default.fileExists(atPath: PROXY_JS) else {
         log("startBase 缺 proxy.js: \(PROXY_JS)")
         return (false, "找不到 \(PROXY_JS)，请跑一次依赖安装")
     }
 
-    let logDir = "\(NSHomeDirectory())/Library/Logs/MultiProxy-client"
+    let logDir = "\(NSHomeDirectory())/Library/Logs/costgate-client"
     try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
     let logPath = "\(logDir)/codex-proxy.log"
     FileManager.default.createFile(atPath: logPath, contents: nil)
@@ -247,7 +258,7 @@ func startBase() -> (ok: Bool, output: String) {
     while waited < 45 {
         if healthOK() {
             log("startBase ok=true 用时 \(Int(waited))s")
-            return (true, "底座已启动，日志：\(logPath)")
+            return (true, "网关已启动，日志：\(logPath)")
         }
         Thread.sleep(forTimeInterval: 2); waited += 2
         log("startBase 等 health \(Int(waited))s")
@@ -302,7 +313,7 @@ let NEVER_TOUCH_REPO: [String] = [
     "cursor-proxy/.encryption-key",
     "logs",
 ]
-let STATE_DIRS_HOMEDIR: [String] = [".multi-proxy-manager", ".multi-proxy"]
+let STATE_DIRS_HOMEDIR: [String] = [".costgate", ".multi-proxy-manager", ".multi-proxy"]
 
 private func resolveGate(explicit: String?) -> String {
     if let g = explicit, !g.isEmpty { return g }
@@ -473,7 +484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     var baseEverHealthy = false    // 底座启动后是否健康过（只在"起过又掉"时自愈）
     var restartAttempts = 0        // 距最近一次"健康"的连续重启次数（恢复即清零）
     var isQuitting = false         // 用户主动退出（此时 watchdog 停止重启）
-    let watchdogQueue = DispatchQueue(label: "multi-proxy.base.watchdog")  // 串行队列：探活与重启不交错
+    let watchdogQueue = DispatchQueue(label: "costgate.base.watchdog")  // 串行队列：探活与重启不交错
     var watchdogActive = false   // watchdog 运行标志（防重复启动）
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -503,7 +514,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         statusLabel.isEditable = false
         statusLabel.isSelectable = false
         statusLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        statusLabel.stringValue = "正在检查底座…"
+        statusLabel.stringValue = "正在检查网关…"
         content.addSubview(statusLabel)
 
         spinner = NSProgressIndicator(frame: NSRect(x: w - 52, y: h - 42, width: 20, height: 20))
@@ -522,8 +533,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func buildMenu() {
         let appMenu = NSMenu()
-        appMenu.addItem(NSMenuItem(title: "打开 DSH 客户端", action: #selector(openDSH), keyEquivalent: "d"))
-        appMenu.addItem(NSMenuItem(title: "检查并启动底座", action: #selector(recheck), keyEquivalent: "r"))
+        appMenu.addItem(NSMenuItem(title: "打开 DSH（若已安装）", action: #selector(openDSH), keyEquivalent: "d"))
+        appMenu.addItem(NSMenuItem(title: "检查并启动网关", action: #selector(recheck), keyEquivalent: "r"))
         appMenu.addItem(NSMenuItem(title: "重新加载面板", action: #selector(reloadPanel), keyEquivalent: "R"))
         let agentItem = NSMenuItem(title: "开机自动启动本客户端", action: #selector(toggleAgent), keyEquivalent: "s")
         agentItem.state = FileManager.default.fileExists(atPath: AGENT_PLIST) ? .on : .off
@@ -558,7 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         spinner.startAnimation(nil); spinner.isHidden = false
-        statusLabel.stringValue = "正在检查底座…"
+        statusLabel.stringValue = "正在检查网关…"
         statusLabel.textColor = .labelColor
         webView.isHidden = true
         // 整套检查（起底座 / 等 DSH 冷启动）最长 40s+，绝不能占主线程，否则窗口一直白屏
@@ -573,21 +584,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             // 附着模式：底座已在跑（外部 / 原生 / LaunchAgent）——绝不碰，退出时不杀
             selfStartedBase = false
             baseEverHealthy = true
-            msg = "✅ 底座运行中（127.0.0.1:18790，附着模式）"
+            msg = "✅ 网关运行中（127.0.0.1:18790，附着模式）"
             okFlag = true
         } else {
-            setStatus("底座未运行，正在启动…", ok: true)
+            setStatus("网关未运行，正在启动…", ok: true)
             let r = startBase()
             if healthOK() {
                 // 拉起模式：底座由本壳 spawn → watchdog 接管，崩溃时自动重启
                 selfStartedBase = true
                 baseEverHealthy = true
-                msg = "✅ 底座已启动（127.0.0.1:18790）"
+                msg = "✅ 网关已启动（127.0.0.1:18790）"
                 if !r.output.isEmpty { msg += "\n" + trim(r.output, max: 160) }
                 okFlag = true
             } else {
                 // 拉起失败：底座"从没起来"，不认领、不无限重试，交给手动 manage.sh
-                msg = "❌ 底座启动失败。\n手动自查：cd \(PROXY_DIR) && bash ./manage.sh start codex"
+                msg = "❌ 网关启动失败。\n手动自查：cd \(PROXY_DIR) && bash ./manage.sh start codex"
                 if !r.output.isEmpty { msg += "\n\n" + trim(r.output, max: 300) }
             }
         }
@@ -692,7 +703,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             <dict>
               <key>Label</key><string>\(AGENT_ID)</string>
               <key>ProgramArguments</key>
-              <array><string>open</string><string>-a</string><string>MultiProxy</string></array>
+              <array><string>open</string><string>-a</string><string>\(APP_NAME)</string></array>
               <key>RunAtLoad</key><true/>
               <key>KeepAlive</key><false/>
               <key>ProcessType</key><string>Background</string>
@@ -712,13 +723,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     @objc func about() {
         let a = NSAlert()
-        a.messageText = "\(APP_NAME)"
+        a.messageText = "\(APP_NAME) \(APP_VERSION)（\(APP_COMMIT)）"
         a.informativeText = """
-        双击本客户端 = 起本地底座 + 打开管理面板 + 保证 DSH 用的是新配置。
+        这个窗口是 costgate 的外壳：它保证本地网关在跑，然后把管理面板装进来。
+        账本在 ~/.multi-proxy-manager/ledger.jsonl，一行一笔，纯文本，可以直接 grep。
 
-        底座跑在 127.0.0.1:18790，DSH 桌面端的 agnes 已指向它，不需要再敲任何命令。
+        网关统一入口 127.0.0.1:18880，按端口区分 agent（codex 18790 / claude 18791 / cursor 18794 …），
+        所以「谁花的」不用猜，看请求落在哪个端口。
 
-        日常路径：双击 MultiProxy → 状态条变绿 → 回 DSH 直接发话。
+        如果你装了 DSH，它还会顺手把 DSH 指到新配置；没装就不管这一块。
         """
         a.addButton(withTitle: "好")
         a.runModal()
