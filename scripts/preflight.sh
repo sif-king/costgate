@@ -226,6 +226,10 @@ run_step "镜像 COPY 源在不在构建上下文里（scripts/check-docker-cont
 # ── 6c. 旧历史 ref 卫生（防 git push --tags / --all 把内部资产送回公开仓）──
 run_step "旧历史 ref 有没有混进发布通道（scripts/check-legacy-refs.sh）" bash scripts/check-legacy-refs.sh
 
+# ── 6d. 对外文档的句子层（结构守卫抓不到的那一半：破折号/反问/元话语/套话）──
+# 判据与阈值真源：docs/12-docs/DOCS-METHODOLOGY.md §7；词表在脚本里，不抄进文档。
+run_step "对外文档读起来像不像 AI 写的（scripts/check-doc-tone.js）" node scripts/check-doc-tone.js
+
 # ── 7. 依赖审计（CI: dep-audit job）──
 if [ -n "${CI:-}" ] || python3 -c 'import pip_audit' 2>/dev/null || command -v pip-audit >/dev/null 2>&1; then
   run_step "依赖审计（scripts/dep-audit.py）" python3 scripts/dep-audit.py

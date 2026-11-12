@@ -7,8 +7,8 @@ This file is part of the costgate project.
 # 贡献 / 接入指引 — multi-proxy
 
 > 给外部开发者与合作方的接入入口。先读 `README.md`（项目总览）；**要动代码就先读
-> `docs/CHANGE-MAP.md`**——它把「我想改 X」直接翻译成「改哪几个文件 / 哪条守卫会变红 /
-> 怎么一分钟自证」，并自带失效检测（改了文件忘了改表会红）。
+> `docs/CHANGE-MAP.md`**，它把“我想改 X”直接翻译成“改哪几个文件 / 哪条守卫会变红 /
+> 怎么一分钟自证”，并自带失效检测（改了文件忘了改表会红）。
 
 ## 项目状态(2026-09-23)
 
@@ -55,7 +55,7 @@ This file is part of the costgate project.
 
 5. **PR/issue**:走 GitHub PR/issue,owner 审。CI 标签(建议加 `.github/workflows/`):
    - `pr-hotpath-guard`:PR diff 含 `forward.js` / `codex-proxy/proxy.js` 触发 hotpath-guard 门禁(单独 CI workflow)。
-   - `pr-label-non-invasive`:PR 含 `gate`/`shadow` 改动,CI 验证「门控默认关」逐字节等价。
+   - `pr-label-non-invasive`:PR 含 `gate`/`shadow` 改动,CI 验证“门控默认关”逐字节等价。
 
 ## 服务层贡献(闭源,需 owner 授权)
 
@@ -76,7 +76,7 @@ This file is part of the costgate project.
 | 本地 LLM 一等公民(agent type:model)| P2 | 内部竞品分析 i3(不进公开仓) | 无 |
 | 圆桌共识 mode | P1 | 内部竞品分析 i2(不进公开仓) | 无 |
 | 卸载 plist 清理(README §十二#2)| P2 | `install.sh --uninstall` | 无 |
-| CI 标签(PR 门禁)| P3 | 本文件「PR/issue」 | 无 |
+| CI 标签(PR 门禁)| P3 | 本文件“PR/issue” | 无 |
 
 ## 行为守则
 

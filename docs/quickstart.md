@@ -52,7 +52,7 @@ bash manage.sh status
 |---|---|---|---|
 | **统一入口(推荐)** | 见下方按协议分派 | ✅ **实测通过** | 单端点 `http://127.0.0.1:18880`：按路径自动分发 `/v1/messages`→claude-proxy(18791)、`/v1/responses`·`/v1/chat/completions`→codex-proxy(18790)、`/api/*`→manager(18792)。agent 只记一个 endpoint |
 | Codex CLI、任何 OpenAI SDK 客户端、OpenAI 兼容工具 | `OPENAI_BASE_URL=http://127.0.0.1:18790/v1` | ✅ **实测通过** | 见下方验证；也可走统一入口 `http://127.0.0.1:18880/v1` |
-| Claude Code | `ANTHROPIC_BASE_URL=http://127.0.0.1:18880`（或直连 `http://127.0.0.1:18791`） | ✅ **实测通过** | `claude-proxy`(18791) 与 `codex-proxy`(18790) 均已实现 Anthropic `/v1/messages` 服务端路由（2026-10-02 落地，旧文档「全仓无 /v1/messages→404」已作废）。需上游支持 Anthropic Messages（`anthropicBaseUrl` 或 `/anthropic` 前缀；DeepSeek/Kimi/Agnes/Ollama 均已验证存在该面），并把 `ANTHROPIC_MODEL` 指到上游模型名 |
+| Claude Code | `ANTHROPIC_BASE_URL=http://127.0.0.1:18880`（或直连 `http://127.0.0.1:18791`） | ✅ **实测通过** | `claude-proxy`(18791) 与 `codex-proxy`(18790) 均已实现 Anthropic `/v1/messages` 服务端路由（2026-10-02 落地，旧文档“全仓无 /v1/messages→404”已作废）。需上游支持 Anthropic Messages（`anthropicBaseUrl` 或 `/anthropic` 前缀；DeepSeek/Kimi/Agnes/Ollama 均已验证存在该面），并把 `ANTHROPIC_MODEL` 指到上游模型名 |
 | Hermes | — | ⚠️ 不可作 chat 出口 | `hermes-proxy` **无** `/v1/chat/completions`(chat 由 Hermes 自身转发到 Ollama),见 `l2/adapters/l1-agent-adapter.js` 头部实测注释 |
 | Cursor | 在 Cursor 设置里改(不是 env) | ⚠️ 需手动配 | 走 `cursor-proxy` 18794 |
 

@@ -6,7 +6,7 @@ This file is part of the costgate project.
 
 # CHANGELOG
 
-本项目尚未打正式版本 tag。当前 `main` 是可交付状态，本文件记录「现在能用什么、已知限制」，
+本项目尚未打正式版本 tag。当前 `main` 是可交付状态，本文件记录“现在能用什么、已知限制”，
 而非逐 commit 的开发流水。打 `v0.1.0` 是发布动作，需维护者拍板。
 
 ## [Unreleased] · 当前 main（截至 2026-11-12）
@@ -19,13 +19,13 @@ This file is part of the costgate project.
 - 数据出境显式披露 + 纯本地 Ollama 替代路径（见 `SECURITY.md §2`）。
 - 协议边界如实声明：主路径 OpenAI/Anthropic 兼容；MCP bridge 仅 `2025-03-26`、默认关
   （见 `COMPATIBILITY.md`）。
-- 面板 `/context` 的「工具 schema 来源」Top-5（估算轨，纯前端累加 `toolsBySource`，不碰记账热路径）；
+- 面板 `/context` 的“工具 schema 来源”Top-5（估算轨，纯前端累加 `toolsBySource`，不碰记账热路径）；
   算法有 E2E 回归钉死（`e2e/context-toolsrc.spec.js`）。
 - CI 双门：`E2E Tier0 (PR Gate)`（真浏览器 8 壳页 + 门控条语义，共 9 页）+ `P0 Security Gate`。
 
 ### 实测记录（2026-11-12 · `main`）
 
-> sha 会随后续提交前进，所以这里**不钉死某一个 sha**——判断这份记录是否仍适用看两条：热路径（代理转发/记账）
+> sha 会随后续提交前进，所以这里**不钉死某一个 sha**，判断这份记录是否仍适用看两条：热路径（代理转发/记账）
 > 有没有改、CI 徽章是否仍绿。本次记录取自 `c38cc0e`，其后提交为文档与前端展示改动，行为未变。
 
 让一个陌生人**三条命令内独立复现绿灯**（结果来自真跑，非文档摘录）：
@@ -37,15 +37,15 @@ This file is part of the costgate project.
 | CI 双门（`main` @ `a6ae2c4`） | `E2E Tier0 (PR Gate)` **success**（53s）+ `P0 Security Gate` **success** |
 
 > CI 历史里能看到 `cancelled` / `failed`：那是 PR 迭代中的红→绿循环（含 GitHub runner 网络抖动触发的自动重试），
-> 非当前 main 状态——当前 HEAD 双门全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退本地占位，跑测试无需手动设密码。
+> 非当前 main 状态，当前 HEAD 双门全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退本地占位，跑测试无需手动设密码。
 
-### 已知限制（明确、可在代码里指认，非「没想过」）
-- **hermes 不转发请求**：只改写 `~/.hermes/config.yaml`，用量不进账本，不在「转发+记账」范围。
+### 已知限制（明确、可在代码里指认，非“没想过”）
+- **hermes 不转发请求**：只改写 `~/.hermes/config.yaml`，用量不进账本，不在“转发+记账”范围。
 - **无 failover / 重试 / 熔断**：只在 cursor-proxy 的路由模式里有两档，非开箱高可用。
 - **Key 配额只有总量**：无日/周/月滚动窗口。
-- **一实例绑一上游**：不做「一虚拟模型名映射多 Key 负载均衡」。
+- **一实例绑一上游**：不做“一虚拟模型名映射多 Key 负载均衡”。
 - **MCP bridge 仅 `2025-03-26`**：对 `2026-07-28` stateless client 不保证通，dual-era 未排近期 roadmap。
-- **流式与工具调用未逐链路压过**：只验到「能通、有真 usage」。
+- **流式与工具调用未逐链路压过**：只验到“能通、有真 usage”。
 - **Windows 原生 PowerShell 通道只有安装脚本**；Git Bash 下 `quickstart.sh` 可直接跑。
 - **两个 Dockerfile 干净 clone 不能直接 build**（`COPY cursor-proxy/dist` 源在 `.dockerignore` 下）：
   容器部署形态未对外承诺。

@@ -129,7 +129,7 @@ codesign -s - node_modules/electron/dist/Electron.app
 
 ## Q9：agent 能力怎么注册？两个 agent 都有同一能力时怎么选
 
-**现状**：能力是 profile 里的 `capabilityTags` **静态声明**，非运行时探测——在 adapter 构造时挂上（`l2/adapters/l1-agent-adapter.demo.js:30` `new L1AgentAdapter({ capabilities: ['code','writing'] })`）。注册走 `AgentRegistry`（`l2/agent-registry.js`）：`REQUIRED` 字段含 `capabilityTags`（:27），按能力查询用 `byCapability(tag)`（:118-119），命中多个同能力 agent 时按 `strategy` 选（cost-optimization 取最便宜 / priority / round-robin）。
+**现状**：能力是 profile 里的 `capabilityTags` **静态声明**，非运行时探测，在 adapter 构造时挂上（`l2/adapters/l1-agent-adapter.demo.js:30` `new L1AgentAdapter({ capabilities: ['code','writing'] })`）。注册走 `AgentRegistry`（`l2/agent-registry.js`）：`REQUIRED` 字段含 `capabilityTags`（:27），按能力查询用 `byCapability(tag)`（:118-119），命中多个同能力 agent 时按 `strategy` 选（cost-optimization 取最便宜 / priority / round-robin）。
 
 ---
 
@@ -161,7 +161,7 @@ cursor-proxy 是新写的 L2 架构载体（chatHandler + routeEngine + agentReg
 
 ## Q13：override / 这类能力应该放哪一层
 
-按 `AGENTS.md` §3 末条「**通用能力放 L2 公共层，不重复实现**」（09-30 维护者拍板落地）：跨 proxy 的通用能力（路由决策 / override / 成本优化 / 能力注册 / 语义审阅）统一实现于 `l2/`，各 proxy 仅作 L1 消费方。
+按 `AGENTS.md` §3 末条“**通用能力放 L2 公共层，不重复实现**”（09-30 维护者拍板落地）：跨 proxy 的通用能力（路由决策 / override / 成本优化 / 能力注册 / 语义审阅）统一实现于 `l2/`，各 proxy 仅作 L1 消费方。
 
 据此 override 应抽到 `l2/route-engine.js` 或上层 `l2/mcp-server.js`，让 codex / hermes 共用一套路由 + 能力注册，不在 cursor 单独维护一份。
 

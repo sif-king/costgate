@@ -84,7 +84,9 @@ inject_dep() {
   run grep -qF 'isTestFile(f)' "$GUARD"
   [ "$status" -eq 0 ]
   # 必须同时排除 tests/ 目录与 *.test.js / *.spec.ts 这类文件
-  run grep -qF '(^|\/)tests?/' "$GUARD"
+  # 注意字面量要跟实现同步：源码写的是 `/(^|\/)tests?\//`（转义了斜杠），
+  # 这里按 `tests?/` 去 grep 会永远匹配不上，用例恒红（2026-11-13 实测，与实现格式对齐）。
+  run grep -qF '(^|\/)tests?\/' "$GUARD"
   [ "$status" -eq 0 ]
   run grep -qF '(test|spec)' "$GUARD"
   [ "$status" -eq 0 ]

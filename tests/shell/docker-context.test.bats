@@ -16,8 +16,13 @@ setup() {
 }
 
 teardown() {
-  # 注入用例会改真实 Dockerfile；无论断言过没过都还原，别把仓库留在注入状态
-  [ -f "$BAK" ] && cp "$BAK" "$DF"
+  # 注入用例会改真实 Dockerfile；无论断言过没过都还原，别把仓库留在注入状态。
+  # 🔴 必须写成 if 块：`[ -f "$BAK" ] && cp ...` 在 BAK 不存在时返回 1，
+  # 而 bats 的 teardown 里任何一条命令返回非零都会把这个用例判失败 ——
+  # 于是「没注入过」的用例（1/4/5）明明断言全过，却被记成 not ok（2026-11-13 实测）。
+  if [ -f "$BAK" ]; then
+    cp "$BAK" "$DF"
+  fi
 }
 
 @test "guard exists and the current tree has no unregistered violation" {
