@@ -36,6 +36,7 @@ const IGNORE_RE = new RegExp(
     '(^|/)(node_modules|\\.git|logs|dist|build|\\.next|\\.nuxt|__pycache__|\\.venv|venv|\\.cache)(/|$)',
     '\\.(log|tmp|swp|swo|lock|pid)$',
     '(^|/)\\.DS_Store$',
+    '\\.verify-probe',
     '(^|/)\\.multi-proxy-manager/',
   ].join('|')
 );
@@ -218,6 +219,117 @@ function discoverRoots(baseDir = path.join(os.homedir(), 'Documents', 'AI项目'
   return repos.sort((a, b) => b.mtime - a.mtime).slice(0, limit).map((r) => r.root);
 }
 
+/** 只读文件开头若干字节，避免为了拿一行 session_meta 把几十 MB 的 rollout 全读进来 */
+function readHead(file, bytes = 65536) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(bytes);
+    const n = fs.readSync(fd, buf, 0, bytes, 0);
+    return buf.slice(0, n).toString('utf8');
+  } catch {
+    return '';
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* 已关闭 */
+      }
+    }
+  }
+}
+
+/**
+ * 从 codex 的会话记录里读「最近在哪些目录干过活」。
+ *
+ * 为什么需要这一路：`fs.watch` 只给路径，`ps`/`lsof` 在某些环境（沙箱、权限收紧）拿不到，
+ * 那样归因会永远落到 unknown。而 codex 的 rollout 第一行就带 `payload.cwd`，
+ * 读一行就能知道它最近的工作目录——比抓进程可靠，也不需要它此刻正在跑。
+ */
+function recentSessionCwds({ home = os.homedir(), days = 7, maxFiles = 40 } = {}) {
+  const base = path.join(home, '.codex', 'sessions');
+  const cut = Date.now() - days * 86400000;
+  const files = [];
+  (function collect(dir, depth) {
+    if (depth > 5) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        collect(p, depth + 1);
+      } else if (e.name.endsWith('.jsonl')) {
+        let st;
+        try {
+          st = fs.statSync(p);
+        } catch {
+          continue;
+        }
+        if (st.mtimeMs >= cut) files.push({ file: p, mtime: st.mtimeMs });
+      }
+    }
+  })(base, 0);
+
+  files.sort((a, b) => b.mtime - a.mtime);
+  const out = [];
+  const seen = new Set();
+  for (const f of files.slice(0, maxFiles)) {
+    const head = readHead(f.file, 32768);
+    const line = head.split('\n').find((l) => l.includes('"session_meta"'));
+    if (!line) continue;
+    let o;
+    try {
+      o = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const cwd = o && o.payload && o.payload.cwd;
+    if (!cwd || seen.has(cwd)) continue;
+    seen.add(cwd);
+    out.push({ agent: 'codex', cwd, ts: f.mtime });
+  }
+  return out;
+}
+
+/**
+ * WorkBuddy 的会话目录是以 cwd 编码命名的（/ → -）。所以不用反解路径，
+ * 直接拿观测根去正向比对：目录存在，就说明这个 agent 在这个仓库里干过活。
+ */
+function workbuddyCwds(roots, { home = os.homedir() } = {}) {
+  const base = path.join(home, '.workbuddy', 'projects');
+  const out = [];
+  for (const r of roots || []) {
+    // 目录名去掉开头的 / 再把 / 换成 -：/Users/x/a → Users-x-a
+    const enc = path.resolve(r).replace(/^\//, '').replace(/\//g, '-');
+    const p = path.join(base, enc);
+    try {
+      const st = fs.statSync(p);
+      if (st.isDirectory()) out.push({ agent: 'workbuddy', cwd: path.resolve(r), ts: st.mtimeMs, from: 'session' });
+    } catch {
+      /* 没有会话目录，跳过 */
+    }
+  }
+  return out;
+}
+
+/** 合并两路 cwd 证据：正在跑的进程优先，会话记录补位（同目录同 agent 只留一条） */
+function mergeProcEvidence(procs, sessions) {
+  const out = (procs || []).slice();
+  const key = (p) => `${p.agent}|${p.cwd}`;
+  const have = new Set(out.map(key));
+  for (const s of sessions || []) {
+    if (have.has(key(s))) continue;
+    have.add(key(s));
+    out.push({ ...s, from: 'session' });
+  }
+  return out;
+}
+
 function createObserver(opts = {}) {
   const dir = opts.dir || DEFAULT_DIR;
   const ledger = path.join(dir, LEDGER_NAME);
@@ -231,6 +343,7 @@ function createObserver(opts = {}) {
   let snap = [];
   let snapAt = 0;
   let refreshing = false;
+  let sessionCache = { at: 0, list: [] };
   let reqCache = { at: 0, map: {} };
   let written = 0;
   let skipped = 0;
@@ -246,12 +359,19 @@ function createObserver(opts = {}) {
     if (refreshing) return;
     if (Date.now() - snapAt < snapTtlMs) return;
     refreshing = true;
+    // 会话目录变化慢，30 秒刷一次就够，免得每个文件事件都去翻 rollout 文件头。
+    if (Date.now() - sessionCache.at > 30000) {
+      try {
+        sessionCache = { at: Date.now(), list: [...recentSessionCwds(), ...workbuddyCwds(roots)] };
+      } catch {
+        sessionCache = { at: Date.now(), list: [] };
+      }
+    }
+    const sessions = sessionCache.list;
     snapshotAgents((err, list) => {
       refreshing = false;
-      if (!err && list) {
-        snap = list;
-        snapAt = Date.now();
-      }
+      snap = mergeProcEvidence(err ? [] : list, sessions);
+      snapAt = Date.now();
     });
   }
 
@@ -385,6 +505,9 @@ module.exports = {
   attribute,
   localDay,
   snapshotAgents,
+  recentSessionCwds,
+  workbuddyCwds,
+  mergeProcEvidence,
   recentRequestsByAgent,
   discoverRoots,
   createObserver,

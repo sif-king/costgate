@@ -85,6 +85,29 @@ describe('fs-observer · 归因三档', () => {
     });
 });
 
+
+describe('fs-observer · WorkBuddy 会话目录', () => {
+    test('按 cwd 编码匹配仓库根（去前导斜杠、斜杠换横杠）', () => {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-wb-'));
+        fs.mkdirSync(path.join(home, '.workbuddy', 'projects', 'Users-x-Documents-proj'), { recursive: true });
+        const r = obs.workbuddyCwds(['/Users/x/Documents/proj'], { home });
+        expect(r.length).toBe(1);
+        expect(r[0].agent).toBe('workbuddy');
+        expect(r[0].cwd).toBe('/Users/x/Documents/proj');
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('没有对应会话目录就返回空，不瞎猜', () => {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-wb2-'));
+        const r = obs.workbuddyCwds(['/Users/x/nope'], { home });
+        expect(r).toEqual([]);
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('验收探针文件不进账本', () => {
+        expect(obs.IGNORE_RE.test('/p/.verify-probe-123.txt')).toBe(true);
+    });
+});
 describe('fs-observer · 真观测（临时目录端到端）', () => {
     let tmpRoot;
     let tmpLedger;
