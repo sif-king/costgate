@@ -65,7 +65,7 @@ proxy-rebuild 已从「多模型代理管理工具」（L1）升级为 **Agent �
 | 编排引擎 `orchestrator.js` + `decomposer.js` | ✅ P2 | 拆解 + 拓扑调度 + 容错 + 聚合，19+16=35 checks；生产接线 `routes/orchestration.js`（门控 `PROXY_ORCHESTRATION` 默认关 / shadow 默认开） |
 | LLM 拆解 `llm-decomposer.js` | ✅ P2.2 | 可注入 OpenAI 兼容 http + 全路径降级回 template，19 checks；门控 `PROXY_LLM_DECOMPOSE` 默认关 |
 | 告警 `alert.js` + `routes/alert.js` | ✅ P2 | 4 规则 + cooldown 去重 + 可插拔 sink + 非侵入 observe，demo 13/13；门控 `PROXY_HEALTH_ALERT` 默认 403 |
-| 成本分析 `cost.js` + `lib/cost-track.js` | ✅ P2 | B 路余额趋势 14 checks；A 路 token×单价 埋点 `forward.js` 热路径 line 168，门控 `PROXY_COST_TRACK` 默认关（live 实证 0.06 / cacheHit 28.7） |
+| 成本分析 `cost.js` + `lib/cost-track.js` | ✅ P2 | B 路余额趋势 14 checks；A 路 token×单价 埋点 `forward.js` 热路径 line 168，门控 `PROXY_COST_TRACK` 默认开（opt-out-off-only，只有显式 `off` 才关；live 实证 0.06 / cacheHit 28.7） |
 | 文档 + 3 案例 + 性能 | ✅ P3 | `l2/CASES.md` + `l2/PERF-REPORT.md`，收口 `e3bcded` |
 
 **全量测试基线**：jest **635/635（40 suites）** + l2 demo 全绿 + 3 adapter + specs validate（2026-09-17 E2E 复验，见 `docs/09-review/archive/MEMORY-2026-09-17.md` C 档）。

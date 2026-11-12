@@ -142,6 +142,15 @@ const GATES = [
     impact: '关闭时 knowledge-base 路由拒服务；另需 PROXY_KNOWLEDGE_BASE_DIR 才落盘。',
   },
   {
+    id: 'fs-observe',
+    env: 'PROXY_FS_OBSERVE',
+    label: '文件层观测',
+    group: '账本主权',
+    kind: 'opt-out',
+    source: 'server.js:395',
+    impact: '默认开（只读，不拦请求）。记「哪个 agent 改了哪些文件」到 fs-ledger.jsonl；关掉后 costgate today 的文件部分为空，请求账本不受影响。',
+  },
+  {
     id: 'cost-track',
     env: 'PROXY_COST_TRACK',
     label: '成本记账',

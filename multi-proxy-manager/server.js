@@ -11,6 +11,7 @@ const path = require('path');
 const os = require('os');
 
 const pm = require('./lib/process-manager');
+const fsObserver = require('../l2/fs-observer.js');
 
 const auth = require('./lib/auth');
 const authRoutes = require('./routes/auth');
@@ -383,7 +384,38 @@ if (process.env.NODE_ENV !== "test") {
     if (costScheduler) {
       console.log(`[cost] alert scheduler started every ${costScheduler.intervalMs}ms (PROXY_COST_SCHEDULE=on)`);
      }
+     startFsObserver();
    });
+}
+
+// 文件层观测：管理台一起来就记「谁动了哪些文件」。只读不拦，默认开（PROXY_FS_OBSERVE=off 可关）。
+// 放在这里是刻意的——装在后台常驻进程里，用户不用为它多开一个窗口，这正是「零配置」的实现方式。
+// 任何异常都只 warn：观测坏了不该拖垮管理台。
+let _fsObserver = null;
+function startFsObserver() {
+  const v = String(process.env.PROXY_FS_OBSERVE ?? '').trim().toLowerCase();
+  if (v === '0' || v === 'false' || v === 'off') {
+    console.log('[fs-observe] 已关闭（PROXY_FS_OBSERVE）');
+    return;
+  }
+  try {
+    _fsObserver = fsObserver.createObserver({});
+    const info = _fsObserver.start();
+    if (!info.watching) {
+      console.log('[fs-observe] 没有找到可观测的仓库目录，跳过（可用 costgate watch --roots 指定）');
+      return;
+    }
+    console.log(`[fs-observe] 观测 ${info.watching} 个仓库 → ${info.ledger}`);
+    process.on('SIGTERM', () => {
+      try {
+        _fsObserver.stop();
+      } catch {
+        /* 退出中，忽略 */
+      }
+    });
+  } catch (e) {
+    console.warn('[fs-observe] 启动失败（不影响管理台）:', e.message);
+  }
 }
 
 

@@ -1,0 +1,323 @@
+#!/usr/bin/env node
+// costgate — Copyright © 2026 sif-king (Jason)
+// Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+// This file is part of the costgate project.
+
+'use strict';
+
+/**
+ * costgate 命令行。
+ *
+ *   costgate today [--days N | --day YYYY-MM-DD]   今天（或某天 / 最近 N 天）的账
+ *   costgate watch [--roots a,b] [--dir d]         前台观测文件改动（Ctrl-C 退出）
+ *   costgate who <文件片段>                         这个文件被谁改过
+ *   costgate check [目录]                           对着一份仓库跑判据
+ *   costgate status                                 服务与账本状态
+ *
+ * 设计原则：没有子命令时默认 `today`——装上敲一个词就有东西看。
+ */
+
+const fs = require('fs');
+const path = require('path');
+const http = require('http');
+
+const ROOT = path.resolve(__dirname, '..');
+const fsObs = require(path.join(ROOT, 'l2', 'fs-observer.js'));
+const report = require(path.join(ROOT, 'l2', 'report.js'));
+
+const argv = process.argv.slice(2);
+const cmd = argv[0] && !argv[0].startsWith('-') ? argv[0] : 'today';
+const rest = cmd === (argv[0] || '') ? argv.slice(1) : argv;
+
+const TTY = process.stdout.isTTY;
+const c = (code) => (s) => (TTY ? `\x1b[${code}m${s}\x1b[0m` : String(s));
+const bold = c('1');
+const dim = c('2');
+const red = c('31');
+const green = c('32');
+const yellow = c('33');
+const blue = c('36');
+
+function flag(name, fallback) {
+  const i = rest.indexOf(`--${name}`);
+  if (i >= 0 && rest[i + 1] && !rest[i + 1].startsWith('-')) return rest[i + 1];
+  return fallback;
+}
+function has(name) {
+  return rest.includes(`--${name}`);
+}
+function dirOpt() {
+  return flag('dir', fsObs.DEFAULT_DIR);
+}
+
+const nf = (n) => Number(n || 0).toLocaleString('en-US');
+const kf = (n) => {
+  const v = Number(n || 0);
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + 'k';
+  return String(v);
+};
+
+function line(s = '') {
+  process.stdout.write(s + '\n');
+}
+function head(s) {
+  line();
+  line(bold(s));
+}
+function kv(k, v) {
+  line(`  ${k.padEnd(10)}${v}`);
+}
+
+function printDay(r, { verbose = false } = {}) {
+  head(`costgate · ${r.day}`);
+  if (!r.hasData) {
+    kv('用量', dim('这天没有任何请求或文件改动'));
+    return;
+  }
+  const u = r.usage;
+  if (u.requests > 0) {
+    head('用量');
+    kv('请求', `${nf(u.requests)} 次`);
+    kv('输入', `${kf(u.prompt)} tokens`);
+    kv('输出', `${kf(u.completion)} tokens`);
+    if (u.cacheHit) kv('缓存命中', `${kf(u.cacheHit)} tokens`);
+    if (u.thinking) kv('推理', `${kf(u.thinking)} tokens`);
+    if (verbose) {
+      for (const a of r.byAgent) {
+        kv(a.agent, `${nf(a.requests)} 次  ${a.topModels.join(', ') || '-'}`);
+      }
+    }
+    head('费用');
+    if (u.cost > 0) {
+      kv('合计', `$${u.cost.toFixed(4)}  ${nf(u.priced)} 次有价${u.unpriced ? `，${nf(u.unpriced)} 次未定价` : ''}`);
+    } else {
+      kv('合计', dim(`0 —— ${nf(u.requests)} 次请求全部无价（免费池 / 订阅制 / 价目表单价为 0）`));
+    }
+  }
+  if (r.files.total > 0) {
+    head('文件');
+    const creates = r.files.byAgent.reduce((n, a) => n + a.creates, 0);
+    const modifies = r.files.byAgent.reduce((n, a) => n + a.modifies, 0);
+    const deletes = r.files.deletes.length;
+    kv('合计', `${nf(r.files.total)} 个（新建 ${creates} · 修改 ${modifies} · 删除 ${deletes}）`);
+    for (const a of r.files.byAgent) {
+      if (a.agent === 'unknown') continue;
+      kv(a.agent, `${nf(a.count)}${a.deletes ? red(`（含删除 ${a.deletes}）`) : ''}`);
+    }
+    if (r.files.unattributed) kv('未归因', dim(`${nf(r.files.unattributed)} 个`));
+  }
+  if (r.alerts.length) {
+    head('要注意');
+    for (const a of r.alerts) {
+      line(`  ${yellow('!')} ${a.text}`);
+      for (const it of a.items || []) {
+        line(`    ${dim(path.relative(process.env.HOME || '/', it.path))} ${dim(`(${it.confidence})`)}`);
+      }
+    }
+  }
+}
+
+function printRange(r) {
+  head(`costgate · 最近 ${r.days.length} 天（${r.from || '-'} 至 ${r.to || '-'}）`);
+  if (!r.days.length) {
+    kv('数据', dim('账本里还没有任何记录'));
+    return;
+  }
+  kv('请求', `${nf(r.requests)} 次`);
+  kv('输入', `${kf(r.prompt)} tokens`);
+  kv('输出', `${kf(r.completion)} tokens`);
+  if (r.cacheHit) kv('缓存命中', `${kf(r.cacheHit)} tokens`);
+  if (r.cost > 0) kv('费用', `$${r.cost.toFixed(4)}（${nf(r.unpriced)} 次未定价）`);
+  else kv('费用', dim('0 —— 全部请求无价（免费池 / 订阅制 / 价目表单价为 0）'));
+  kv('文件', `${nf(r.files)} 个改动`);
+  line();
+  line(dim('  逐日：'));
+  for (const d of r.perDay) {
+    if (!d.hasData) continue;
+    const parts = [`${nf(d.usage.requests)} 次`, `${kf(d.usage.prompt + d.usage.completion)} tokens`];
+    if (d.files.total) parts.push(`${nf(d.files.total)} 个文件`);
+    line(`  ${d.day}  ${parts.join(dim('  ·  '))}`);
+  }
+}
+
+function cmdToday() {
+  const dir = dirOpt();
+  if (has('days')) return printRange(report.buildRangeReport({ dir, days: Number(flag('days', '7')) || 7 }));
+  let day = flag('day', null);
+  if (day) {
+    printDay(report.buildDayReport({ dir, day }), { verbose: has('verbose') || has('v') });
+    return;
+  }
+  const today = fsObs.localDay();
+  const r0 = report.buildDayReport({ dir, day: today });
+  if (r0.hasData) {
+    printDay(r0, { verbose: has('verbose') || has('v') });
+    return;
+  }
+  // 今天还没有记录：先给最近一段的汇总，再给最近一天的明细，避免「一片空白」。
+  const days = report.availableDays({ dir });
+  if (!days.length) {
+    line(yellow('账本里还没有任何记录。'));
+    line(dim('  先把 agent 指到 costgate 的端口跑一次，或者跑 costgate watch 开始记文件改动。'));
+    return;
+  }
+  line(yellow(`今天（${today}）还没有记录。`));
+  printRange(report.buildRangeReport({ dir, days: 7 }));
+  printDay(report.buildDayReport({ dir, day: days[days.length - 1] }), { verbose: has('verbose') || has('v') });
+}
+
+function cmdWatch() {
+  const rootsArg = flag('roots', null);
+  const roots = rootsArg
+    ? rootsArg.split(',').map((s) => s.trim()).filter(Boolean)
+    : undefined;
+  const ob = fsObs.createObserver({ roots, dir: dirOpt() });
+  const info = ob.start();
+  line(bold('costgate · 观测中'));
+  kv('目录', `${info.watching} 个`);
+  for (const r of info.roots) line(`    ${dim(r)}`);
+  kv('账本', info.ledger);
+  line(dim('\n  Ctrl-C 退出。看结果：另开一个终端跑 costgate today'));
+  const t = setInterval(() => {
+    const s = ob.stats();
+    process.stdout.write(`\r${dim(`已记 ${s.written} 条 · 识别到 ${s.agents} 个 agent 进程 · ${new Date().toLocaleTimeString()}`)}   `);
+  }, 2000);
+  const bye = () => {
+    clearInterval(t);
+    ob.stop();
+    line(`\n\n已停止，共记 ${ob.stats().written} 条。`);
+    process.exit(0);
+  };
+  process.on('SIGINT', bye);
+  process.on('SIGTERM', bye);
+}
+
+function cmdWho() {
+  const match = rest.find((a) => !a.startsWith('-'));
+  if (!match) {
+    line(red('用法：costgate who <文件名或路径片段>'));
+    process.exit(2);
+  }
+  const rows = report.fileTimeline({ dir: dirOpt(), match });
+  head(`costgate · ${match}`);
+  if (!rows.length) {
+    line(dim('  账本里没有这个文件的记录。'));
+    return;
+  }
+  for (const r of rows) {
+    const t = new Date(r.ts).toLocaleString('zh-CN', { hour12: false });
+    const who = r.agent === 'unknown' ? yellow('未归因') : green(r.agent);
+    const ev = r.event === 'delete' ? red('删除') : r.event === 'create' ? blue('新建') : '修改';
+    line(`  ${dim(t)}  ${ev}  ${who}  ${dim(`(${r.confidence})`)}`);
+  }
+}
+
+function cmdCheck() {
+  const target = rest.find((a) => !a.startsWith('-')) || process.cwd();
+  let criteria;
+  try {
+    criteria = require(path.join(ROOT, 'l2', 'criteria.js'));
+  } catch (e) {
+    line(red('判据模块未安装：l2/criteria.js'));
+    process.exit(2);
+  }
+  const res = criteria.runAll({ root: target });
+  head(`costgate check · ${target}`);
+  for (const r of res.results) {
+    const tag = r.verdict === 'pass' ? green('pass') : r.verdict === 'fail' ? red('FAIL') : dim('skip');
+    line(`  ${r.id.padEnd(9)}${tag.padEnd(TTY ? 14 : 6)}${r.title}`);
+    for (const e of r.evidence || []) line(`    ${dim(e)}`);
+  }
+  head(`结果：${res.pass} 过 / ${res.fail} 不过 / ${res.skip} 跳过`);
+  process.exit(res.fail > 0 ? 1 : 0);
+}
+
+function getJson(port, p) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: p, timeout: 1200 }, (res) => {
+      let b = '';
+      res.on('data', (d) => (b += d));
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode, body: JSON.parse(b) });
+        } catch {
+          resolve({ status: res.statusCode, body: null });
+        }
+      });
+    });
+    req.on('error', () => resolve({ status: 0, body: null }));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ status: 0, body: null });
+    });
+  });
+}
+
+async function cmdStatus() {
+  head('costgate · 状态');
+  const dir = dirOpt();
+  const costLedger = path.join(dir, fsObs.COST_LEDGER_NAME);
+  const fsLedger = path.join(dir, fsObs.LEDGER_NAME);
+  for (const [label, f] of [['请求账本', costLedger], ['文件账本', fsLedger]]) {
+    try {
+      const st = fs.statSync(f);
+      kv(label, `${nf(fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).length)} 条  ${dim(new Date(st.mtimeMs).toLocaleString('zh-CN', { hour12: false }))}`);
+    } catch {
+      kv(label, dim('还没有'));
+    }
+  }
+  const ports = [
+    [18792, 'manager'],
+    [18880, 'unified'],
+    [18790, 'codex'],
+    [18791, 'claude'],
+    [18794, 'cursor'],
+  ];
+  const up = [];
+  for (const [p, name] of ports) {
+    const r = await getJson(p, '/');
+    if (r.status > 0) up.push(`${name}:${p}`);
+  }
+  kv('在跑', up.length ? up.join('  ') : dim('都没有'));
+}
+
+function main() {
+  switch (cmd) {
+    case 'today':
+      return cmdToday();
+    case 'watch':
+      return cmdWatch();
+    case 'who':
+      return cmdWho();
+    case 'check':
+      return cmdCheck();
+    case 'status':
+      return cmdStatus();
+    case 'help':
+    case '--help':
+    case '-h':
+      line(
+        [
+          bold('costgate'),
+          '',
+          '  costgate                  今天的账（默认）',
+          '  costgate today --days 7   最近 7 天',
+          '  costgate today --day DATE 指定某天',
+          '  costgate who <文件>        这个文件被谁改过',
+          '  costgate watch            前台观测文件改动',
+          '  costgate check [目录]      对一份仓库跑判据',
+          '  costgate status           服务与账本状态',
+          '',
+          dim('  账本目录：' + fsObs.DEFAULT_DIR),
+        ].join('\n')
+      );
+      return;
+    default:
+      line(red(`未知命令：${cmd}`));
+      line(dim('试试 costgate help'));
+      process.exit(2);
+  }
+}
+
+main();
