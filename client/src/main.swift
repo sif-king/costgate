@@ -702,6 +702,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     // 3.3：关窗（红 X）后程序坞仍在，点图标要能重新打开。
     // 默认实现不会自动把已关闭窗口重新 orderFront，必须显式实现。
     func applicationShouldHandleReopen(_ sender: NSApplication) -> Bool {
+        // 窗口对象万一被释放（理论上 isReleasedWhenClosed=false 已兜底），重建一次。
+        if window == nil { buildUI() }
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -721,6 +723,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.titleVisibility = .hidden   // 隐藏居中标题，只留交通灯，避免标题/页面顶到灯下
         // 顶部留白区与系统标题栏同色，不露黑边（3.1：WebView 不再顶到交通灯）
         window.backgroundColor = NSColor.windowBackgroundColor
+        // 3.3 兜底：关窗（红 X）后窗口对象不被释放，reopen 时 makeKeyAndOrderFront 才有对象可操作。
+        window.isReleasedWhenClosed = false
         window.center()
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
