@@ -699,6 +699,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         checkAndStart()
     }
 
+    // 3.3：关窗（红 X）后程序坞仍在，点图标要能重新打开。
+    // 默认实现不会自动把已关闭窗口重新 orderFront，必须显式实现。
+    func applicationShouldHandleReopen(_ sender: NSApplication) -> Bool {
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+
+    // 关窗不退出应用：保持程序坞常驻，等用户从程序坞或菜单重新打开。
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     func buildUI() {
         let w = 1080, h = 760
         window = NSWindow(contentRect: NSRect(x: 260, y: 140, width: w, height: h),
@@ -706,6 +718,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                           backing: .buffered, defer: false)
         window.title = APP_NAME
         window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden   // 隐藏居中标题，只留交通灯，避免标题/页面顶到灯下
+        // 顶部留白区与系统标题栏同色，不露黑边（3.1：WebView 不再顶到交通灯）
+        window.backgroundColor = NSColor.windowBackgroundColor
         window.center()
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h))
@@ -725,7 +740,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         spinner.startAnimation(nil)
         content.addSubview(spinner)
 
-        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: w, height: h - 54))
+        // 3.1：WebView 顶部留 28px 交通灯安全区（不再从 y=0 起，避免页面顶到红黄绿三盏灯下）。
+        // 底部 54px 留给状态条（statusLabel / spinner），不参与页面。坐标用 Int，与全文件一致。
+        let topInset = 28
+        webView = WKWebView(frame: NSRect(x: 0, y: topInset, width: w, height: h - 54 - topInset))
         webView.autoresizingMask = [.width, .height]
         webView.isHidden = true
         webView.navigationDelegate = self   // 渲染进程崩溃 → didTerminate → 自动重载面板
