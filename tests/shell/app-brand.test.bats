@@ -114,6 +114,8 @@ setup() {
 
 @test "web favicon and in-page logo share the costgate mark" {
   local fav="$ROOT/multi-proxy-manager/public/favicon.svg"
+  local nav="$ROOT/multi-proxy-manager/public/nav.js"
+  local pub="$ROOT/multi-proxy-manager/public"
   [ -f "$fav" ] || {
     echo "缺 favicon.svg" >&2
     return 1
@@ -122,11 +124,37 @@ setup() {
     echo "favicon 的无障碍名不是 costgate" >&2
     return 1
   }
-  # 同一个标记必须在页面头部出现，否则标签页和面板内 logo 长得不一样
-  local pages
-  pages="$(grep -l 'class="cg-glyph"' "$ROOT"/multi-proxy-manager/public/*.html | wc -l | tr -d ' ')"
-  [ "$pages" -ge 10 ] || {
-    echo "只有 $pages 个页面带 cg-glyph 标记（改 logo 时漏了页面）" >&2
+
+  # 2026-11-13 固定侧栏改造后，品牌 SVG 由 nav.js 的 CG_BADGE / buildBrand() 单一真源
+  # 运行时注入，各页 HTML 只留空骨架。守卫因此钉「真源在不在 + 覆盖面全不全」，
+  # 不再逐页 grep HTML —— 那样会把刻意收敛成的单一真源误判成「漏了 9 个页面」。
+  grep -qF 'class="cg-glyph"' "$nav" || {
+    echo "nav.js 的 CG_BADGE 里没有 cg-glyph 标记：侧栏 logo 会和 favicon 不一样" >&2
+    return 1
+  }
+  grep -qF 'buildBrand()' "$nav" || {
+    echo "nav.js 没有把品牌徽标渲染进侧栏（真源存在但没接上）" >&2
+    return 1
+  }
+
+  local pages bad
+  pages="$(grep -l 'class="sidebar"' "$pub"/*.html | wc -l | tr -d ' ')"
+  [ "$pages" -ge 8 ] || {
+    echo "只有 $pages 个页面带侧栏骨架（固定侧栏改造前是 9 页）" >&2
+    return 1
+  }
+  bad="$(for f in $(grep -l 'class="sidebar"' "$pub"/*.html); do
+           grep -qF 'nav.js' "$f" || echo "$f"
+         done)"
+  [ -z "$bad" ] || {
+    echo "以下页面有侧栏却没有引 nav.js，运行时不会注入品牌标记：" >&2
+    echo "$bad" >&2
+    return 1
+  }
+
+  # 登录页没有侧栏，标记仍须自带，否则「标签页 / 登录页 / 面板」三处会读成三个产品
+  grep -qF 'class="cg-glyph"' "$pub/login.html" || {
+    echo "login.html 没有 cg-glyph 标记（它没有侧栏，拿不到 nav.js 注入）" >&2
     return 1
   }
 }
