@@ -13,6 +13,9 @@ const { test, expect } = require('@playwright/test');
 const { seedAuth } = require('./helpers/auth');
 
 const spaViews = [
+  // 「今天」是 2026-11-13 新增的第一个，也是默认页——它最容易出的问题是
+  // 「数据没到就停在一堆加载态」，所以必须被这条盯着。
+  { id: 'today', label: '今天' },
   { id: 'health', label: '健康状态' },
   { id: 'alerts', label: '告警中心' },
   { id: 'registry', label: 'Agent 清单' },
