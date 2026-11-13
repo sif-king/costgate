@@ -2623,7 +2623,7 @@
           if (budUnconfigured) {
             budInfo.innerHTML = MPStates.empty({
               title: '未配置预算 · 零行为变更',
-              hint: '建 ~/.multi-proxy-manager/budget.json（hardCap > 0）后刷新即可看到判级；该文件只负责显示，是否真拦截由 PROXY_BUDGET_GUARD 控制（默认关）。'
+              hint: '建本机预算文件（hardCap > 0）后刷新即可看到判级；该文件只负责显示，是否真拦截由预算开关控制（默认关）。'
             });
           } else {
             budInfo.innerHTML = MPStates.error({

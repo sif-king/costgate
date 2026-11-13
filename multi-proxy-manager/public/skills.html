@@ -120,14 +120,13 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
        <p class="page-subtitle">各 agent 宿主已装 skill 的只读盘点 + 每条的 token 估算账本（不读改、不写盘）</p>
      </div>
 
-     <!-- 门控关时：显示开启提示（routes/skill-hosts.js 门控 PROXY_L2_SKILLHOSTS 关 → 403） -->
+     <!-- 门控关时：显示开启提示 -->
      <div class="gate-closed hidden" id="gateClosedView">
        <div class="gate-icon" data-mp-icon="status.lock"></div>
        <div class="gate-title">技能扫描功能未开启</div>
        <div class="gate-body">
-         路由 <code>/api/skill-hosts</code> 由门控 <code>PROXY_L2_SKILLHOSTS</code> 控制（默认关 = 零副作用，与 knowledge/skill 同模式）。<br>
-         只暴露只读面：<code>scan</code> 纯读目录、<code>plan</code> dry-run；<code>install</code> / <code>setEnabled</code> <strong>不上 HTTP</strong>（非侵入④：内核绝不默认写 agent 目录）。<br>
-         开灰度：<code>PROXY_L2_SKILLHOSTS=1 node server.js</code>
+         技能扫描默认关闭（零副作用）。开启后只做<strong>只读盘点</strong>：列出各 agent 已装的 skill、估算每条的 token 账本；不读改配置、不写盘。<br>
+         开启方式见面板「设置」中的功能开关说明。
        </div>
        <button class="btn btn-outline" onclick="checkGate()">重新检测</button>
      </div>
@@ -155,7 +154,7 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
            </div>
          </div>
          <div class="kb-card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-           <input type="text" id="projectInput" placeholder="项目目录绝对路径（如 /Users/x/Documents/AI项目/multi-proxy）" style="flex:1;min-width:240px;" aria-label="项目目录绝对路径（如 /Users/x/Documents/AI项目/multi-proxy）">
+           <input type="text" id="projectInput" placeholder="项目目录绝对路径（如 /Users/x/Documents/AI项目/costgate）" style="flex:1;min-width:240px;" aria-label="项目目录绝对路径（如 /Users/x/Documents/AI项目/costgate）">
            <button class="btn btn-outline" id="scanProjectBtn">按项目扫</button>
            <input type="number" id="budgetInput" placeholder="预算 token" value="12000" style="width:150px;" title="一次请求最多装多少 token（估算口径，非真实 usage）" aria-label="预算 token">
            <button class="btn btn-primary" id="budgetBtn">算预算</button>
@@ -628,7 +627,7 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
           hideLoading();
           if (!r.ok) {
             if (r.status === 403) {
-              showToast('预算计算未开启：门控关闭（PROXY_SKILL_HOSTS 相关开关）', 'error', 6000);
+              showToast('预算计算未开启：功能开关未开启', 'error', 6000);
             } else {
               showToast('预算计算失败: ' + ((r.body && (r.body.error || r.body.message)) || ('HTTP ' + r.status)), 'error', 6000);
             }
@@ -652,7 +651,7 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
           hideLoading();
           if (!r.ok) {
             if (r.status === 403) {
-              showToast('扫描未开启：门控关闭（PROXY_SKILL_HOSTS 相关开关）', 'error', 6000);
+              showToast('扫描未开启：功能开关未开启', 'error', 6000);
             } else {
               showToast('扫描失败: ' + ((r.body && (r.body.error || r.body.message)) || ('HTTP ' + r.status)), 'error', 6000);
             }
@@ -683,7 +682,7 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
           hideLoading();
           if (!r.ok) {
             if (r.status === 403) {
-              showToast('扫描未开启：门控关闭（PROXY_SKILL_HOSTS 相关开关）', 'error', 6000);
+              showToast('扫描未开启：功能开关未开启', 'error', 6000);
             } else {
               showToast('扫描失败: ' + ((r.body && (r.body.error || r.body.message)) || ('HTTP ' + r.status)), 'error', 6000);
             }

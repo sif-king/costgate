@@ -100,15 +100,13 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
        <p class="page-subtitle">L2 P0 RAG 知识库（拉模式）— 摄取 / 检索 / 删除，零依赖纯内存 + CJK bigram 词频</p>
      </div>
 
-     <!-- 门控关时：显示开启提示（routes/knowledge-base.js 门控 PROXY_KNOWLEDGE_BASE 关 → 403） -->
+     <!-- 门控关时：显示开启提示 -->
      <div class="gate-closed hidden" id="gateClosedView">
        <div class="gate-icon" data-mp-icon="status.lock"></div>
        <div class="gate-title">知识库功能未开启</div>
        <div class="gate-body">
-         路由 <code>/api/knowledge</code> 由门控 <code>PROXY_KNOWLEDGE_BASE</code> 控制（默认关 = 零副作用，与 skill/memory/mcp 同模式）。<br>
-         开灰度需同时满足两条件：<br>
-         <code>PROXY_KNOWLEDGE_BASE=1</code> 才放行；<code>PROXY_KNOWLEDGE_BASE_DIR</code> 才落盘到 manager 目录（不设则仅内存，重启即失）。<br>
-         启动示例：<code>PROXY_KNOWLEDGE_BASE=1 node server.js</code>
+         知识库默认关闭（零副作用）。开启后提供摄取 / 检索 / 删除的本地 RAG 能力，数据默认仅内存、重启即失。<br>
+         开启方式见面板「设置」中的功能开关说明。
        </div>
        <button class="btn btn-outline" onclick="checkGate()">重新检测</button>
      </div>

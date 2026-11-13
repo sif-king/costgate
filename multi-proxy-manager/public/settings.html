@@ -23,14 +23,14 @@
    <main class="content main">
      <header class="page-head">
        <h1 class="page-title">设置</h1>
-       <p class="page-subtitle">外观 · 关于 · 更新与备份</p>
+       <p class="page-subtitle">外观 · 免费模型 · 关于 · 更新与备份</p>
      </header>
 
      <div class="tabs" id="settingsTabs">
        <button class="tab active" data-tab="appearance">外观</button>
        <button class="tab" data-tab="about">关于</button>
        <button class="tab" data-tab="update">更新与备份</button>
-      <button class="tab" data-tab="plugins">插件</button>
+      <button class="tab" data-tab="plugins">免费模型</button>
      </div>
 
      <!-- 外观 -->
@@ -117,7 +117,7 @@
       </style>
       <div class="card">
         <h3 class="card-h">免费模型聚合 <span class="badge" id="flpStatus">检测中…</span></h3>
-        <p class="page-subtitle" style="margin-top:4px">把 OpenRouter / Groq / 硅基流动 / Vercel / OpenCode Zen / Kilo 匿名池 的免费模型聚合成 multi-proxy 统一入口（generic-openai-proxy 18799）。一家 429 自动切下一家。</p>
+        <p class="page-subtitle" style="margin-top:4px">把 OpenRouter / Groq / 硅基流动 / Vercel / OpenCode Zen / Kilo 匿名池 的免费模型聚合成 costgate 统一入口（generic-openai-proxy 18799）。一家 429 自动切下一家。</p>
         <div class="row">
           <div class="row-main">
             <div class="row-title">当前已装免费源</div>
@@ -133,7 +133,7 @@
       <div class="card">
         <h3 class="card-h">风险提示（必读）</h3>
         <ul class="flp-risks" id="flpRisks"><li>加载中…</li></ul>
-        <p class="row-desc" style="margin-top:8px">默认不安装。是否启用由你决定；介意上述风险的用户可始终保持卸载状态，multi-proxy 主体不受影响（18799 核心、其它 provider 均不动）。</p>
+        <p class="row-desc" style="margin-top:8px">默认不安装。是否启用由你决定；介意上述风险的用户可始终保持卸载状态，costgate 主体不受影响（18799 核心、其它 provider 均不动）。</p>
       </div>
     </section>
 
@@ -202,7 +202,7 @@
              var blob = new Blob([JSON.stringify(j, null, 2)], { type: 'application/json' });
              var a = document.createElement('a');
              a.href = URL.createObjectURL(blob);
-             a.download = 'multi-proxy-config-' + new Date().toISOString().slice(0,10) + '.json';
+             a.download = 'costgate-config-' + new Date().toISOString().slice(0,10) + '.json';
              document.body.appendChild(a); a.click(); a.remove();
              setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
              var n = (j && j.redactedFields && j.redactedFields.length) || 0;

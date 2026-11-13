@@ -178,7 +178,7 @@
     });
     var entries = Object.keys(win).map(function (k) { return [k, win[k]]; });
     var total = entries.reduce(function (a, x) { return a + x[1]; }, 0);
-    if (!total) return { stack: '<div class="empty">窗口内无工具 schema 计数（估算轨；门控 PROXY_CONTEXT_TRACK 关闭时也为空）</div>', legend: '' };
+    if (!total) return { stack: '<div class="empty">窗口内无工具 schema 计数（估算轨；功能开关关闭时也为空）</div>', legend: '' };
     entries.sort(function (a, b) { return b[1] - a[1]; });
     var top = entries.slice(0, 5);
     var rest = entries.slice(5).reduce(function (a, x) { return a + x[1]; }, 0);
@@ -336,7 +336,7 @@
     document.getElementById('meta').innerHTML =
       '只观测不改写。当前范围：<b>' + esc(scope) + '</b>（' + nf(rows.length) + ' 请求）。' +
       '分类为估算轨（长度/3 启发式）；实测覆盖 ' + pct(s.actualCoverage) + '。' +
-      '事件为代理侧帧差推断（<code>proxy-frame-diff</code>），是候选不是事实。门控 <code>PROXY_CONTEXT_TRACK</code>。';
+      '事件为代理侧帧差推断，是候选不是事实。';
     document.getElementById('kpi').innerHTML = kpiHtml(s);
     document.getElementById('stack').innerHTML = stackHtml(s.byCategory, total);
     document.getElementById('legend').innerHTML = legendHtml(s.byCategory, total);
