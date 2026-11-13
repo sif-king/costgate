@@ -368,7 +368,9 @@ describe('registerExecutor / 查询 / 工厂', () => {
 
   test('SPEC_VERSION / ISOLATION_MARKERS_FILE 默认', () => {
     expect(P.SPEC_VERSION).toBe('1.0.0');
+    // 🔴 钉真源，不钉死 basename：本机 HOME 有旧目录时解析会回退旧路径，干净 CI 会落 .costgate。
+    //    2026-11-14 P0 Security Gate 就是被这句写死的 '.multi-proxy-manager' 判红的（本地恒绿 / CI 红）。
     expect(P.ISOLATION_MARKERS_FILE).toBe(
-      path.join(os.homedir(), '.multi-proxy-manager', 'provider-isolation.json'));
+      path.join(require('../../lib/data-dir').resolveDataDir(), 'provider-isolation.json'));
   });
 });

@@ -164,3 +164,59 @@ describe('数据目录漂移守卫', () => {
     expect(scan()).toEqual(BASELINE);
   });
 });
+
+// 2026-11-14 P0 Security Gate 红项复盘：这次的变量不在代码树里，在 HOME 里。
+// 干净 checkout 的 preflight 抓不到「本机有 ~/.multi-proxy-manager 所以断言恒绿」，
+// CI runner 的 /home/runner 是空的，解析到 .costgate，写死的断言当场红。
+// 于是把「测试里写死生产默认 basename」这件事本身变成机器判的。
+describe('测试断言不得写死生产默认目录名', () => {
+  function scanTestAssumptions(root = ROOT) {
+    const base = path.join(root, 'tests', 'unit');
+    if (!fs.existsSync(base)) return [];
+    const found = [];
+    const walk = (dir, rel) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const abs = path.join(dir, ent.name);
+        const r = rel + '/' + ent.name;
+        if (ent.isDirectory()) { walk(abs, r); continue; }
+        if (!ent.name.endsWith('.test.js')) continue;
+        // 唯一例外：本文件同时持有词表和注入样本字符串，扫自己必然自指。
+        // 精确到这一个路径，不放大成目录/前缀豁免；其余单测文件全部在扫描范围内。
+        if (r === 'tests/unit/data-dir.test.js') continue;
+        const lines = fs.readFileSync(abs, 'utf8').split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const cur = lines[i].trim();
+          if (!cur || cur.startsWith('//') || cur.startsWith('*') || cur.startsWith('/*')) continue;
+          const nxt = (lines[i + 1] || '').trim();
+          const nextIsComment = !nxt || nxt.startsWith('//') || nxt.startsWith('*') || nxt.startsWith('/*');
+          const windowText = lines[i] + (nextIsComment ? '' : ' ' + (lines[i + 1] || ''));
+          // 精确形：path.join(os.homedir(), '.multi-proxy-manager', ...)。
+          // 不用「同现即命中」——守卫自己就持有这个词表，会把自身判成违规（第一跑实测踩过）。
+          if (/os\.homedir\(\)\s*,\s*['"]\.multi-proxy-manager['"]/.test(windowText)) {
+            found.push(r);
+            break;
+          }
+        }
+      }
+    };
+    walk(base, 'tests/unit');
+    return found.sort();
+  }
+
+  it('单测断言生产默认路径时一律走 lib/data-dir.js 真源', () => {
+    expect(scanTestAssumptions()).toEqual([]);
+  });
+
+  it('守卫本身能抓到注入（否则是假绿）', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-dd-assert-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'tests', 'unit'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'tests', 'unit', 'probe.test.js'),
+        "expect(X).toBe(path.join(os.homedir(), '.multi-proxy-manager', 'x.json'));\n");
+      expect(scanTestAssumptions(tmp)).toEqual(['tests/unit/probe.test.js']);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+    expect(scanTestAssumptions()).toEqual([]);
+  });
+});
