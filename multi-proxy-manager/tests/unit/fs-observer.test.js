@@ -107,6 +107,30 @@ describe('fs-observer · WorkBuddy 会话目录', () => {
     test('验收探针文件不进账本', () => {
         expect(obs.IGNORE_RE.test('/p/.verify-probe-123.txt')).toBe(true);
     });
+
+    test('测试产物不进账本（跑一次 E2E 不该塞几十条「文件改动」）', () => {
+        expect(obs.IGNORE_RE.test('/p/multi-proxy-manager/test-results/a/error.md')).toBe(true);
+        expect(obs.IGNORE_RE.test('/p/playwright-report/index.html')).toBe(true);
+        // 业务文件不能被误伤
+        expect(obs.IGNORE_RE.test('/p/multi-proxy-manager/tests/unit/a.test.js')).toBe(false);
+        expect(obs.IGNORE_RE.test('/p/l2/report.js')).toBe(false);
+    });
+
+    test('workbuddyCwdFor：命中文件自己的祖先目录，而不只是观测根', () => {
+        // 这条修的是真亏损：文章体系 / Portico 是各自独立的 git 仓库，
+        // 不在观测根那一层，于是它们下面的改动一天里有八成落成 unknown。
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-wb3-'));
+        fs.mkdirSync(path.join(home, '.workbuddy', 'projects', 'Users-x-Documents-art'), { recursive: true });
+        const got = obs.workbuddyCwdFor('/Users/x/Documents/art/2026/post.md', { home });
+        expect(got).toBe('/Users/x/Documents/art');
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('workbuddyCwdFor：没有会话目录就返回 null，不瞎猜', () => {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-wb4-'));
+        expect(obs.workbuddyCwdFor('/Users/x/nowhere/a.md', { home })).toBe(null);
+        fs.rmSync(home, { recursive: true, force: true });
+    });
 });
 describe('fs-observer · 真观测（临时目录端到端）', () => {
     let tmpRoot;

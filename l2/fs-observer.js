@@ -34,6 +34,9 @@ const REQ_WINDOW_MS = 3 * 60 * 1000;
 const IGNORE_RE = new RegExp(
   [
     '(^|/)(node_modules|\\.git|logs|dist|build|\\.next|\\.nuxt|__pycache__|\\.venv|venv|\\.cache)(/|$)',
+    // 测试/构建产物：跑了 41 条 E2E 就往账本里塞 86 条「文件改动」，
+    // 那不是「谁动了我的文件」，是工具吐的渣。忽略它们，日报才有人看。
+    '(^|/)(test-results|playwright-report|blob-report|coverage|\\.pytest_cache|\\.nyc_output)(/|$)',
     '\\.(log|tmp|swp|swo|lock|pid)$',
     '(^|/)\\.DS_Store$',
     '\\.verify-probe',
@@ -297,6 +300,33 @@ function recentSessionCwds({ home = os.homedir(), days = 7, maxFiles = 40 } = {}
 }
 
 /**
+ * 某个文件**自己的祖先目录**里，有没有哪一个正好是 WorkBuddy 的会话 cwd。
+ *
+ * 为什么不复用 workbuddyCwds(roots)：那个只对着「观测根」正向比一次，
+ * 于是根之外的仓库（文章体系、Portico 这类同属一个项目族但各自是 git 仓库的目录）
+ * 全都归不到——实测一天里有 80% 的改动落成 unknown，账就没什么用了。
+ *
+ * 这里不做路径反解（`a-b` 到底是 `a/b` 还是 `a-b` 本身有歧义），
+ * 而是从文件所在目录往上走，对每个祖先正向编码再查目录是否存在。
+ * 编码是单向的，所以永远不会猜错。
+ */
+function workbuddyCwdFor(absPath, { home = os.homedir() } = {}) {
+  const base = path.join(home, '.workbuddy', 'projects');
+  let dir = path.dirname(absPath);
+  for (let i = 0; i < 12; i++) {
+    if (!dir || dir === '/' || dir === path.dirname(dir)) return null;
+    const enc = dir.replace(/^\//, '').replace(/\//g, '-');
+    try {
+      if (fs.statSync(path.join(base, enc)).isDirectory()) return dir;
+    } catch {
+      /* 这一层没有会话，继续往上 */
+    }
+    dir = path.dirname(dir);
+  }
+  return null;
+}
+
+/**
  * WorkBuddy 的会话目录是以 cwd 编码命名的（/ → -）。所以不用反解路径，
  * 直接拿观测根去正向比对：目录存在，就说明这个 agent 在这个仓库里干过活。
  */
@@ -395,7 +425,14 @@ function createObserver(opts = {}) {
     const tsMs = Date.now();
     refreshSnapshot();
     refreshRequests();
-    const a = attribute(absPath, tsMs, snap, reqCache.map);
+    let a = attribute(absPath, tsMs, snap, reqCache.map);
+    // 进程表和观测根都没命中时，再看这个文件自己的祖先目录里有没有 WorkBuddy 会话。
+    // 置信只给 medium：它只证明「这个目录有会话在跑」，没证明就是那个会话动的手。
+    // 宁可 medium 也不要 unknown —— 但也不冒充 high。
+    if (!a.agent) {
+      const wb = workbuddyCwdFor(absPath);
+      if (wb) a = { agent: 'workbuddy', confidence: 'medium', why: `session:${wb}` };
+    }
     const rec = {
       ts: new Date(tsMs).toISOString(),
       localDay: localDay(new Date(tsMs)),
@@ -507,6 +544,7 @@ module.exports = {
   snapshotAgents,
   recentSessionCwds,
   workbuddyCwds,
+  workbuddyCwdFor,
   mergeProcEvidence,
   recentRequestsByAgent,
   discoverRoots,
