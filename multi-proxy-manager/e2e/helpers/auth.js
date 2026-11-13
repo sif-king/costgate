@@ -16,9 +16,10 @@ const os = require('os');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 
-// 与 lib/auth.js 同源：密钥文件在 home 下，测试服继承同一 HOME。
+// 与 lib/auth.js 同源：密钥文件走 lib/data-dir.js 单一真源（含「新不存在回退读旧」），
+// 测试服继承同一 HOME；不在这里另写一份路径，否则切目录后会出现 401 假绿。
 function managerToken() {
-  const secretFile = path.join(os.homedir(), '.multi-proxy-jwt-secret');
+  const secretFile = require('../../lib/data-dir').resolveJwtSecretFile();
   const secret = fs.readFileSync(secretFile, 'utf8').trim();
   return jwt.sign({ authenticated: true, ts: Date.now() }, secret, { expiresIn: '2h' });
 }

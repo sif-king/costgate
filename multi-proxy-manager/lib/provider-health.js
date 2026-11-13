@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const PROVIDER_HEALTH_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'provider-health.json');
+const PROVIDER_HEALTH_FILE = require('./data-dir').dataFile('provider-health.json');
 const DEFAULT_CONFIG = {
   failureThreshold: 3,            // 连续失败 N 次 → 标记 unhealthy / 建议隔离
   isolateDelayMs: 5 * 60 * 1000,  // 5min 后自动重新试探（unhealthyUntil）

@@ -4,78 +4,125 @@
 
 'use strict';
 
-// 运行时数据目录：零行为变更 + 漂移守卫。
-// 🔴 基线是「截至 2026-11-13 的观测快照」，不是目标值：Phase 1 每收口一个模块，
-//    就从 BASELINE 里删掉一项（或减计数），测试会红着逼你更新——这是进度条，不是永久规则。
-//    别把这里的数字抄进长期文档，用前实查本文件。
+// 运行时数据目录：Phase 1 已切 .costgate（2026-11-14 老板拍板）。
+// 🔴 切缺省本身没有价值，「老安装不用重登、账本不丢」才是判据，所以这里真建临时目录测三态，
+//    不靠断言常量。漂移守卫的 BASELINE 是观测快照，不是目标值：收口一个模块就删一项。
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
-const { DATA_DIR_BASENAME, resolveDataDir, dataFile } = require('../../lib/data-dir');
+const DD = require('../../lib/data-dir');
+const {
+  DATA_DIR_BASENAME, LEGACY_DATA_DIR_BASENAME,
+  JWT_SECRET_BASENAME, LEGACY_JWT_SECRET_BASENAME,
+  resolveDataDir, resolveJwtSecretFile, dataFile,
+} = DD;
 
-describe('data-dir 单一真源 · 缺省零行为变更', () => {
-  const saved = process.env.MP_DATA_DIR;
+const ENV_KEYS = ['MP_DATA_DIR', 'JWT_SECRET_FILE'];
+
+describe('data-dir 单一真源 · Phase 1 缺省已切 .costgate', () => {
+  const saved = {};
+  beforeEach(() => {
+    for (const k of ENV_KEYS) saved[k] = process.env[k];
+    for (const k of ENV_KEYS) delete process.env[k];
+  });
   afterEach(() => {
-    if (saved === undefined) delete process.env.MP_DATA_DIR;
-    else process.env.MP_DATA_DIR = saved;
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
   });
 
-  it('缺省仍是旧目录（Phase 1 未拍板，不得偷偷切）', () => {
-    delete process.env.MP_DATA_DIR;
-    expect(DATA_DIR_BASENAME).toBe('.multi-proxy-manager');
-    expect(resolveDataDir()).toBe(path.join(os.homedir(), '.multi-proxy-manager'));
+  function tmpHome() {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'cg-dd-home-'));
+  }
+
+  it('新名已切、旧名只作为回退常量保留', () => {
+    expect(DATA_DIR_BASENAME).toBe('.costgate');
+    expect(LEGACY_DATA_DIR_BASENAME).toBe('.multi-proxy-manager');
+    expect(JWT_SECRET_BASENAME).toBe('.costgate-jwt-secret');
+    expect(LEGACY_JWT_SECRET_BASENAME).toBe('.multi-proxy-jwt-secret');
   });
 
-  it('MP_DATA_DIR 覆盖优先，且不缓存（每次调用读 env）', () => {
-    delete process.env.MP_DATA_DIR;
-    expect(resolveDataDir()).toBe(path.join(os.homedir(), '.multi-proxy-manager'));
+  it('【零负向核心 1】只有旧目录存在 → 仍然读旧（老安装不重登、账本不丢）', () => {
+    const home = tmpHome();
+    try {
+      fs.mkdirSync(path.join(home, LEGACY_DATA_DIR_BASENAME));
+      expect(resolveDataDir({ home })).toBe(path.join(home, LEGACY_DATA_DIR_BASENAME));
+      expect(dataFile('password', { home })).toBe(path.join(home, LEGACY_DATA_DIR_BASENAME, 'password'));
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('【零负向核心 2】新目录存在 → 用新（跑过 migrate --apply 之后）', () => {
+    const home = tmpHome();
+    try {
+      fs.mkdirSync(path.join(home, LEGACY_DATA_DIR_BASENAME));
+      fs.mkdirSync(path.join(home, DATA_DIR_BASENAME));
+      expect(resolveDataDir({ home })).toBe(path.join(home, DATA_DIR_BASENAME));
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('【零负向核心 3】两个都不存在 → 用新（全新安装首次写入会创建）', () => {
+    const home = tmpHome();
+    try {
+      expect(resolveDataDir({ home })).toBe(path.join(home, DATA_DIR_BASENAME));
+      expect(resolveJwtSecretFile({ home })).toBe(path.join(home, JWT_SECRET_BASENAME));
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('JWT 密钥同样三态回退：旧文件存在时沿用，老 token 不失效', () => {
+    const home = tmpHome();
+    try {
+      fs.writeFileSync(path.join(home, LEGACY_JWT_SECRET_BASENAME), 'legacy-secret');
+      expect(resolveJwtSecretFile({ home })).toBe(path.join(home, LEGACY_JWT_SECRET_BASENAME));
+      fs.writeFileSync(path.join(home, JWT_SECRET_BASENAME), 'new-secret');
+      expect(resolveJwtSecretFile({ home })).toBe(path.join(home, JWT_SECRET_BASENAME));
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('干净 HOME（home=""）返回相对 basename，不探测磁盘', () => {
+    expect(resolveDataDir({ home: '' })).toBe('.costgate');
+    expect(resolveJwtSecretFile({ home: '' })).toBe('.costgate-jwt-secret');
+    expect(resolveDataDir({ home: '/tmp/cg-home' })).toBe(path.join('/tmp/cg-home', '.costgate'));
+  });
+
+  it('env 覆盖优先、不缓存（每次调用都读）', () => {
     process.env.MP_DATA_DIR = '/tmp/cg-override';
+    process.env.JWT_SECRET_FILE = '/tmp/cg-secret';
     expect(resolveDataDir()).toBe('/tmp/cg-override');
+    expect(resolveJwtSecretFile()).toBe('/tmp/cg-secret');
     expect(dataFile('password')).toBe(path.join('/tmp/cg-override', 'password'));
+    delete process.env.MP_DATA_DIR;
+    expect(resolveDataDir()).not.toBe('/tmp/cg-override');
   });
 
-  it('opts.dir 显式注入优先于 env', () => {
+  it('opts.dir / opts.file 显式注入优先于 env', () => {
     process.env.MP_DATA_DIR = '/tmp/cg-override';
     expect(resolveDataDir({ dir: '/tmp/cg-injected' })).toBe('/tmp/cg-injected');
+    expect(resolveJwtSecretFile({ file: '/tmp/cg-jwt' })).toBe('/tmp/cg-jwt');
   });
 
-  it('opts.home="" 保留干净 HOME 语义（相对路径，供 consent/session-store 收口）', () => {
-    delete process.env.MP_DATA_DIR;
-    expect(resolveDataDir({ home: '' })).toBe('.multi-proxy-manager');
-    expect(resolveDataDir({ home: '/tmp/cg-home' })).toBe(path.join('/tmp/cg-home', '.multi-proxy-manager'));
-  });
-
-  it('dataFile 拼文件名', () => {
-    delete process.env.MP_DATA_DIR;
-    expect(dataFile('agent-token')).toBe(path.join(os.homedir(), '.multi-proxy-manager', 'agent-token'));
+  it('本机真场景：旧目录在、新目录不在时，缺省解析确实回退读旧', () => {
+    // 条件式断言：CI 干净 checkout 两者都没有，此时跳过而不是假绿/假红。
+    const home = os.homedir();
+    const hasOld = fs.existsSync(path.join(home, LEGACY_DATA_DIR_BASENAME));
+    const hasNew = fs.existsSync(path.join(home, DATA_DIR_BASENAME));
+    if (hasOld && !hasNew) {
+      expect(resolveDataDir()).toBe(path.join(home, LEGACY_DATA_DIR_BASENAME));
+    } else {
+      expect(resolveDataDir()).toBe(path.join(home, DATA_DIR_BASENAME));
+    }
   });
 });
 
 describe('数据目录漂移守卫', () => {
-  // 当前硬写快照（非注释代码行计数）。auth.js 已收口到 lib/data-dir.js，故不在表内。
-  // lib/migrate.js 的 OLD_DATA_DIR 常量、lib/error-patterns.js 的错误提示文本属合法保留。
+  // 收口后的观测快照：只剩两个「必须知道旧名字」的常量（回退与迁移）。
+  // 其余模块一律走 lib/data-dir.js；新模块新增硬写即红。
   const BASELINE = {
-    'lib/data-dir.js': 1, // 单一真源本身，合法
-    'lib/action-audit.js': 1,
-    'lib/consent.js': 3,
-    'lib/context-store.js': 1,
-    'lib/cost-track.js': 2,
-    'lib/error-patterns.js': 3,
-    'lib/health.js': 1,
-    'lib/logger.js': 1,
+    'lib/data-dir.js': 1,
     'lib/migrate.js': 1,
-    'lib/process-manager.js': 1,
-    'lib/provider-health.js': 1,
-    'lib/provider-isolation-executor.js': 1,
-    'lib/session-store.js': 1,
-    'lib/worktree-manager.js': 1,
-    'routes/budget.js': 1,
-    'routes/free-llm-plugin.js': 1,
-    'routes/meta.js': 1,
-    'routes/side-effect-guard.js': 1,
   };
 
   function scan(root = ROOT) {
@@ -103,8 +150,6 @@ describe('数据目录漂移守卫', () => {
   });
 
   it('守卫本身能抓到注入（否则是假绿）', () => {
-    // 功能级注入验证：在临时树里造一个含硬写的新模块，scan 必须真的把它扫出来。
-    // 不往项目 lib/ 写文件，避免并行套件读到半成品。
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-dd-drift-'));
     try {
       fs.mkdirSync(path.join(tmp, 'lib'));

@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const LOG_DIR = path.join(os.homedir(), '.multi-proxy-manager', 'logs');
+const LOG_DIR = path.join(require('./data-dir').resolveDataDir(), 'logs');
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 const LOG_FILE = path.join(LOG_DIR, 'requests.log');
 

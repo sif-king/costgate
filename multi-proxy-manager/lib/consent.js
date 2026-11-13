@@ -22,7 +22,7 @@ const RECORD_VERSION = 2;
 const DEFAULT_DEFER_TTL_MS = 24 * 60 * 60 * 1000;
 
 function stateDirOf(home) {
-  return home ? path.join(home, '.multi-proxy-manager') : '';
+  return home ? require('./data-dir').resolveDataDir({ home }) : '';
 }
 
 // 读状态：是否已同意（标记存在即已同意）。绝不抛异常。
@@ -89,7 +89,7 @@ function revokeConsent(opts = {}) {
 // 门的 consentBypass() 认它 ⇒ 放行；过期即失效，门重新拦（不是永久豁免）。
 function deferPathOf(opts = {}) {
   const home = opts.home || process.env.HOME || process.env.USERPROFILE || '';
-  const stateDir = opts.stateDir || (home ? path.join(home, '.multi-proxy-manager') : '');
+  const stateDir = opts.stateDir || (home ? require('./data-dir').resolveDataDir({ home }) : '');
   return opts.deferPath || (stateDir ? path.join(stateDir, DEFER_BASENAME) : DEFER_BASENAME);
 }
 
@@ -157,7 +157,7 @@ function isDeferred(opts = {}) {
 
 function recordPathOf(opts = {}) {
   const home = opts.home || process.env.HOME || process.env.USERPROFILE || '';
-  const stateDir = opts.stateDir || (home ? path.join(home, '.multi-proxy-manager') : '');
+  const stateDir = opts.stateDir || (home ? require('./data-dir').resolveDataDir({ home }) : '');
   return opts.recordPath || (stateDir ? path.join(stateDir, RECORD_BASENAME) : RECORD_BASENAME);
 }
 

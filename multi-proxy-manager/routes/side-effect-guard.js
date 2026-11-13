@@ -21,7 +21,7 @@
 const os = require('os');
 const path = require('path');
 
-const BUSINESS_GUARD_DIR = path.join(os.homedir(), '.multi-proxy-manager', 'guard-business');
+const BUSINESS_GUARD_DIR = path.join(require('../lib/data-dir').resolveDataDir(), 'guard-business');
 
 let guard = null;
 

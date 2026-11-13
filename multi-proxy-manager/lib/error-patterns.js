@@ -14,8 +14,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const ERROR_PATTERNS_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'error-patterns.json');
-const ERROR_HISTORY_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'error-history.jsonl');
+const ERROR_PATTERNS_FILE = require('./data-dir').dataFile('error-patterns.json');
+const ERROR_HISTORY_FILE = require('./data-dir').dataFile('error-history.jsonl');
 const MAX_HISTORY_LINES = 2000;
 
 // ---------- 种子错误模式库（真实来源：AGENTS.md / 03-adr / P0-FIXES.md / HANDOVER / PROJECT-STATUS） ----------
@@ -40,7 +40,7 @@ const SEED_PATTERNS = [
     resolution: '依赖缺失。`cd <proxy> && npm install` 安装依赖；若 better-sqlite3 需 `npm rebuild`（见 better-sqlite3-mismatch）。',
     first_seen: '2026-07-03' },
   { id: 'enoent-file', pattern: 'ENOENT|no such file|does not exist',
-    resolution: '文件/路径不存在。检查数据目录 `~/.multi-proxy-manager/`（providers.json / health-history.jsonl / crash-recovery.json）是否齐全；首次运行会自动创建。',
+    resolution: '文件/路径不存在。检查数据目录 `' + require('./data-dir').resolveDataDir() + '`（providers.json / health-history.jsonl / crash-recovery.json）是否齐全；首次运行会自动创建。',
     first_seen: '2026-08-24' },
   { id: 'hermes-flask-faststart', pattern: 'Hermes.*启动失败|Flask.*启动|误报',
     resolution: 'Hermes(Flask) 启动过快导致端口检测误报"启动失败"。manage.sh 已加 sleep 1s 后再检测，无需处理；若仍复现，手动 `manage.sh status` 复查。',

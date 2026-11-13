@@ -11,9 +11,9 @@ const os = require('os');
 const path = require('path');
 
 // ==================== JWT Secret ====================
-// 缺省仍读旧路径 ~/.multi-proxy-jwt-secret（零行为变更）；JWT_SECRET_FILE 可覆盖。
-// 迁移到新路径 ~/.costgate-jwt-secret 由 `manage.sh migrate` 手动触发（见 lib/migrate.js）。
-const JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || path.join(os.homedir(), '.multi-proxy-jwt-secret');
+// 密钥文件走单一真源 lib/data-dir.js：新文件存在用新，否则回退读旧（老安装不重登）。
+// JWT_SECRET_FILE 可覆盖；把旧密钥复制到新路径用 `manage.sh migrate --apply`（见 lib/migrate.js）。
+const JWT_SECRET_FILE = require('./data-dir').resolveJwtSecretFile();
 
 /**
  * Load JWT secret: async-first, with sync fallback for module-load-time use.

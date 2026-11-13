@@ -137,7 +137,7 @@ let PROXY_CONFIGS = buildProxyConfigs();
 // 进程跟踪
 const proxyProcesses = {};
 const proxyCrashRecovery = {}; // name -> { restartCount, lastRestartTime, consecutiveFailures }
-const CRASH_RECOVERY_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'crash-recovery.json');
+const CRASH_RECOVERY_FILE = require('./data-dir').dataFile('crash-recovery.json');
 
 /** Ensure the persistence directory exists */
 function ensureCrashRecoveryDir() {

@@ -8,10 +8,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const consent = require('../../lib/consent');
+// 目录名会随迭代变，断言跟单一真源走，不把 basename 写死在测试里。
+const DIR = require('../../lib/data-dir').DATA_DIR_BASENAME;
 
 function tmpMarker() {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'consent-'));
-  return path.join(d, '.multi-proxy-manager', '.first-launch-consent-done');
+  return path.join(d, DIR, '.first-launch-consent-done');
 }
 
 describe('consent — 首启法务同意门状态模块', () => {
@@ -26,7 +28,7 @@ describe('consent — 首启法务同意门状态模块', () => {
     const r = consent.markConsented({ markerPath: mk, now: 1000 });
     expect(r.success).toBe(true);
     expect(r.consentedAt).toBe(new Date(1000).toISOString());
-    expect(fs.existsSync(mk)).toBe(true); // 父目录 .multi-proxy-manager 被建出
+    expect(fs.existsSync(mk)).toBe(true); // 父目录被建出
     expect(consent.isConsented({ markerPath: mk })).toBe(true);
   });
 
@@ -49,11 +51,11 @@ describe('consent — 首启法务同意门状态模块', () => {
     expect(() => consent.revokeConsent({ markerPath: mk })).not.toThrow();
   });
 
-  test('⑤ consentState 注入 home → 标记落 ~/.multi-proxy-manager/.first-launch-consent-done', () => {
+  test('⑤ consentState 注入 home → 标记落在运行时数据目录', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'home-'));
     const st = consent.consentState({ home });
-    expect(st.stateDir).toBe(path.join(home, '.multi-proxy-manager'));
-    expect(st.markerPath).toBe(path.join(home, '.multi-proxy-manager', '.first-launch-consent-done'));
+    expect(st.stateDir).toBe(path.join(home, DIR));
+    expect(st.markerPath).toBe(path.join(home, DIR, '.first-launch-consent-done'));
     expect(st.consented).toBe(false);
   });
 
@@ -62,7 +64,7 @@ describe('consent — 首启法务同意门状态模块', () => {
     expect(consent.isDeferred({ home })).toBe(false); // 无标记 → 不放行
     const r = consent.deferConsent({ home, now: 1000, ttlMs: 60000 });
     expect(r.success).toBe(true);
-    expect(r.deferPath).toBe(path.join(home, '.multi-proxy-manager', 'consent-defer.json'));
+    expect(r.deferPath).toBe(path.join(home, DIR, 'consent-defer.json'));
     const st = consent.deferState({ home, now: 2000 });
     expect(st.deferred).toBe(true);
     expect(st.remainingMs).toBe(59000);

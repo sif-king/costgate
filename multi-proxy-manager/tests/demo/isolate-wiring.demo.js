@@ -30,7 +30,7 @@ const crypto = require('crypto');
 const P = require('../../lib/provider-isolation-executor');
 
 // 生产路由配置——本冒烟的「绝不触碰」红线对象（误改 = 全局路由重排）
-const PROVIDERS = path.join(os.homedir(), '.multi-proxy-manager', 'providers.json');
+const PROVIDERS = require('../../lib/data-dir').dataFile('providers.json');
 const md5 = (f) => (fs.existsSync(f) ? crypto.createHash('md5').update(fs.readFileSync(f)).digest('hex') : null);
 const tmpFile = (tag) => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'isolate-wiring-')), `provider-isolation-${tag}.json`);
 

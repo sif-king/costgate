@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const HEALTH_HISTORY_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'health-history.jsonl');
+const HEALTH_HISTORY_FILE = require('./data-dir').dataFile('health-history.jsonl');
 const MAX_HISTORY_LINES = 2000;
 
 // 测试可用 setHistoryFile() 重定向持久化路径（默认指向 ~/.multi-proxy-manager/）。

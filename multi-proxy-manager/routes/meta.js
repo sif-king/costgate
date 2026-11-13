@@ -267,7 +267,7 @@ router.get('/env-check', (_req, res) => {
 // 🔴 安全红线：providers.json 里带 provider 的密钥字段，原样导出等于把钥匙写进
 // 一个会被随手存进网盘/贴进工单的文件。导出一律按**字段名**脱敏（正则脱敏
 // 认不出自定义格式的 key，字段名脱敏才靠得住），并在响应里回报脱敏了哪些字段。
-const CONFIG_DIR = path.join(os.homedir(), '.multi-proxy-manager');
+const CONFIG_DIR = require('../lib/data-dir').resolveDataDir();
 const SECRET_FIELD_RE = /(key|token|secret|password|passwd|credential|authorization)/i;
 
 function maskSecrets(value, hitFields, trail) {

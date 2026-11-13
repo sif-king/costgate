@@ -22,7 +22,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const DEFAULT_DIR = path.join(os.homedir() || '', '.multi-proxy-manager');
+const DEFAULT_DIR = require('./data-dir').resolveDataDir();
 const FILENAME = 'action-audit.log';
 
 // 动作结果五态。unknown 是本模块存在的核心理由，不是凑数。

@@ -38,7 +38,7 @@ const budgetGuard = require('../lib/budget-guard');
 const costTrack = require('../lib/cost-track');
 const alertSvc = require('../../l2/alert.js');
 
-const BUDGET_FILE_DEFAULT = path.join(os.homedir(), '.multi-proxy-manager', 'budget.json');
+const BUDGET_FILE_DEFAULT = require('../lib/data-dir').dataFile('budget.json');
 
 // 调用时解析（不是模块加载时）：测试用 PROXY_BUDGET_FILE 指到 tmp，
 // 与 cost-track.ledgerFile() 的 env 优先级同模式。

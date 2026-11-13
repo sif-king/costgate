@@ -38,7 +38,7 @@ const path = require('path');
 const SPEC_VERSION = '1.0.0';
 const SESSION_STATUSES = ['running', 'done', 'failed', 'aborted'];
 const STEP_STATUSES = ['pending', 'running', 'done', 'failed'];
-const DEFAULT_DIR = path.join(process.env.HOME || '', '.multi-proxy-manager');
+const DEFAULT_DIR = require('./data-dir').resolveDataDir({ home: process.env.HOME || '' });
 const FILENAME = 'sessions.json';
 
 function validateSession(s) {

@@ -19,7 +19,7 @@ const router = express.Router();
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const PLUGIN_DIR = path.join(REPO_ROOT, 'free-llm');
-const LIVE = path.join(os.homedir(), '.multi-proxy-manager', 'providers.json');
+const LIVE = require('../lib/data-dir').dataFile('providers.json');
 
 // 风险告知（前端直接展示，与 manifest.disclaimer / README 同源）
 const DISCLAIMER = [

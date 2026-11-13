@@ -289,10 +289,12 @@ describe('cost-track 持久账本 + 三模型字段', () => {
     expect(readRows()[1].prompt).toBe(100);
    });
 
-  test('账本路径默认在 ~/.multi-proxy-manager/，PROXY_COST_LEDGER 可覆盖', () => {
+  test('账本路径默认在运行时数据目录，PROXY_COST_LEDGER 可覆盖', () => {
     expect(CT.ledgerFile()).toBe(LEDGER);
     delete process.env.PROXY_COST_LEDGER;              // 文件级 beforeEach 下个用例会重新设回来
-    expect(CT.ledgerFile()).toBe(path.join(os.homedir(), '.multi-proxy-manager', 'cost-ledger.jsonl'));
+    // 🔴 钉真源，不钉死 basename：本机有旧目录时解析会回退旧路径，干净 CI 则会落新目录。
+    //    写死 '.multi-proxy-manager' 会造成「本地绿 / CI 红」。
+    expect(CT.ledgerFile()).toBe(path.join(require('../../lib/data-dir').resolveDataDir(), 'cost-ledger.jsonl'));
    });
 
   test('loadLedger 读回合并进内存态，返回行数', () => {

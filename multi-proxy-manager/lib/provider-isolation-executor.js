@@ -39,7 +39,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const ISOLATION_MARKERS_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'provider-isolation.json');
+const ISOLATION_MARKERS_FILE = require('./data-dir').dataFile('provider-isolation.json');
 const SPEC_VERSION = '1.0.0';
 const DEFAULT_CONFIG = {
   cooldownMs: 5 * 60 * 1000,   // 同 providerId 在窗口内只「执行」一次（防隔离风暴，与 alert.js 同语义）

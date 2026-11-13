@@ -176,7 +176,7 @@ const _modelPricing = new Map();   // modelId -> {input, output, cacheHit, price
 function loadPricingFromProviders(input) {
   const files = Array.isArray(input)
     ? input
-    : [input || path.join(os.homedir(), '.multi-proxy-manager', 'providers.json')];
+    : [input || require('./data-dir').dataFile('providers.json')];
   let loaded = 0;
   const errors = [];
   for (const f of files) {
@@ -527,7 +527,7 @@ function reportUsage(opts) {
 function ledgerFile() {
   const env = process.env.PROXY_COST_LEDGER;
   return env && env.trim() ? env.trim()
-    : path.join(os.homedir(), '.multi-proxy-manager', 'cost-ledger.jsonl');
+    : require('./data-dir').dataFile('cost-ledger.jsonl');
 }
 
 /**

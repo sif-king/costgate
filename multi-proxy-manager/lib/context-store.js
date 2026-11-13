@@ -18,7 +18,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const DEFAULT_DIR = path.join(os.homedir(), '.multi-proxy-manager');
+const DEFAULT_DIR = require('./data-dir').resolveDataDir();
 const FILENAME = 'context-ledger.jsonl';
 const MAX_ROTATE_BYTES = 5 * 1024 * 1024;
 const RING_MAX = 500;

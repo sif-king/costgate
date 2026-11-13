@@ -19,7 +19,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_BASE_DIR = path.join(process.env.HOME || '', '.multi-proxy-manager', 'worktrees');
+const DEFAULT_BASE_DIR = path.join(require('./data-dir').resolveDataDir({ home: process.env.HOME || '' }), 'worktrees');
 const ID_RE = /^[a-zA-Z0-9_-]+$/;      // sessionId
 const REF_RE = /^[a-zA-Z0-9._/-]+$/;    // branch / baseRef（git 引用合法字符）
 

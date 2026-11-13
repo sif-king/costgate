@@ -8,15 +8,15 @@
 //   仓库/品牌 multi-proxy → costgate。数据目录 ~/.multi-proxy-manager、JWT 密钥
 //   ~/.multi-proxy-jwt-secret 是「既有安装里存着真实计费/路由/配置/会话」的活路径。
 //
-// 决策 2/3 落地口径：
-//   ① 默认不变：resolveDataDir / resolveJwtSecretFile 缺省仍是旧路径（零行为变更，纯增量）。
-//   ② 回退读旧：dataDirForRead / jwtSecretFileForRead 在「新路径不存在」时回退读旧路径，
-//      不报错、不丢数据（决策 3「自动回退读旧」而非强制重登）。
-//   ③ 迁移靠手动命令：migrateDataDir / migrateJwtSecret 默认 dry-run（只报计划），
+// Phase 1（2026-11-14 老板拍板切 .costgate）后的口径：
+//   ① 缺省已切新名（lib/data-dir.js），但 resolveDataDir/resolveJwtSecretFile 带「新不存在则回退读旧」，
+//      所以老安装零行为变更、不强制重登；全新安装才落新目录。
+//   ② 迁移仍靠手动命令：migrateDataDir / migrateJwtSecret 默认 dry-run（只报计划），
 //      apply:true 才真迁移；rename 优先（原子），跨卷/权限失败回退 cp + 保留旧路径 + 告警（可回滚）。
+//   ③ 本模块**不自动挂进启动路径**——只有用户显式 `manage.sh migrate [--apply]` 才动盘。
+//      运行中服务持有旧目录文件句柄，别在不停服的情况下迁移。这是「盲改数据」红线的落点。
 //
-// 本模块**不自动挂进启动路径**——启动时仍用 resolveDataDir/resolveJwtSecretFile（旧默认），
-// 只有用户显式 `manage.sh migrate [--apply]` 才触发迁移。这是「盲改数据」红线的落点。
+// 新名从 lib/data-dir.js 读，防止「代码已切、迁移脚本还搬去旧名」的两套真源漂移。
 
 'use strict';
 
@@ -26,9 +26,9 @@ const path = require('path');
 
 // 旧/新命名（会随迭代变，故集中在常量；迁移脚本读这些，不散落硬编码）
 const OLD_DATA_DIR = '.multi-proxy-manager';
-const NEW_DATA_DIR = '.costgate';
 const OLD_JWT_FILE = '.multi-proxy-jwt-secret';
-const NEW_JWT_FILE = '.costgate-jwt-secret';
+const NEW_DATA_DIR = require('./data-dir').DATA_DIR_BASENAME;
+const NEW_JWT_FILE = require('./data-dir').JWT_SECRET_BASENAME;
 
 function home() {
   return process.env.HOME || os.homedir();
