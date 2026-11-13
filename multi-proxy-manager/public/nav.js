@@ -28,6 +28,9 @@
     today:     '<svg class="icon-svg nav-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
   };
 
+  // 品牌徽标（与既有 .cg-badge / .cg-glyph 同形；侧栏由 nav.js 单源渲染，避免各页 SVG 不一致）
+  var CG_BADGE = '<div class="logo-icon cg-badge"><svg class="cg-glyph" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="cgGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs><path d="M32 4 L56 18 V46 L32 60 L8 46 V18 Z" fill="url(#cgGrad)"/><path d="M37 20 H30 A12 12 0 0 0 30 44 H37" fill="none" stroke="#ffffff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 32 H50" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round"/><path d="M43 27 L46 30 L53 21" fill="none" stroke="#34d399" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+
   var ICON = (global.MPIcons && global.MPIcons.nav) || ICON_FALLBACK;
 
   // ===== 主导航（真实页面/路由）—— 全页一致 =====
@@ -150,7 +153,22 @@
       'color:var(--color-text,#111);font-weight:500}' +
     '.nav-item.active:hover{background:var(--color-bg-hover,rgba(127,127,127,.12))}' +
     '.nav-label{font-size:11px;font-weight:600;color:var(--color-text-tertiary,#94a3b8);' +
-      'padding:16px 12px 6px;margin:0}';
+      'padding:16px 12px 6px;margin:0}' +
+    // 统一页脚（nav.js 全站单源渲染）：主题三态切换器 + 版本 + 登出
+    '.sidebar-footer{display:flex;flex-direction:column;gap:8px;padding:14px 16px;' +
+      'border-top:1px solid var(--color-border,rgba(127,127,127,.2))}' +
+    '.mp-theme-switch{display:flex;gap:4px}' +
+    '.mp-theme-switch button{flex:1;padding:6px 4px;border:1px solid var(--color-border,rgba(127,127,127,.2));' +
+      'background:transparent;color:var(--color-text-secondary,#64748b);border-radius:8px;font:inherit;' +
+      'font-size:12px;cursor:pointer;transition:background-color .12s ease,color .12s ease,border-color .12s ease}' +
+    '.mp-theme-switch button:hover{background:var(--color-bg-hover,rgba(127,127,127,.08))}' +
+    '.mp-theme-switch button.active{background:var(--color-bg-hover,rgba(127,127,127,.14));' +
+      'color:var(--color-text,#111);border-color:var(--color-primary,#3b82f6);font-weight:500}' +
+    '.sidebar-foot-meta{display:flex;align-items:center;justify-content:space-between;gap:8px}' +
+    '.btn-logout{padding:6px 12px;border:1px solid var(--color-border,rgba(127,127,127,.2));background:transparent;' +
+      'color:var(--color-text-secondary,#64748b);border-radius:8px;font:inherit;font-size:12px;cursor:pointer}' +
+    '.btn-logout:hover{background:var(--color-bg-hover,rgba(127,127,127,.08));color:var(--color-text,#111)}' +
+    '.version-info{font-size:11px;color:var(--color-text-tertiary,#94a3b8)}';
 
   function injectNavStyles() {
     if (typeof document === 'undefined') return;
@@ -176,38 +194,51 @@
     var current = opts.current || '';
     injectNavStyles();
 
-    var html = '';
+    // 接管整个侧边栏（品牌 + 导航 + 页脚），保证每页渲染一致，消灭「点哪个菜单跳一套」。
+    // 旧做法：各页自己写死的品牌/页脚/主题按钮并存，每页都不一样。
+    var sidebar = container.closest ? container.closest('.sidebar') : null;
+    if (!sidebar && container.parentElement) sidebar = container.parentElement.closest('.sidebar');
+    if (!sidebar) sidebar = container;
+
+    var navHtml = '';
     GROUPS.forEach(function (g) {
-      if (g.label) html += '<div class="nav-label">' + esc(g.label) + '</div>';
+      if (g.label) navHtml += '<div class="nav-label">' + esc(g.label) + '</div>';
       g.items.forEach(function (it) {
-        html += linkItem(it, current);
+        navHtml += linkItem(it, current);
         // 代理列表挂在「代理配置」下面：它导航到的就是这一页的子状态，
         // 放到末尾会和「设置」抢位置，读起来像另一个分组的开头。
-        if (it.id === 'proxy' && opts.proxyNav) html += proxyGroup(opts.proxyCollapsed === true);
+        if (it.id === 'proxy' && opts.proxyNav) navHtml += proxyGroup(opts.proxyCollapsed === true);
       });
     });
-    html += linkItem(SETTINGS_ITEM, current);
+    navHtml += linkItem(SETTINGS_ITEM, current);
 
-    container.innerHTML = html;
+    sidebar.innerHTML = buildBrand() +
+      '<nav class="sidebar-nav" id="sidebarNav">' + navHtml + '</nav>' +
+      buildFooter();
 
-    if (opts.proxyNav) wireProxyGroup(container);
+    var navEl = sidebar.querySelector('#sidebarNav');
+    if (opts.proxyNav) wireProxyGroup(sidebar);
 
-    // 注入统一外壳底部：主题三态切换器 + 法务入口（P0-1/P0-2 修复）
-    renderShellFooter(container.parentElement, opts);
+    // 主题三态切换器：全站唯一主题入口，点击直接走 MPTheme.set
+    var ts = sidebar.querySelector('.mp-theme-switch');
+    if (ts) ts.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('button[data-theme-opt]') : null;
+      if (b && global.MPTheme) { global.MPTheme.set(b.getAttribute('data-theme-opt')); syncThemeSwitch(); }
+    });
 
     // 派发渲染完成事件：本文件常在文档末尾才执行，而页面的 /api/installed 可能先返回，
     // 那时 #proxyNavItems 还不存在 —— 早到的渲染会被丢弃，导致代理列表时有时无。
     // 事件让页面能在容器就绪的瞬间补渲染，而不是靠猜时序。
     try {
-      document.dispatchEvent(new CustomEvent('mp-nav-rendered', { detail: { container: container } }));
+      document.dispatchEvent(new CustomEvent('mp-nav-rendered', { detail: { container: navEl } }));
     } catch (e) {}
   }
 
   // 折叠交互 + 数量同步。数量用 MutationObserver 数，避免改三个页面的填充函数。
-  function wireProxyGroup(container) {
-    var group = container.querySelector('.nav-group');
-    var toggle = document.getElementById('proxySectionLabel');
-    var body = document.getElementById('proxyNavItems');
+  function wireProxyGroup(sidebar) {
+    var group = sidebar.querySelector('.nav-group');
+    var toggle = sidebar.querySelector('#proxySectionLabel');
+    var body = sidebar.querySelector('#proxyNavItems');
     if (!group || !toggle || !body) return;
 
     if (!group.dataset.wired) {
@@ -220,7 +251,7 @@
       });
     }
 
-    var count = document.getElementById('proxyNavCount');
+    var count = sidebar.querySelector('#proxyNavCount');
     function sync() {
       if (!count) return;
       var n = body.querySelectorAll('.proxy-nav-item').length;
@@ -233,43 +264,24 @@
     }
   }
 
-  // 法务图标（与 PRIMARY 同一套内联 SVG 风格）
-  var ICON_LEGAL = ((global.MPIcons && global.MPIcons.nav && global.MPIcons.nav.legal) ||
-    '<svg class="icon-svg nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v18M5 7l7-3 7 3M5 7l-2 6h4zM19 7l-2 6h4z"/><path d="M8 21h8"/></svg>');
+  function buildBrand() {
+    return '<div class="sidebar-brand">' + CG_BADGE + '<strong>costgate</strong></div>';
+  }
 
-  function renderShellFooter(sidebar, opts) {
-    if (!sidebar) return;
-    if (sidebar.querySelector('.mp-shell-foot')) return; // 幂等
-    var foot = document.createElement('div');
-    foot.className = 'mp-shell-foot';
-
-    // 主题三态切换器
-    var themeWrap = document.createElement('div');
-    themeWrap.className = 'mp-theme-switch';
-    themeWrap.setAttribute('role', 'group');
-    themeWrap.setAttribute('aria-label', '主题');
+  function buildFooter() {
+    // 单一主题切换器（浅色 / 深色 / 跟随系统）—— 全站唯一的主题入口，
+    // 其余页面的暗色按钮 / 设置里的主题卡已移除（收口 #3）。
+    var theme = '<div class="mp-theme-switch" role="group" aria-label="主题">';
     [['light', '浅色'], ['dark', '深色'], ['auto', '跟随系统']].forEach(function (p) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.setAttribute('data-theme-opt', p[0]);
-      b.textContent = p[1];
-      b.addEventListener('click', function () {
-        if (global.MPTheme) global.MPTheme.set(p[0]);
-        syncThemeSwitch();
-      });
-      themeWrap.appendChild(b);
+      theme += '<button type="button" data-theme-opt="' + p[0] + '">' + p[1] + '</button>';
     });
-    foot.appendChild(themeWrap);
-
-    // 法务入口（推荐 C：settings 进主导航，legal 走侧栏底部常驻）
-    var legal = document.createElement('a');
-    legal.className = 'legal-link';
-    legal.href = '/legal';
-    legal.innerHTML = ICON_LEGAL + '<span>法务与许可</span>';
-    foot.appendChild(legal);
-
-    sidebar.appendChild(foot);
-    syncThemeSwitch();
+    theme += '</div>';
+    // 版本 + 登出。法务入口收口到「设置 → 法务」（#2 评估：侧栏不再重复放法务链接）。
+    var meta = '<div class="sidebar-foot-meta">' +
+      '<span class="version-info" id="sidebarVersion">v1.0.0</span>' +
+      '<button class="btn-logout" type="button" onclick="handleLogout()" title="退出登录">登出</button>' +
+      '</div>';
+    return '<div class="sidebar-footer">' + theme + meta + '</div>';
   }
 
   function syncThemeSwitch() {
@@ -286,6 +298,12 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('mp-theme-change', syncThemeSwitch);
   }
+
+  // 全局登出：提升到 nav.js，保证统一侧栏的登出在每个页面都可用（floor / context 此前未定义）
+  global.handleLogout = function () {
+    try { sessionStorage.removeItem('auth_token'); } catch (e) {}
+    window.location.href = 'login.html';
+  };
 
   global.renderNav = renderNav;
   global.syncThemeSwitch = syncThemeSwitch;

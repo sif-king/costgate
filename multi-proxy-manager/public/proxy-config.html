@@ -504,35 +504,10 @@
 </style>
 <body>
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-      <div class="logo-icon cg-badge"><svg class="cg-glyph" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="cgGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs><path d="M32 4 L56 18 V46 L32 60 L8 46 V18 Z" fill="url(#cgGrad)"/><path d="M37 20 H30 A12 12 0 0 0 30 44 H37" fill="none" stroke="#ffffff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 32 H50" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round"/><path d="M43 27 L46 30 L53 21" fill="none" stroke="#34d399" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h1>costgate</h1>
-      <button class="sidebar-close" onclick="closeSidebar()" aria-label="关闭侧边栏">&times;</button>
-    </div>
-    <nav class="sidebar-nav" id="sidebarNav">
-      <a class="nav-item" href="dashboard.html" data-tooltip="返回概览">
-        <span class="icon">&#8592;</span> 返回概览
-      </a>
-      <div class="nav-section-label">代理服务</div>
-      <a class="nav-item" href="proxy-config.html?proxy=codex" data-tooltip="Codex Proxy">
-        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg></span> Codex Proxy
-      </a>
-      <a class="nav-item" href="proxy-config.html?proxy=hermes" data-tooltip="Hermes Proxy">
-        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Hermes Proxy
-      </a>
-      <a class="nav-item active" href="proxy-config.html?proxy=cursor" data-tooltip="Cursor Proxy">
-        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span> Cursor Proxy
-      </a>
-      <div class="nav-section-label">系统</div>
-      <a class="nav-item" href="logs.html" data-tooltip="查看系统日志">
-        <span class="icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> 日志
-      </a>
-    </nav>
-    <div class="sidebar-footer">
-      <div class="version-info">v1.0.0</div>
-      <button class="btn btn-outline btn-sm" onclick="handleLogout()" title="退出登录">登出</button>
-    </div>
-  </aside>
+  <div class="sidebar-brand"><strong>costgate</strong></div>
+  <nav class="sidebar-nav" id="sidebarNav"></nav>
+  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">v1.0.0</span></div>
+</aside>
 
   <div class="loading-bar" id="loadingBar"></div>
   <main class="main">

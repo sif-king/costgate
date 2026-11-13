@@ -62,19 +62,11 @@
 </style>
 <body>
 <div class="layout">
-  <aside class="sidebar">
-    <div class="sidebar-brand"><div class="logo-icon cg-badge"><svg class="cg-glyph" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="cgGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs><path d="M32 4 L56 18 V46 L32 60 L8 46 V18 Z" fill="url(#cgGrad)"/><path d="M37 20 H30 A12 12 0 0 0 30 44 H37" fill="none" stroke="#ffffff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 32 H50" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round"/><path d="M43 27 L46 30 L53 21" fill="none" stroke="#34d399" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h1>costgate</h1></div>
-    <nav class="sidebar-nav" id="sidebarNav">
-      <a href="dashboard.html">概览</a>
-      <a href="floor.html">Floor（代理面）</a>
-      <a href="context.html" class="active">Context（上下文组成）</a>
-      <a href="proxy-config.html">代理配置</a>
-      <a href="sessions.html">Sessions</a>
-      <a href="skills.html">Skills</a>
-      <a href="knowledge.html">Knowledge</a>
-      <a href="logs.html">日志</a>
-    </nav>
-  </aside>
+  <aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand"><strong>costgate</strong></div>
+  <nav class="sidebar-nav" id="sidebarNav"></nav>
+  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">v1.0.0</span></div>
+</aside>
   <main class="main">
     <div class="head">
       <h2>Context Breakdown</h2>
@@ -87,7 +79,6 @@
           </select>
         </label>
         <button class="btn-mini" id="btn-refresh">刷新</button>
-        <button class="btn-mini" id="btn-theme">主题</button>
       </div>
     </div>
     <div class="meta" id="meta">正在加载…</div>
@@ -408,9 +399,6 @@
   }
 
   document.getElementById('btn-refresh').addEventListener('click', load);
-  document.getElementById('btn-theme').addEventListener('click', function () {
-    document.documentElement.classList.toggle('dark');
-  });
   var drillSel = document.getElementById('drillSel');
   if (drillSel) drillSel.addEventListener('change', function (e) {
     var v = e.target.value, i = v.indexOf(':');

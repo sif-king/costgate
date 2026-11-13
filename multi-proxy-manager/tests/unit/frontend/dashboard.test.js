@@ -66,8 +66,14 @@ describe('Dashboard Page', () => {
       expect(html).toContain('handleLogout');
     });
 
-    it('should have dark mode toggle button', () => {
-      expect(html).toContain('id="darkModeToggle"');
+    it('should have unified theme switch (single entry in sidebar footer)', () => {
+      // 主题入口已收口到 nav.js 渲染的侧栏页脚三态切换（浅色/深色/跟随系统），
+      // 各页旧的 #darkModeToggle 按钮已移除（避免每页一个暗色开关、与设置页重复）。
+      // 静态 dashboard.html 不再硬编码暗色按钮；改断言单一真源 nav.js 含三态切换器。
+      const nav = fs.readFileSync(path.join(PUBLIC_DIR, 'nav.js'), 'utf8');
+      expect(nav).toContain('mp-theme-switch');
+      expect(nav).toContain('data-theme-opt');
+      expect(html).toContain('theme.js'); // 统一主题接线（data-theme 机制）
     });
 
     it('should have mobile menu button', () => {
@@ -185,9 +191,12 @@ describe('Dashboard Page', () => {
     beforeAll(() => { html = readHtml('dashboard.html'); });
 
     it('should reference handleLogout in logout button', () => {
-      // handleLogout is defined in the shared auth.js module
-      // The dashboard button calls it via onclick
-      expect(html).toContain('onclick="handleLogout()"');
+      // 登出按钮现在由 nav.js 在侧栏页脚渲染（onclick="handleLogout()"），
+      // 不再是 dashboard.html 静态硬编码。断言单一真源 nav.js 含该调用，
+      // 且页面加载 nav.js（handleLogout 在 nav.js 中定义为全局）。
+      const nav = fs.readFileSync(path.join(PUBLIC_DIR, 'nav.js'), 'utf8');
+      expect(nav).toContain('onclick="handleLogout()"');
+      expect(html).toContain('nav.js');
     });
 
     it('should define toggleProxy on window', () => {
