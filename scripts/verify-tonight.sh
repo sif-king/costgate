@@ -58,9 +58,14 @@ else
 fi
 
 say "3. 观测端到端（真写一个文件，看账本记不记得住）"
+# ⚠️ 探针文件名不能再叫 .verify-probe-*：上一轮为了解决「验收自己污染账本」，
+# 把这个前缀加进了 fs-observer 的 IGNORE_RE，于是验收脚本用的探针也被忽略，
+# 这条端到端从此恒假红（自己把测试目标排除了）。现在换成不会被忽略的名字，
+# 并在测完后把真实账本里这几行清掉 —— 探针不是用户行为，不该留在日报里。
 TMPDIR_OBS=$(mktemp -d 2>/dev/null || echo "/tmp/cg-verify-$$")
 mkdir -p "$TMPDIR_OBS/ledger"
-PROBE_FILE="$ROOT/.verify-probe-$$.txt"
+PROBE_FILE="$ROOT/cgprobe-$$.txt"
+PROBE_NAME="cgprobe-$$.txt"
 node -e '
 const obs = require(process.argv[1] + "/l2/fs-observer.js");
 const o = obs.createObserver({ roots: [process.argv[1]], dir: process.argv[2], debounceMs: 120 });
@@ -81,10 +86,26 @@ OBS_RC=$?
 OBS_OUT=$(cat "$TMPDIR_OBS/out.txt" 2>/dev/null)
 rm -f "$PROBE_FILE"
 rm -rf "$TMPDIR_OBS"
+# 正在跑的真实观测实例也会看到这个探针（它观测的正是本仓库），
+# 把这几行从真实账本里摘掉：探针是验收自己造的，不该混进「今天」的日报。
+node -e '
+const fs = require("fs");
+const path = require("path");
+const dir = process.env.HOME + "/.multi-proxy-manager";
+const file = path.join(dir, "fs-ledger.jsonl");
+try {
+  const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
+  const keep = lines.filter((l) => !l.includes(process.argv[1]));
+  if (keep.length !== lines.length) {
+    fs.writeFileSync(file, keep.join("\n") + (keep.length ? "\n" : ""));
+    console.log("已从真实账本摘掉 " + (lines.length - keep.length) + " 行探针记录");
+  }
+} catch { /* 账本不存在就没什么可清的 */ }
+' "$PROBE_NAME"
 if [ "$OBS_RC" = "0" ] && echo "$OBS_OUT" | grep -q '^RECORDS'; then
   ok "观测到改动并落账：$(echo "$OBS_OUT" | sed 's/^RECORDS //')"
 else
-  bad "观测没落账（输出：$OBS_OUT）"
+  bad "观测没落账（输出：${OBS_OUT}）"
 fi
 
 say "4. 今天的账"
