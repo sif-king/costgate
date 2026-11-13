@@ -186,6 +186,34 @@ cursor-proxy 是新写的 L2 架构载体（chatHandler + routeEngine + agentReg
 
 ---
 
+## Q15：账本和配置在哪个目录，改名之后要不要搬家
+
+全新安装会把账本、providers、会话状态写进 `~/.costgate/`，JWT 密钥放在 `~/.costgate-jwt-secret`。改名之前就在用的安装继续读 `~/.multi-proxy-manager/` 和 `~/.multi-proxy-jwt-secret`，密码与 agent-token 沿用旧文件，启动时不会要求重新登录。
+
+启动时的判断只看磁盘：新目录存在就用新目录，只有旧目录存在就接着用旧目录，两个都不存在才落新目录。这套解析收口在 `multi-proxy-manager/lib/data-dir.js`。查本机此刻用的是哪个路径，别照抄文档里的写法，跑一条命令实查：
+
+```sh
+node -e "console.log(require('./multi-proxy-manager/lib/data-dir').resolveDataDir())"
+```
+
+想把旧目录换成新名字，先停掉所有代理和管理面板，确认没有进程还占着里面的文件，再看一遍计划：
+
+```sh
+bash manage.sh migrate
+```
+
+上面这条只打印计划，不会动盘。确认无误后再执行：
+
+```sh
+bash manage.sh migrate --apply
+```
+
+`--apply` 用 `renameSync` 搬目录，跨卷搬不动时改成复制并保留旧目录。JWT 密钥是复制且保留旧文件，搬完旧密码还能用。
+
+正文和示例输出里那些 `~/.multi-proxy-manager/` 写的是既有安装的路径，示例来自那次真跑，没有改字。
+
+---
+
 ## 数据源
 
 - `07-ops/ENV-NOTES.md` / `03-adr/0002`（NO_PROXY 铁律）

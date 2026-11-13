@@ -343,15 +343,12 @@ bash manage.sh {start|stop|restart|status}
 
 ## 常见问题
 
-- **账本和配置到底在哪个目录？**
-
-  全新安装默认 `~/.costgate/`；改名之前就在用的安装会继续读 `~/.multi-proxy-manager/`，不用搬家、不用重新登录。想知道本机实际用的是哪个，跑 `node -e "console.log(require('./multi-proxy-manager/lib/data-dir').resolveDataDir())"`；想搬到新目录，停掉服务后跑 `bash manage.sh migrate --apply`。下面正文和示例输出里出现的 `~/.multi-proxy-manager/` 是既有安装的路径，示例是那次真跑留下的，没有改字。
 - **我要全装吗？**
 
   不用。两个进程（`codex-proxy` + `manager`）就能跑完上面那个 30 秒演示。其余按你实际用哪个工具再加。
 - **我的 API key 存哪？会不会被上传？**
 
-  存本机 `~/.multi-proxy-manager/providers.json`（cursor-proxy 的 key 额外用 AES-256-GCM 加密）。没有遥测、没有回传，`verify.sh` 全程只读本地文件，不发一个出网请求。
+  存本机 `~/.multi-proxy-manager/providers.json`（cursor-proxy 的 key 额外用 AES-256-GCM 加密）。没有遥测、没有回传，`verify.sh` 全程只读本地文件，不发一个出网请求。全新安装的这个目录是 `~/.costgate/`，改名之前就在用的安装继续沿用旧路径，不用搬家也不用重新登录；本机实际路径怎么查、停服后怎么搬，见 [`docs/08-user/faq.md`](docs/08-user/faq.md) Q15。
 - **它会不会改我的 agent 配置？**
 
   不会。反过来，它会读各 agent 的配置文件看 `base_url` 指向谁，发现被别的工具占着就告诉你冲突，不抢不覆写。想主动切换用 `bash tools/agent-proxy-switch`。
