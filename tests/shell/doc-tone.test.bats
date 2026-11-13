@@ -116,3 +116,39 @@ teardown() {
     return 1
   }
 }
+
+# 2026-11-14：老板点名「别用像辩论赛一样的表达」，且落地页此前不在覆盖清单里。
+# 下面三条把「新规则 + 新覆盖面」都做成可注入验证，不是只写进文档。
+
+@test "injecting debate cliche into HTML turns D11 red" {
+  printf '%s\n' '<html><body><p>既然是本地工具，就能自己验。真正该看的是它跑没跑过。</p></body></html>' > "$TMP/d11.html"
+  run node "$GUARD" "$TMP/d11.html"
+  [ "$status" -eq 1 ] || {
+    echo "HTML 里写了辩论赛腔仍然通过：D11 是空检查" >&2
+    return 1
+  }
+  echo "$output" | grep -q '✗ D11'
+}
+
+@test "HTML style text is stripped but visible prose is still checked" {
+  # 样式里的坏句子不该算进正文；同一句挪到 <p> 里就必须算。
+  printf '%s\n' '<html><head><style>/* 真正该看的是样式 */</style></head><body><p>账本写在你硬盘上，是一个纯文本文件。服务停了它也还在。</p></body></html>' > "$TMP/strip.html"
+  run node "$GUARD" "$TMP/strip.html"
+  [ "$status" -eq 0 ] || {
+    echo "样式里的坏句子被算进正文：HTML 剥离没生效" >&2
+    return 1
+  }
+  printf '%s\n' '<html><head><style>/* 正常 */</style></head><body><p>真正该看的是它跑没跑过。</p></body></html>' > "$TMP/strip2.html"
+  run node "$GUARD" "$TMP/strip2.html"
+  [ "$status" -eq 1 ] || {
+    echo "正文里的辩论赛腔没被抓到：HTML 正文被一起剥掉了" >&2
+    return 1
+  }
+}
+
+@test "site/index.html is registered in the guard target list" {
+  grep -qF "'site/index.html'" "$GUARD" || {
+    echo "落地页没登记进 TARGETS：这层文案会重新脱离门禁" >&2
+    return 1
+  }
+}

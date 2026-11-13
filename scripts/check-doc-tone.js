@@ -21,6 +21,12 @@
 //   D4 套话 / 对举     = 0      「说白了 / 本质上 / 值得注意的是」与「不是……而是……」严格形
 //   D5 直角引号「」    = 0      AI 高频特征，中文引号一律用 “”
 //
+// 2026-11-14 追加（老板点名「别用像辩论赛一样的表达」）：
+//   D11 辩论赛腔词表，出处＝文章体系 去AI味操作手册 §三 改法 4（模板句）/ 改法 6（无主断言），
+//   写作自进化机制 门禁 B14 与坑库 K113 / K114。同一批指纹在文章体系靠人读抓，这里做成机器判。
+//   同时把 site/index.html 纳入覆盖：落地页是陌生人第一眼读的文案，此前不在 TARGETS 里，
+//   等于这层文案一直没有门禁。HTML 会先剥掉标签 / 样式 / 脚本，再按同一套规则判。
+//
 // 用法：
 //   node scripts/check-doc-tone.js            # 检查对外文档全集
 //   node scripts/check-doc-tone.js README.md  # 只查一份（改稿时用）
@@ -50,6 +56,7 @@ const TARGETS = [
   'docs/08-user/faq.md',
   'docs/04-tech/implementation-notes.md',
   'docs/12-docs/DOCS-METHODOLOGY.md',
+  'site/index.html',
 ];
 
 const RULES = {
@@ -72,6 +79,9 @@ const RULES = {
   D8: { name: '绝对化词', limit: 0.4, unit: '‰', absMax: 3, hard: true },
   D9: { name: '计数/分层套话', limit: 0, unit: '次', hard: true },
   D10: { name: '超长段', limit: 0, unit: '次', hard: true },
+  // D11：辩论赛腔。去掉主语、把话写成格言或「既然 A 就 B」的顺推，读起来像在打辩题。
+  // 词表先在 12 份对外文档上实测过 0 命中，才设成 hard（不许拿新规则去砸存量稿）。
+  D11: { name: '辩论赛腔', limit: 0, unit: '次', hard: true },
 };
 
 // D3：向读者报路线、拉着读者走的句子。判定不看单个词，看这几个固定说法。
@@ -137,9 +147,36 @@ const COUNTING_PATTERNS = [
   /同一道题/g,
 ];
 
-function stripProse(md) {
+// 文章体系 改法 4 的模板句 + 改法 6 / K114 的「无主断言、格言体」。
+// 这些句子单看都通顺，成串出现就像在打辩论赛：推理太顺、不给主语、替读者下结论。
+const DEBATE_PATTERNS = [
+  /既然是[^。\n]{1,20}就能/g,
+  /真正该看的是/g,
+  /比[^。\n]{1,20}更值得[^。\n]{1,20}因为/g,
+  /三条都指向/g,
+  /关键补一刀|补一刀/g,
+  /说到底/g,
+  /显而易见/g,
+  /与其说[^。\n]{1,20}不如说/g,
+  /恰恰(是|在于|说明)/g,
+  /顺着[^。\n]{1,20}看，比[^。\n]{1,20}清楚/g,
+];
+
+function stripProse(md, isHtml) {
+  let src = md;
+  if (isHtml) {
+    src = src
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+      // 块级标签换成空行：不换的话整个页面会挤成一段，D6/D10 的段落形状就失真了。
+      .replace(/<\/(p|div|h[1-6]|li|tr|section|header|footer|pre|table|nav|main)>/gi, '\n\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  }
   return (
-    md
+    src
       // 引用块豁免：`<!-- doc-tone:off -->` 到 `<!-- doc-tone:on -->` 之间是逐字引用的
       // 坏句子（D1–D5 的对照表要用原文，改成转述就失去示范价值）。豁免必须显式成对写，
       // 且每次运行都会把「豁免了几段」打出来，避免它变成静默后门。
@@ -231,7 +268,7 @@ function checkFile(rel) {
   const abs = path.isAbsolute(rel) ? rel : path.join(ROOT, rel);
   if (!fs.existsSync(abs)) return { rel, missing: true };
   const raw = fs.readFileSync(abs, 'utf8');
-  const prose = stripProse(raw);
+  const prose = stripProse(raw, /\.html?$/i.test(abs));
   const han = countHan(prose) || 1;
   const exempt = countExemptBlocks(raw);
 
@@ -254,6 +291,7 @@ function checkFile(rel) {
   const parallel = hits(PARALLEL_PATTERNS, prose);
   const absolute = hits(ABSOLUTE_PATTERNS, prose);
   const counting = hits(COUNTING_PATTERNS, prose);
+  const debate = hits(DEBATE_PATTERNS, prose);
 
   // 段落形状：只看「≥2 句且 ≥40 汉字」的普通段落——
   // 一句成段（列表式短段）没有「开头判断 + 后文解释」的结构，不计入分母，
@@ -349,6 +387,13 @@ function checkFile(rel) {
       density: longParas.length,
       all: longParas.map((x) => `${x.han} 汉字 / ${x.s.length} 句：${x.p.slice(0, 50)}…`),
       samples: longParas.slice(0, 3).map((x) => `超长段 ${x.han} 汉字 / ${x.s.length} 句：${x.p.slice(0, 40)}…`),
+    },
+    {
+      id: 'D11',
+      value: debate.length,
+      density: debate.length,
+      all: debate.map((h) => `L${lineOf(prose, h.at)}: ${h.text.trim()}`),
+      samples: debate.slice(0, 3).map((h) => `L${lineOf(prose, h.at)}: ${h.text.trim()}`),
     },
   ];
   return { rel, han, exempt, results, paras: shaped.length };

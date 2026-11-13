@@ -71,6 +71,8 @@ bats tests/shell/<那条>.test.bats
 git ls-files | grep -E "UI-AUDIT|MEMORY\.md\.bak|外部对照"   # 必须为空
 ```
 
+| 落地页 / 对外文案的**句子层 AI 味**（辩论赛腔、对称句、绝对词、直角引号） | `site/index.html`、`scripts/check-doc-tone.js`（D1–D11 词表与 `TARGETS`）、`docs/12-docs/DOCS-METHODOLOGY.md` §7（判据索引） | `tests/shell/doc-tone.test.bats`（真源通过 + 注入变红 + HTML 剥离 + 落地页已登记）＋ `scripts/preflight.sh` §6d（全集扫描） | `node scripts/check-doc-tone.js site/index.html`；**注入回归**：往临时 HTML 写「既然是 A，就能 B」必须红，写进 `<style>` 里不该红 |
+
 ---
 
 ## 这张表自己也会过期 —— 所以它自带守卫

@@ -252,7 +252,7 @@ bash scripts/verify-lanes.sh codex dsh  # 只验指定的
 2. 你跑的命令、操作系统（macOS / Linux / Windows）；
 3. 你想做什么、实际发生了什么。
 
-> 出网管控（tenant 级 egress 策略）、多租户、SSO、审计留痕、企业分账属企业版范围，不在开源内核里；这类需求请在 issue 里说明，或直接联系 License 一节的方式。
+> 出网管控（tenant 级 egress 策略）、多租户、SSO、审计留痕、企业分账，这个仓库都不做，也没有另外的商业产品提供。想要这类能力可以在 issue 里说，或按末尾 License 一节联系。
 
 ---
 

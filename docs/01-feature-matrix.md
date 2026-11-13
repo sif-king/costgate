@@ -51,8 +51,8 @@ This file is part of the costgate project.
 | 健康告警 `PROXY_HEALTH_ALERT` / 故障隔离 `PROXY_HEALTH_ISOLATE` | Next（observe） | 默认关，关时只记录不动作 |
 | IM 入站 / 执行器绑定 | Next | 默认关，关时拒服务 |
 | 成本定时调度 `PROXY_COST_SCHEDULE` | Later | 规划中 |
-| **通用编排引擎（通用 Agent 编排）** | **No Plan** | L2 只做代理接入+路由策略+影子记账；通用编排归 Portico |
-| **多租户 / Portico 控制面（企业版）** | **No Plan** | multi-proxy 保持无状态数据面；企业分账/SSO 归 Portico |
+| **通用编排引擎（通用 Agent 编排）** | **No Plan** | L2 只做代理接入+路由策略+影子记账；通用编排不做，也没有另外的产品承接 |
+| **多租户 / 控制面（企业版）** | **No Plan** | 保持无状态数据面；企业分账 / SSO 不做，也没有另外的产品承接 |
 | **与云端 AI 网关的治理层（合规分账/密钥托管/内容过滤）** | **No Plan** | 不重复造，归火山 AgentKit / 阿里云 AI 网关等 |
 | **Windows verify.ps1 实机自测** | **No Plan（待真机）** | 本机无 pwsh，需真 Windows 回传报告 |
 
@@ -147,7 +147,7 @@ This file is part of the costgate project.
 | 8 | **M6 D0 = 100 行真实 Cursor 样本** | M6 机制已条件性 验收（`f10e0d2`），样本未达 | 18794 待维护者在 Cursor 实配 base_url + 实际 coding 攒 `routing_feedback`；脚本喂 = 污染拒用；18794 保持不动（重拉反伤 O1 env）| P1（待维护者 in-the-loop）|
 | 9 | **curator 对 codex responses 内容级压缩失效** | codex 路径 token 不省 | 补响应级折叠 | 中 |
 | 10 | **token 控制面 A 路**（`cost.js` token×单价进料管）+ 30 号基线 estimate→actual | 答不了"钱花在哪类 token" | 是否插队到 12 号既定序列前待维护者 | 中 |
-| 11 | **多租户 / Portico 控制面**（企业版 7 缺口） | 控制面未建 | 维持 multi-proxy 无状态数据面 / Portico P1 待维护者 | P2（待维护者）|
+| 11 | **多租户 / 控制面**（企业版 7 缺口） | 控制面未建，且无承接产品 | 维持无状态数据面；若以后有人要这类能力，按需求重新立项 | 不做（待需求）|
 | 12 | ~~`~/.multi-proxy-manager/providers.json` 被清~~ | ✅ 已闭环：密钥统一迁 `codex-proxy/.env`（0o600 + 双 gitignore 覆盖），manager plist 零明文凭据；实测 agnes/deepseek 通、moonshot 无权限（既存缺口） | — | ✅ 已闭环 |
 | 13 | **manage.sh stop 对 launchd KeepAlive 托管实例停不掉** | `stop all` 误报 FAIL；verify.sh 清理段曾因此崩溃（`WORK: unbound`） | ✅ 已修（10-15）：`stop_service` kill 后复验 + 明确返回码语义 + launchd 提示；verify.sh 清理前先 bootout LaunchAgent | ✅ 已闭环 |
 | 14 | ~~README 第三节称 4 个 adapter，实际 5 个~~ | 文档与代码不一致（memory-align-adapter.js 已存在） | ✅ 已闭环（2026-10-15）：README 4 处声明 + 目录树同步为 5 个适配器（补 memory-align），顺带修正 demo 计数 29→51 | — | ✅ 已闭环 |

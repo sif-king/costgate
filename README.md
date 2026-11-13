@@ -445,4 +445,4 @@ curl -s --noproxy '*' http://127.0.0.1:18792/api/gates | head -c 300
 
 闭源商业产品、未开源的商业 SaaS 需单独授权（`LICENSE-COMMERCIAL.md` / `LICENSE-ENTERPRISE.md`，联系 `281330913@163.com`）。
 
-多租户 / SSO / 审计留痕 / 企业分账不在 AGPL 内核里，由 Portico 商业版承载。开源版保持单用户 / 单机 / 单成本池。
+多租户、SSO、审计留痕、企业分账都不在这个仓库里，也没有另一个商业产品接着提供。开源版只服务一台机器上的一个人，账记在一个成本池里。想要这类能力，可以在 issue 里提。

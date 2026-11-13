@@ -58,7 +58,7 @@ This file is part of the costgate project.
 </head>
 <body>
 <header><div class="wrap" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-  <div class="brand">costgate <span>本机 AI 工具的出口与账本</span></div>
+  <div class="brand">costgate <span>给本机 AI 工具记账</span></div>
   <nav>
     <a href="https://github.com/sif-king/costgate">源码</a>
     <a href="https://github.com/sif-king/costgate#readme">完整文档</a>
@@ -68,8 +68,8 @@ This file is part of the costgate project.
 
 <main>
   <div class="hero wrap">
-    <h1>把你本机那些 AI 编码工具的模型请求，<br>收到一处，记一本你自己能查的账。</h1>
-    <p class="lede">不用 API key，一条命令装好，看到第一笔真实账单。账是磁盘上的纯文本文件，另有一条只读命令把它读出来，包括每项能力真跑过几次。</p>
+    <h1>Codex、Claude Code、Cursor 一起开着的时候，<br>谁花了多少，你得有一本自己的账。</h1>
+    <p class="lede">一条命令装好，看到第一笔真实账单，不用填 API key。跑完 quickstart，屏幕上会打印刚记下的那一笔：进了多少 token、出了多少、多少钱、用了多久。账本就在你硬盘上，是一个文本文件，想翻随时用只读命令翻，哪个开关真跑过几次也查得到。</p>
     <pre><code>git clone https://github.com/sif-king/costgate &amp;&amp; cd costgate
 bash scripts/quickstart.sh</code></pre>
     <div class="btnrow">
@@ -77,37 +77,37 @@ bash scripts/quickstart.sh</code></pre>
       <a class="btn ghost" href="https://github.com/sif-king/costgate/blob/main/SECURITY.md">数据去哪了</a>
       <a class="btn ghost" href="https://github.com/sif-king/costgate/blob/main/CHANGELOG.md">已知限制</a>
     </div>
-    <p class="note">首次会安装依赖，脚本末尾会打印本次真实耗时，不承诺固定秒数。</p>
+    <p class="note">第一次要装依赖，脚本末尾会打印这次实际花了多久。快慢看你的网络和缓存。</p>
   </div>
 
   <section class="wrap">
-    <h2>三件马上能自己验的事</h2>
+    <h2>装完之后，这几件事你自己就能查</h2>
     <div class="grid">
-      <div class="card"><h3>看到第一笔真实账单</h3><p>脚本装好依赖、探到零 key 上游、起两个进程、发一个真请求，末尾把刚落地的那一笔打印出来（入 / 出 / 费用 / 耗时）。</p></div>
-      <div class="card"><h3>每笔账可以自己查</h3><p>账本是本机磁盘上的文本，不藏在服务里。只读命令能把它读出来，也能看出哪项能力真的跑过、跑过几次。</p></div>
-      <div class="card"><h3>数据不出本机</h3><p>密钥留在你自己的配置文件里，没有遥测、没有回传。验证脚本全程只读本地文件，不发一个出网请求。</p></div>
+      <div class="card"><h3>屏幕上会多出一行账</h3><p>脚本装好依赖、找到不用填 key 就能用的上游、起两个进程、发一个真请求，最后把刚落地的那一笔打印出来：入多少、出多少、多少钱、用了多久。</p></div>
+      <div class="card"><h3>账本就在你硬盘上</h3><p>账本写在你硬盘上，是一个纯文本文件。服务停了它也还在，另有一条只读命令能翻出每一笔，也能看出哪个开关真跑过、跑过几次。</p></div>
+      <div class="card"><h3>密钥留在你自己手里</h3><p>key 写在你自己的配置文件里，没有遥测，也没有回传。验证脚本全程只读本地文件，不发一个出网请求。</p></div>
     </div>
   </section>
 
   <section class="wrap">
-    <h2>默认开什么、默认关什么</h2>
+    <h2>装完默认是什么样</h2>
     <table>
       <thead><tr><th>能力</th><th>默认</th><th>说明</th></tr></thead>
       <tbody>
-        <tr><td>请求账本与脱敏</td><td><span class="tag">开</span></td><td>装上就有账，第一次用就能看见</td></tr>
-        <tr><td>路由、熔断、重试、任务编排</td><td><span class="tag">关</span></td><td>每项是独立开关，开了才改行为；没开时页面会明说没开，不会伪装成「没数据」</td></tr>
-        <tr><td>知识库、技能扫描等进阶能力</td><td><span class="tag">关</span></td><td>默认零副作用，需要时在设置里开启</td></tr>
+        <tr><td>请求账本与脱敏</td><td><span class="tag">开</span></td><td>不用先设置，第一次请求就记上了</td></tr>
+        <tr><td>路由、熔断、重试、任务编排</td><td><span class="tag">关</span></td><td>每项单独一个开关，开了才改行为。没开的时候页面会直说没开，不会只留一片空白让人以为出了故障</td></tr>
+        <tr><td>知识库、技能扫描等进阶能力</td><td><span class="tag">关</span></td><td>默认什么都不动，要用的时候去设置里打开</td></tr>
       </tbody>
     </table>
-    <p class="note">开关的完整清单与验收方式见仓库里的 COMPATIBILITY.md 与 README，页面上方的能力条也会显示当前状态。</p>
+    <p class="note">每个开关叫什么、怎么验，仓库里的 COMPATIBILITY.md 和 README 都写了。面板最上面那条也会显示此刻是开是关。</p>
   </section>
 
   <section class="wrap">
-    <h2>想再往前一步</h2>
+    <h2>用起来之后</h2>
     <div class="grid">
-      <div class="card"><h3>接上你自己的工具</h3><p>支持 Claude Code、Codex CLI、Cursor、opencode、Cline、Aider 等。工具之间是否抢了同一个配置，装的时候会先查再报冲突，不覆写你的配置。</p></div>
-      <div class="card"><h3>看清楚边界</h3><p>单机单用户，不提供多租户、SSO、企业分账。当前没发正式版本号，接口会变，上生产前请先读已知限制。</p></div>
-      <div class="card"><h3>双许可</h3><p>源码 AGPL-3.0，商业使用另有商业许可。两份许可正文都在仓库里。</p></div>
+      <div class="card"><h3>把常用的工具接进来</h3><p>Claude Code、Codex CLI、Cursor、opencode、Cline、Aider 都能接。装的时候先看这些工具有没有抢同一个配置，撞了就报出来，不改你已经写好的文件。</p></div>
+      <div class="card"><h3>它现在还做不到的事</h3><p>现在它只管一台机器、一个人、一个成本池。多租户、SSO、企业分账都没有做，也没有别的产品接着提供。还没发正式版本号，接口会变；要放到生产上，先把已知限制读完。</p></div>
+      <div class="card"><h3>两份许可</h3><p>源码按 AGPL-3.0 开源。要在闭源产品里用，得单独谈一份商业许可，两份正文都在仓库里摆着。</p></div>
     </div>
   </section>
 </main>
