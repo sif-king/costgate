@@ -74,3 +74,63 @@ test('工具 schema 来源面板：跨请求累加 + Top-5 + 其他合并', { ta
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// 下钻（2026-11-13）：纯前端按 agent / 模型切片，复用 summary.perAgent 与每行 model。
+// 这条钉死三件事：
+//   ① 切到 agent:codex 后，面板只反映 2 条 codex 行（观测请求=2、趋势 2 行）；
+//   ② 成本卡在切片下由前端按 PRICING join（1900 tokens × ¥10/1e6 ≈ ¥0.02），不是整窗数；
+//   ③ 切到 model:m 回到 3 条整窗（观测请求=3）。
+// 同样用合成数据：验算法不验数据。
+const SUMMARY = {
+  requests: 3, windowMs: 86400000,
+  byCategory: { system: 0, tools: 200, user: 0, inject: 0, skill: 0, assistant: 0, tool: 0 },
+  peak: 1000, actualCoverage: 0, events: {}, warnings: {},
+  perAgent: { codex: 2, claude: 1 }, dropped: 0, diskErrors: 0, lastUpdated: 1762900002000,
+  estimatedCny: 0.05, costBasis: '估算 · 窗口各请求按模型 input 价目',
+};
+const PRICING = { m: { input: 10, output: 0 } };
+
+test('下钻：按 Agent 切片只反映该 agent 行，成本由前端 join', { tag: ['@tier1', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.route('**/api/context/summary*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SUMMARY) }));
+  await page.route('**/api/context/recent*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows: ROWS }) }));
+  await page.route('**/api/context/pricing*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, pricing: PRICING }) }));
+  await seedAuth(page);
+  await page.goto('/context', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  // 等下钻选项由 buildDrill 填好（summary+recent+pricing 三路 resolve 后）。
+  await page.waitForFunction(() => {
+    const s = document.getElementById('drillSel');
+    return !!s && s.options.length > 1;
+  }, { timeout: 20000 });
+
+  // 切到 agent:codex
+  await page.selectOption('#drillSel', 'agent:codex');
+  await page.waitForFunction(() => {
+    const m = document.getElementById('meta');
+    return !!m && /agent = codex/.test(m.textContent || '') && /2 请求/.test(m.textContent || '');
+  }, { timeout: 10000 });
+  await expect(page.locator('#kpi')).toContainText('观测请求');
+  await expect(page.locator('#kpi')).toContainText('2');
+  // 切片成本 ≈ ¥0.02（1900 tokens × ¥10/1e6，四舍五入）
+  await expect(page.locator('#kpi')).toContainText('¥0.02');
+  // 趋势只含 2 条（codex 两行）
+  const trendCount = await page.locator('#trend .trow').count();
+  expect(trendCount, 'agent:codex 应只剩 2 行趋势').toBe(2);
+
+  // 切到 model:m（全量）
+  await page.selectOption('#drillSel', 'model:m');
+  await page.waitForFunction(() => {
+    const m = document.getElementById('meta');
+    return !!m && /model = m/.test(m.textContent || '') && /3 请求/.test(m.textContent || '');
+  }, { timeout: 10000 });
+  const trendCountAll = await page.locator('#trend .trow').count();
+  expect(trendCountAll, 'model:m 应是全部 3 行').toBe(3);
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});
+

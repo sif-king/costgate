@@ -65,4 +65,10 @@ router.get('/stats', (req, res) => {
   res.json({ ok: true, ...contextStore.stats() });
 });
 
+// 只读：暴露 costTrack 既有价目表，供面板端下钻切片自行 join input 成本
+// （与 summary 里整窗 estimatedCny 同源，不引入新计费逻辑，不动 fold 内核）。
+router.get('/pricing', (req, res) => {
+  res.json({ ok: true, pricing: costTrack.getPricingTable() || {} });
+});
+
 module.exports = router;

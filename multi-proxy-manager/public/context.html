@@ -12,18 +12,18 @@
 <style>
   body { margin: 0; background: var(--color-bg-secondary, #f5f6f8); color: var(--color-text); font-family: var(--font-family, -apple-system, "Segoe UI", sans-serif); }
   .layout { display: flex; min-height: 100vh; }
-  .sidebar { width: 220px; flex-shrink: 0; background: var(--color-bg); border-right: 1px solid var(--color-border); }
-  .sidebar-nav { padding: 12px; }
-  .sidebar-nav a { display: block; padding: 8px 12px; border-radius: 8px; color: var(--color-text); text-decoration: none; font-size: 13px; margin-bottom: 2px; }
-  .sidebar-nav a:hover { background: var(--color-bg-secondary, #eef0f3); }
-  .sidebar-nav a.active { background: var(--color-primary); color: #fff; font-weight: 600; }
+  .sidebar { width: var(--sidebar-w, 240px); flex-shrink: 0; background: var(--color-bg); border-right: 1px solid var(--color-border); }
+  /* 侧栏条目交给 nav.js 的单一系统渲染（与总览/代理配置等页一致），这里不再各自定义，避免「好几套」 */
   .main { flex: 1; padding: 24px 28px; min-width: 0; }
   .head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
   .head h2 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
   .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--color-border); color: var(--color-text-tertiary, #8a8f98); }
   .chip.on { border-color: #22c55e; color: #16a34a; }
-  .toolbar { margin-left: auto; display: flex; gap: 8px; }
+  .toolbar { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .drill-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-tertiary, #8a8f98); }
+  .drill-label { letter-spacing: .3px; }
   .btn-mini { font-size: 12px; padding: 5px 10px; border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text); border-radius: 6px; cursor: pointer; }
+  #drillSel { max-width: 220px; font: inherit; }
   .meta { font-size: 12px; color: var(--color-text-tertiary, #8a8f98); margin-bottom: 16px; line-height: 1.6; }
   .meta code { font-size: 11px; background: var(--color-bg-secondary, #eef0f3); padding: 1px 5px; border-radius: 4px; }
   h3.sec { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--color-text-tertiary, #8a8f98); margin: 22px 0 10px; }
@@ -80,6 +80,12 @@
       <h2>Context Breakdown</h2>
       <span class="chip" id="chip-track">门控 —</span>
       <div class="toolbar">
+        <label class="drill-wrap" title="下钻：按 Agent 或模型筛选整窗数据">
+          <span class="drill-label">下钻</span>
+          <select id="drillSel" class="btn-mini" aria-label="下钻筛选">
+            <option value="all">全部窗口</option>
+          </select>
+        </label>
         <button class="btn-mini" id="btn-refresh">刷新</button>
         <button class="btn-mini" id="btn-theme">主题</button>
       </div>
@@ -252,50 +258,144 @@
     }).join('');
   }
 
+  // ---- 下钻（纯前端；复用 summary.perAgent 与每行 model/agent，不动 fold 内核）----
+  var PRICING = {};
+  var ALL_ROWS = [];
+  var SUMMARY = null;
+  var drill = { dim: 'all', key: null };
+
+  function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
+
+  function filteredRows() {
+    if (drill.dim === 'all') return ALL_ROWS;
+    return ALL_ROWS.filter(function (r) {
+      return drill.dim === 'agent' ? r.agent === drill.key : r.model === drill.key;
+    });
+  }
+
+  // 由 recent 行重算与 summary 同形状的切片聚合（byCategory 取窗口均值，成本用 PRICING join）。
+  function sliceSummary(rows) {
+    var byCategory = {}; CATS.forEach(function (c) { byCategory[c] = 0; });
+    var peak = 0, actual = 0, events = {}, warnings = {};
+    rows.forEach(function (r) {
+      CATS.forEach(function (c) { byCategory[c] += num(r.byCategory ? r.byCategory[c] : 0); });
+      if (r.total > peak) peak = r.total;
+      if (r.source === 'actual') actual += 1;
+      (r.events || []).forEach(function (e) { var k = e && typeof e.kind === 'string' ? e.kind : 'unknown'; events[k] = (events[k] || 0) + 1; });
+      (r.warnings || []).forEach(function (w) { var k = String(w).split(':')[0]; warnings[k] = (warnings[k] || 0) + 1; });
+    });
+    var n = rows.length;
+    if (n > 0) CATS.forEach(function (c) { byCategory[c] = Math.round(byCategory[c] / n); });
+    var est = 0;
+    rows.forEach(function (r) {
+      var p = (r.model && PRICING[r.model]) || (r.requestModel && PRICING[r.requestModel]);
+      if (!p) return;
+      var rate = (p.input != null ? p.input : 0);
+      est += num(r.total) / 1e6 * rate;
+    });
+    return {
+      requests: n,
+      byCategory: byCategory,
+      peak: peak,
+      actualCoverage: n > 0 ? Math.round(actual / n * 1000) / 1000 : 0,
+      events: events,
+      warnings: warnings,
+      estimatedCny: Math.round(est * 100) / 100,
+      costBasis: n > 0 ? '估算 · 下钻切片按模型 input 价目' : '—'
+    };
+  }
+
+  // 用 summary.perAgent（agent→计数）与 recent 行的 model 字段动态生成下钻选项。
+  function buildDrill() {
+    var sel = document.getElementById('drillSel');
+    if (!sel) return;
+    var html = '<option value="all">全部窗口</option>';
+    var agents = Object.keys((SUMMARY && SUMMARY.perAgent) || {}).sort(function (a, b) {
+      return ((SUMMARY.perAgent[b]) || 0) - ((SUMMARY.perAgent[a]) || 0);
+    });
+    if (agents.length) {
+      html += '<optgroup label="按 Agent">';
+      agents.forEach(function (a) {
+        html += '<option value="agent:' + esc(a) + '">' + esc(a) + ' (' + nf(SUMMARY.perAgent[a]) + ')</option>';
+      });
+      html += '</optgroup>';
+    }
+    var mcount = {};
+    ALL_ROWS.forEach(function (r) { if (r.model) mcount[r.model] = (mcount[r.model] || 0) + 1; });
+    var models = Object.keys(mcount).sort(function (a, b) { return mcount[b] - mcount[a]; });
+    if (models.length) {
+      html += '<optgroup label="按 模型">';
+      models.forEach(function (m) {
+        html += '<option value="model:' + esc(m) + '">' + esc(m) + ' (' + nf(mcount[m]) + ')</option>';
+      });
+      html += '</optgroup>';
+    }
+    sel.innerHTML = html;
+    var val = drill.dim === 'all' ? 'all' : (drill.dim + ':' + drill.key);
+    if ([].some.call(sel.options, function (o) { return o.value === val; })) sel.value = val;
+  }
+
+  // 统一渲染：依 drill 状态取切片，重绘所有面板（KPI / 七类 / 工具来源 / 趋势 / 事件 / 告警）。
+  function render() {
+    if (!SUMMARY) return;
+    var rows = filteredRows();
+    var s = drill.dim === 'all' ? SUMMARY : sliceSummary(rows);
+    var total = CATS.reduce(function (a, c) { return a + Number((s.byCategory || {})[c] || 0); }, 0);
+    var scope = drill.dim === 'all' ? '全窗口' : (drill.dim === 'agent' ? 'agent = ' + drill.key : 'model = ' + drill.key);
+    document.getElementById('meta').innerHTML =
+      '只观测不改写。当前范围：<b>' + esc(scope) + '</b>（' + nf(rows.length) + ' 请求）。' +
+      '分类为估算轨（长度/3 启发式）；实测覆盖 ' + pct(s.actualCoverage) + '。' +
+      '事件为代理侧帧差推断（<code>proxy-frame-diff</code>），是候选不是事实。门控 <code>PROXY_CONTEXT_TRACK</code>。';
+    document.getElementById('kpi').innerHTML = kpiHtml(s);
+    document.getElementById('stack').innerHTML = stackHtml(s.byCategory, total);
+    document.getElementById('legend').innerHTML = legendHtml(s.byCategory, total);
+    var ts = toolsSrcHtml(rows);
+    document.getElementById('toolsrc-stack').innerHTML = ts.stack;
+    document.getElementById('toolsrc-legend').innerHTML = ts.legend;
+    document.getElementById('trend').innerHTML = trendHtml(rows);
+    document.getElementById('events').innerHTML = eventsHtml(rows);
+    document.getElementById('warnings').innerHTML = warningsHtml(s);
+    document.getElementById('note').innerHTML =
+      '口径真源：<code>docs/context-breakdown-口径.md</code>。坐标系抄自 dsh-context（七类），' +
+      '差异：代理看不到注入生产者，inject/skill 两桶默认 0，不硬凑。' +
+      '「窗口估算成本」为面板端 join（价目走 costTrack 既有表，标估算、非实测账）。' +
+      '下钻切片成本由前端按同套价目 join，口径与整窗一致。' +
+      '丢帧 ' + nf(0) + ' · 落盘错误见 <code>GET /api/context/stats</code>。';
+  }
+
   function load() {
     // 注册式重试：避免 innerHTML 重绘丢失监听；首次进入在 MPStates 就绪后（见底部守卫）
     MPStates.registerRetry('context:load', load);
     // 加载骨架：fetch 回来前先占位，避免「白板」被误读成「没有数据」
-    ['kpi', 'stack', 'legend', 'toolsrc-stack', 'toolsrc-legend', 'trend', 'events'].forEach(function (id) {
+    ['kpi', 'stack', 'legend', 'toolsrc-stack', 'toolsrc-legend', 'trend', 'events', 'warnings'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.innerHTML = MPStates.skeleton({ variant: 'text', count: 3 });
     });
     document.getElementById('meta').textContent = '加载中…';
 
-    fetch('./api/context/summary?windowMs=' + 86400000)
+    var pSum = fetch('./api/context/summary?windowMs=' + 86400000)
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (s) {
-        document.getElementById('chip-track').textContent = '观测中 · ' + nf(s.requests) + ' 请求';
-        document.getElementById('chip-track').className = 'chip on';
-        document.getElementById('meta').innerHTML =
-          '只观测不改写。分类数字为估算轨（长度/3 启发式）；实测轨来自上游 usage，覆盖率 ' + pct(s.actualCoverage) + '。' +
-          '事件为代理侧帧差推断（<code>proxy-frame-diff</code>），是候选不是事实。门控 <code>PROXY_CONTEXT_TRACK</code>。';
-        var total = CATS.reduce(function (a, c) { return a + Number(s.byCategory[c] || 0); }, 0);
-        document.getElementById('kpi').innerHTML = kpiHtml(s);
-        document.getElementById('stack').innerHTML = stackHtml(s.byCategory, total);
-        document.getElementById('legend').innerHTML = legendHtml(s.byCategory, total);
-        return fetch('./api/context/recent?n=40')
-          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-          .then(function (d) {
-            var rows = d.rows || [];
-            var ts = toolsSrcHtml(rows);
-            document.getElementById('toolsrc-stack').innerHTML = ts.stack;
-            document.getElementById('toolsrc-legend').innerHTML = ts.legend;
-            document.getElementById('trend').innerHTML = trendHtml(rows);
-            document.getElementById('events').innerHTML = eventsHtml(rows);
-          });
-      })
+      .then(function (s) { SUMMARY = s; });
+    var pRecent = fetch('./api/context/recent?n=40')
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) { ALL_ROWS = d.rows || []; });
+    // 成本下钻需要价目表：只读端点，与 summary.estimatedCny 同源，不引入新计费逻辑。
+    var pPrice = fetch('./api/context/pricing')
+      .then(function (r) { return r.json(); })
+      .then(function (d) { PRICING = (d && d.pricing) || {}; })
+      .catch(function () { PRICING = {}; });
+
+    Promise.all([pSum, pRecent, pPrice])
       .then(function () {
-        document.getElementById('note').innerHTML =
-          '口径真源：<code>docs/context-breakdown-口径.md</code>。坐标系抄自 dsh-context（七类），' +
-          '差异：代理看不到注入生产者，inject/skill 两桶默认 0，不硬凑。' +
-          '「窗口估算成本」为面板端 join（价目走 costTrack 既有表，标估算、非实测账）。' +
-          '丢帧 ' + nf(0) + ' · 落盘错误见 <code>GET /api/context/stats</code>。';
+        document.getElementById('chip-track').textContent = '观测中 · ' + nf(SUMMARY.requests) + ' 请求';
+        document.getElementById('chip-track').className = 'chip on';
+        buildDrill();
+        render();
       })
       .catch(function (e) {
         document.getElementById('meta').textContent = '加载失败：' + e.message;
         // 读失败 ≠ 没有数据：每个数据容器单独给错误态 + 重试，而不是留白
-        ['kpi', 'stack', 'legend', 'toolsrc-stack', 'toolsrc-legend', 'trend', 'events'].forEach(function (id) {
+        ['kpi', 'stack', 'legend', 'toolsrc-stack', 'toolsrc-legend', 'trend', 'events', 'warnings'].forEach(function (id) {
           var el = document.getElementById(id);
           if (el) el.innerHTML = MPStates.error({
             title: '读取失败',
@@ -310,6 +410,13 @@
   document.getElementById('btn-refresh').addEventListener('click', load);
   document.getElementById('btn-theme').addEventListener('click', function () {
     document.documentElement.classList.toggle('dark');
+  });
+  var drillSel = document.getElementById('drillSel');
+  if (drillSel) drillSel.addEventListener('change', function (e) {
+    var v = e.target.value, i = v.indexOf(':');
+    if (i < 0) { drill = { dim: 'all', key: null }; }
+    else { drill = { dim: v.slice(0, i), key: v.slice(i + 1) }; }
+    render();
   });
   // 轮询直到 states.js 就绪再跑 load()：底部脚本经请求拦截时，单次 setTimeout(0)
   // 可能在 states.js 执行前触发，导致内部 MPStates.registerRetry 报「未定义」。

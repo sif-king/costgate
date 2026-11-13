@@ -153,10 +153,13 @@
   border-radius: var(--hig-card-radius) var(--hig-card-radius) 0 0;
 }
 
-.hig-stat-card.blue::before { background: var(--color-primary); }
-.hig-stat-card.green::before { background: var(--color-success); }
-.hig-stat-card.orange::before { background: var(--color-warning); }
-.hig-stat-card.red::before { background: var(--color-error); }
+/* 安静顶条：不再用蓝绿橙红四色编码（典型的生成式仪表盘味）。
+   卡片本身已是中性灰阶 + 单一强调色，顶条统一收成一条细的强调色描边，
+   语义只靠数字与图标传达，不靠彩虹。 */
+.hig-stat-card.blue::before,
+.hig-stat-card.green::before,
+.hig-stat-card.orange::before,
+.hig-stat-card.red::before { background: var(--accent, #2563eb); }
 
 .hig-stat-card:hover {
   transform: translateY(-2px);

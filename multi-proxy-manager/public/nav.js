@@ -135,7 +135,22 @@
       'border-radius:9px;padding:1px 7px}' +
     '.nav-count:empty{display:none}' +
     '.nav-group-body[hidden]{display:none}' +
-    '.nav-group-body .nav-item{padding-left:26px}';
+    '.nav-group-body .nav-item{padding-left:26px}' +
+    // 基础项统一样式：nav.js 在所有页面末尾注入，这套会覆盖各页散落的侧栏写法，
+    // 直接消掉「好几套」；active 只换底色 + 字重（不加边框/改 padding），避免点不同项时文字乱跳。
+    '.nav-item{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;' +
+      'box-sizing:border-box;border-radius:8px;text-decoration:none;' +
+      'font-size:13px;line-height:1;color:var(--color-text-secondary,#64748b);' +
+      'background:transparent;transition:background-color .12s ease,color .12s ease}' +
+    '.nav-item .icon-svg{width:18px;height:18px;flex:0 0 18px;stroke:currentColor;' +
+      'stroke-width:1.5;fill:none}' +
+    '.nav-item span{white-space:nowrap}' +
+    '.nav-item:hover{background:var(--color-bg-hover,rgba(127,127,127,.08));color:var(--color-text,#111)}' +
+    '.nav-item.active{background:var(--color-bg-hover,rgba(127,127,127,.10));' +
+      'color:var(--color-text,#111);font-weight:500}' +
+    '.nav-item.active:hover{background:var(--color-bg-hover,rgba(127,127,127,.12))}' +
+    '.nav-label{font-size:11px;font-weight:600;color:var(--color-text-tertiary,#94a3b8);' +
+      'padding:16px 12px 6px;margin:0}';
 
   function injectNavStyles() {
     if (typeof document === 'undefined') return;
