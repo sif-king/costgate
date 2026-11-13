@@ -141,6 +141,14 @@ class ContextStore {
     return this._ring.slice(-k);
   }
 
+  /** 窗口内原始行（供成本 join 等非聚合消费；无正文）。与 summary 同一窗口口径。 */
+  rowsInWindow({ windowMs } = {}) {
+    const now = Date.now();
+    return Number.isFinite(windowMs)
+      ? this._ring.filter((r) => r.ts >= now - windowMs)
+      : this._ring.slice();
+  }
+
   stats() {
     return { ring: this._ring.length, ringMax: this.ringMax, dropped: this._dropped, diskErrors: this._diskErrors, file: this.file };
   }
@@ -158,6 +166,7 @@ module.exports = {
   report: _singleton.report.bind(_singleton),
   summary: _singleton.summary.bind(_singleton),
   recent: _singleton.recent.bind(_singleton),
+  rowsInWindow: _singleton.rowsInWindow.bind(_singleton),
   stats: _singleton.stats.bind(_singleton),
   clear: _singleton.clear.bind(_singleton),
   _singleton,

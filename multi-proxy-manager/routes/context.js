@@ -18,6 +18,7 @@
 const express = require('express');
 const { requireAgentAuth } = require('../lib/auth');
 const contextStore = require('../lib/context-store');
+const costTrack = require('../lib/cost-track'); // G3：面板端 join 成本（价目源走既有价表）
 
 const router = express.Router();
 
@@ -37,7 +38,22 @@ router.post('/report', requireAgentAuth, (req, res) => {
 // ---- 查询（读面：不鉴权，同 /api/floor）----
 router.get('/summary', (req, res) => {
   const windowMs = Number(req.query.windowMs);
-  res.json({ ok: true, ...contextStore.summary({ windowMs }) });
+  const summary = contextStore.summary({ windowMs });
+  // G3（2026-11-13）：面板端 join 成本——复用 costTrack 既有价目（每百万 tokens，CNY），
+  // 按窗口内每请求 model+total 估算。纪律：不动 fold 内核；只取 input 口径（无 prompt/completion 拆分）；
+  // 标「估算」避免冒充实测账（实测账在 cost-track 落盘，那条线不在这里）。
+  const pricing = costTrack.getPricingTable() || {};
+  let est = 0;
+  const rows = contextStore.rowsInWindow({ windowMs });
+  for (const r of rows) {
+    const p = (r.model && pricing[r.model]) || (r.requestModel && pricing[r.requestModel]);
+    if (!p) continue;
+    const rate = (p.input != null ? p.input : 0); // 每百万 tokens，CNY
+    est += (Number(r.total) || 0) / 1e6 * rate;
+  }
+  summary.estimatedCny = Math.round(est * 100) / 100;
+  summary.costBasis = '估算 · 窗口各请求按模型 input 价目（每百万 tokens）· 无 prompt/completion 拆分';
+  res.json({ ok: true, ...summary });
 });
 
 router.get('/recent', (req, res) => {

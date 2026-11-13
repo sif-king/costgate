@@ -154,7 +154,8 @@
       ['平均上下文', nf(s.requests ? Math.round(Object.keys(s.byCategory).reduce(function (a, c) { return a + Number(s.byCategory[c] || 0); }, 0)) : 0), '七类均值（估算轨）'],
       ['峰值单帧', nf(s.peak), '窗口内最大'],
       ['实测覆盖率', pct(s.actualCoverage), '有 provider usage 的请求占比'],
-      ['推断事件', nf(Object.keys(s.events || {}).reduce(function (a, k) { return a + s.events[k]; }, 0)), '压缩/裁剪/换模型/工具集']
+      ['推断事件', nf(Object.keys(s.events || {}).reduce(function (a, k) { return a + s.events[k]; }, 0)), '压缩/裁剪/换模型/工具集'],
+      ['窗口估算成本', (s.estimatedCny != null ? '¥' + s.estimatedCny : '—'), (s.costBasis || '按模型 input 价目（估算）')]
     ];
     return cards.map(function (c) {
       return '<div class="kpi"><div class="k">' + esc(c[0]) + '</div><div class="v">' + esc(c[1]) + '</div><div class="s">' + esc(c[2]) + '</div></div>';
@@ -288,6 +289,7 @@
         document.getElementById('note').innerHTML =
           '口径真源：<code>docs/context-breakdown-口径.md</code>。坐标系抄自 dsh-context（七类），' +
           '差异：代理看不到注入生产者，inject/skill 两桶默认 0，不硬凑。' +
+          '「窗口估算成本」为面板端 join（价目走 costTrack 既有表，标估算、非实测账）。' +
           '丢帧 ' + nf(0) + ' · 落盘错误见 <code>GET /api/context/stats</code>。';
       })
       .catch(function (e) {
