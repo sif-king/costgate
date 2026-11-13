@@ -1,0 +1,121 @@
+<!--
+costgate — Copyright © 2026 sif-king (Jason)
+Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+This file is part of the costgate project.
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>costgate — 把本机 AI 工具的出口和账收在一处</title>
+<meta name="description" content="一条命令装好，看到第一笔真实账单。本机代理、成本账本、可自证的能力开关。">
+<style>
+  :root{
+    --bg:#ffffff;--surface:#f7f8fa;--border:#e4e7ec;--fg:#101828;--muted:#475467;
+    --accent:#2563eb;--accent-soft:#eef4ff;--radius:14px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0f141b;--surface:#161d27;--border:#2a3441;--fg:#eef1f6;--muted:#a3adba;
+      --accent:#7aa7ff;--accent-soft:#182642;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);
+    line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;padding:0 24px}
+  header{border-bottom:1px solid var(--border);padding:18px 0}
+  .brand{font-weight:700;font-size:18px;letter-spacing:-.02em}
+  .brand span{color:var(--muted);font-weight:400;font-size:12px;margin-left:10px}
+  nav a{color:var(--muted);text-decoration:none;font-size:13px;margin-left:20px}
+  nav a:hover{color:var(--accent)}
+  .hero{padding:76px 0 56px;border-bottom:1px solid var(--border)}
+  h1{font-size:clamp(30px,5vw,46px);line-height:1.25;letter-spacing:-.03em;margin:0 0 18px;font-weight:700}
+  .lede{font-size:17px;color:var(--muted);max-width:660px;margin:0 0 30px}
+  pre{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:18px 20px;overflow-x:auto;font-size:14px;margin:0 0 18px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .btnrow{display:flex;flex-wrap:wrap;gap:12px}
+  .btn{display:inline-block;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;
+    text-decoration:none;border:1px solid var(--border)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.ghost{color:var(--fg);background:var(--surface)}
+  section{padding:52px 0;border-bottom:1px solid var(--border)}
+  h2{font-size:22px;letter-spacing:-.02em;margin:0 0 24px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+  .card h3{margin:0 0 8px;font-size:16px}
+  .card p{margin:0;color:var(--muted);font-size:14px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  .tag{display:inline-block;background:var(--accent-soft);color:var(--accent);border-radius:999px;
+    padding:2px 10px;font-size:12px;font-weight:600}
+  footer{padding:36px 0 60px;color:var(--muted);font-size:13px}
+  footer a{color:var(--accent);text-decoration:none}
+  .note{font-size:13px;color:var(--muted);margin-top:18px}
+</style>
+</head>
+<body>
+<header><div class="wrap" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+  <div class="brand">costgate <span>本机 AI 工具的出口与账本</span></div>
+  <nav>
+    <a href="https://github.com/sif-king/costgate">源码</a>
+    <a href="https://github.com/sif-king/costgate#readme">完整文档</a>
+    <a href="https://github.com/sif-king/costgate/blob/main/USER-MANUAL.md">用户手册</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="hero wrap">
+    <h1>把你本机那些 AI 编码工具的模型请求，<br>收到一处，记一本你自己能查的账。</h1>
+    <p class="lede">不用 API key，一条命令装好，看到第一笔真实账单。账是磁盘上的纯文本文件，另有一条只读命令把它读出来，包括每项能力真跑过几次。</p>
+    <pre><code>git clone https://github.com/sif-king/costgate &amp;&amp; cd costgate
+bash scripts/quickstart.sh</code></pre>
+    <div class="btnrow">
+      <a class="btn primary" href="https://github.com/sif-king/costgate#readme">读 README</a>
+      <a class="btn ghost" href="https://github.com/sif-king/costgate/blob/main/SECURITY.md">数据去哪了</a>
+      <a class="btn ghost" href="https://github.com/sif-king/costgate/blob/main/CHANGELOG.md">已知限制</a>
+    </div>
+    <p class="note">首次会安装依赖，脚本末尾会打印本次真实耗时，不承诺固定秒数。</p>
+  </div>
+
+  <section class="wrap">
+    <h2>三件马上能自己验的事</h2>
+    <div class="grid">
+      <div class="card"><h3>看到第一笔真实账单</h3><p>脚本装好依赖、探到零 key 上游、起两个进程、发一个真请求，末尾把刚落地的那一笔打印出来（入 / 出 / 费用 / 耗时）。</p></div>
+      <div class="card"><h3>每笔账可以自己查</h3><p>账本是本机磁盘上的文本，不藏在服务里。只读命令能把它读出来，也能看出哪项能力真的跑过、跑过几次。</p></div>
+      <div class="card"><h3>数据不出本机</h3><p>密钥留在你自己的配置文件里，没有遥测、没有回传。验证脚本全程只读本地文件，不发一个出网请求。</p></div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <h2>默认开什么、默认关什么</h2>
+    <table>
+      <thead><tr><th>能力</th><th>默认</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>请求账本与脱敏</td><td><span class="tag">开</span></td><td>装上就有账，第一次用就能看见</td></tr>
+        <tr><td>路由、熔断、重试、任务编排</td><td><span class="tag">关</span></td><td>每项是独立开关，开了才改行为；没开时页面会明说没开，不会伪装成「没数据」</td></tr>
+        <tr><td>知识库、技能扫描等进阶能力</td><td><span class="tag">关</span></td><td>默认零副作用，需要时在设置里开启</td></tr>
+      </tbody>
+    </table>
+    <p class="note">开关的完整清单与验收方式见仓库里的 COMPATIBILITY.md 与 README，页面上方的能力条也会显示当前状态。</p>
+  </section>
+
+  <section class="wrap">
+    <h2>想再往前一步</h2>
+    <div class="grid">
+      <div class="card"><h3>接上你自己的工具</h3><p>支持 Claude Code、Codex CLI、Cursor、opencode、Cline、Aider 等。工具之间是否抢了同一个配置，装的时候会先查再报冲突，不覆写你的配置。</p></div>
+      <div class="card"><h3>看清楚边界</h3><p>单机单用户，不提供多租户、SSO、企业分账。当前没发正式版本号，接口会变，上生产前请先读已知限制。</p></div>
+      <div class="card"><h3>双许可</h3><p>源码 AGPL-3.0，商业使用另有商业许可。两份许可正文都在仓库里。</p></div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap">
+  costgate · 源码与文档见 <a href="https://github.com/sif-king/costgate">github.com/sif-king/costgate</a> ·
+  许可 <a href="https://github.com/sif-king/costgate/blob/main/LICENSE">AGPL-3.0</a> /
+  <a href="https://github.com/sif-king/costgate/blob/main/LICENSE-COMMERCIAL.md">Commercial</a>
+</div></footer>
+</body>
+</html>

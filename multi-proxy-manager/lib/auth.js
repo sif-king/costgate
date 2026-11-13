@@ -71,8 +71,8 @@ function getOrGenerateJwtSecret() {
 const AUTH_SECRET = getOrGenerateJwtSecret();
 
 const TOKEN_EXPIRY = '8h';
-// 数据目录缺省仍 ~/.multi-proxy-manager（零行为变更）；MP_DATA_DIR 可覆盖。
-const DATA_DIR = process.env.MP_DATA_DIR || path.join(os.homedir(), '.multi-proxy-manager');
+// 数据目录走单一真源 lib/data-dir.js（缺省仍为旧路径，零行为变更；MP_DATA_DIR 可覆盖）。
+const DATA_DIR = require('./data-dir').resolveDataDir();
 const PASSWORD_FILE = path.join(DATA_DIR, 'password');
 
 function getPassword() {
@@ -194,7 +194,7 @@ function requireAuth(req, res, next) {
 // 拉起代理子进程，token 自动跟着走；第三方 agent 代理复制同一串进自己的 env 即可。
 //
 // 🔴 不是秘密的「秘密」：token 只在环回面防随手灌数。网络暴露前仍须走正经鉴权（界面 JWT / PROXY_AUTH_TOKEN）。
-const AGENT_TOKEN_FILE = path.join(os.homedir(), '.multi-proxy-manager', 'agent-token');
+const AGENT_TOKEN_FILE = require('./data-dir').dataFile('agent-token');
 
 function getOrGenerateAgentToken() {
   if (process.env.MANAGER_AGENT_TOKEN && process.env.MANAGER_AGENT_TOKEN.length > 0) {

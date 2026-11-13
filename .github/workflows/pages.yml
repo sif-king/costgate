@@ -1,0 +1,36 @@
+# costgate — Copyright © 2026 sif-king (Jason)
+# Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
+# This file is part of the costgate project.
+#
+# GitHub Pages 落地页部署（site/index.html）。
+# 🔴 刻意只挂 workflow_dispatch：Pages 尚未在仓库 Settings 启用时，自动触发会让每次 push 都红一条 CI。
+#    等老板在 Settings → Pages → Build and deployment → Source 选 "GitHub Actions" 之后，
+#    再手动跑一次本 workflow 即可。要改成自动，把下面 on: 加 push/branches: [main] 即可。
+name: Pages (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
