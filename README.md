@@ -343,6 +343,9 @@ bash manage.sh {start|stop|restart|status}
 
 ## 常见问题
 
+- **账本和配置到底在哪个目录？**
+
+  全新安装默认 `~/.costgate/`；改名之前就在用的安装会继续读 `~/.multi-proxy-manager/`，不用搬家、不用重新登录。想知道本机实际用的是哪个，跑 `node -e "console.log(require('./multi-proxy-manager/lib/data-dir').resolveDataDir())"`；想搬到新目录，停掉服务后跑 `bash manage.sh migrate --apply`。下面正文和示例输出里出现的 `~/.multi-proxy-manager/` 是既有安装的路径，示例是那次真跑留下的，没有改字。
 - **我要全装吗？**
 
   不用。两个进程（`codex-proxy` + `manager`）就能跑完上面那个 30 秒演示。其余按你实际用哪个工具再加。

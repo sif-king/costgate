@@ -224,6 +224,7 @@ bash scripts/verify-lanes.sh codex dsh  # 只验指定的
 
 - **你的 API key 存哪？** 本机 `~/.multi-proxy-manager/providers.json`（cursor-proxy 的 key 额外用 AES-256-GCM 加密）。没有任何遥测、没有回传，`verify.sh` 全程只读本地文件，不发一个出网请求。
 - **账本在哪？** `~/.multi-proxy-manager/cost-ledger.jsonl`，一个纯文本文件，`tail` 就能读，你随时能删、能搬、能自己核对。
+- **数据目录是哪个？** 全新安装是 `~/.costgate/`，老安装继续用 `~/.multi-proxy-manager/`，不用搬家也不用重新登录。本机实际路径跑 `node -e "console.log(require('./multi-proxy-manager/lib/data-dir').resolveDataDir())"` 实查；想搬迁，停服后跑 `bash manage.sh migrate --apply`。上文那些 `~/.multi-proxy-manager/` 写的是既有安装的路径。
 - **「本地」是一档路由条件，不是降级开关。** 规则打上 `privacy`，下游地址就写死 `127.0.0.1`——是架构保证，不是调参调出来的效果。
 - **免费池会把 prompt 用于服务改进**，别发敏感内容；脚本本身只发一句 `pong`。
 
