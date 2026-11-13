@@ -15,6 +15,7 @@
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>
   <script src="./theme.js"></script>
+  <link rel="stylesheet" href="./unify.css">
 </head>
 <style>
 /* ============================================
@@ -3545,39 +3546,6 @@
 })();
 </script>
 
-<!-- 2026-11-13 unslop 收敛（B）：dashboard 末位注入，把 shared-styles.css 独占、components.css
-     未重定义的旧选择器统一到 tokens.css / components.css 一套，消除「缝合怪」观感。
-     旧 CSS 文件不动（design-system.test.js 钉 --color-* 与 shared-styles 选择器 + 双色板 WCAG 一致，见约束）。
-     仅覆盖 dashboard 实际用到、且新版未定义的旧选择器；modal-overlay 保留 flex 居中（显示由 JS inline display:flex 控制）。 -->
-<style id="ds-unify-tokens">
-  /* 状态徽标：对齐 components.css 的 .badge（dashboard 同时用 .badge 与 .status-badge，
-     两种药丸并存是典型缝合怪观感） */
-  .status-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;
-    border-radius:var(--r-pill);font-size:var(--fs-xs);font-weight:var(--fw-medium);
-    background:var(--surface-3);color:var(--muted);white-space:nowrap}
-  .status-badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
-  .status-badge.online{background:var(--ok-soft-bg);color:var(--ok-soft-fg)}
-  .status-badge.offline{background:var(--surface-3);color:var(--subtle)}
-  .status-badge.fault,.status-badge.degraded{background:var(--warn-soft-bg);color:var(--warn-soft-fg)}
 
-  /* 页头：对齐 components.css 的 .page-head（h2+p），去旧 .page-header/.page-title/.page-subtitle */
-  .page-header{margin-bottom:var(--sp-6)}
-  .page-title{font-size:var(--fs-3xl);font-weight:var(--fw-bold);color:var(--fg);
-    letter-spacing:-.02em;margin:0;line-height:var(--lh-tight)}
-  .page-subtitle{font-size:var(--fs-sm);color:var(--muted);font-weight:var(--fw-regular);margin-top:4px}
-
-  /* 模态：对齐 components.css 的 .modal-back/.modal/.modal .acts；居中保留 flex（JS 用 inline display:flex 显示） */
-  .modal-overlay{position:fixed;inset:0;background:rgba(16,24,40,.5);z-index:var(--z-modal);
-    display:flex;align-items:center;justify-content:center;padding:20px;
-    animation:pop var(--dur-slow) var(--ease)}
-  .modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);
-    box-shadow:var(--shadow-lg);width:520px;max-width:100%;max-height:90vh;overflow-y:auto;padding:24px}
-  .modal-title{font-size:var(--fs-lg);font-weight:var(--fw-bold);margin:0 0 6px;color:var(--fg)}
-  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
-
-  /* 会话项：对齐 components.css 的 .card */
-  .session-item{background:var(--surface);border:1px solid var(--border);
-    border-radius:var(--r-lg);padding:12px;margin-bottom:8px}
-</style>
 </body>
 </html>
