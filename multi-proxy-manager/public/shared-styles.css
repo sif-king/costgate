@@ -712,6 +712,13 @@ body {
 }
 
 .offline-banner.hidden { display: none; }
+
+/* 通用 .hidden（2026-11-13 补）：此前全站只定义了 .offline-banner.hidden，
+   于是任何别的元素加 hidden 类都没有效果 —— 面板里 API Key 横幅的关闭按钮
+   一直关不掉（点了只是加类，视觉没变），就是这一条缺的。
+   只做 display:none，不涉其它布局属性，对已有元素无副作用。 */
+.hidden { display: none !important; }
+
 .offline-banner-icon { font-size: 16px; flex-shrink: 0; }
 
 /* Responsive */

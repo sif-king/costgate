@@ -129,6 +129,9 @@ app.use('/api/l2', l2Routes);
 // 代理面 floor view：只读聚合（cost-track + provider-health），挂在代理 wildcard 之前。
 // 与 registry/provider-health/sessions 同模式；纯只读展示，零副作用、无门控。
 app.use('/api/floor', require('./routes/floor'));
+// 「今天」这本账：两本账（cost-ledger 请求 + fs-ledger 文件）按天合成，口径与 `costgate today`
+// 同一份（l2/report.js）。面板「今天」页的唯一数据源，只读、无门控。
+app.use('/api/today', require('./routes/today'));
 // 跨进程 usage 上报面：代理进程（如 codex-proxy）把上游 usage 报进来，与 floor 同挂此层。
 // 接入规范见 routes/cost-report.js 头注释 —— 接入方只需贴 raw + agent，解析由 usage-probe 自动做。
 app.use('/api/cost', require('./routes/cost-report'));

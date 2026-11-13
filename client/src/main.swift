@@ -55,21 +55,42 @@ let PROXY_DIR: String = {
 let MANAGE      = "\(PROXY_DIR)/manage.sh"
 let CODEX_DIR   = "\(PROXY_DIR)/codex-proxy"
 let PROXY_JS    = "\(CODEX_DIR)/proxy.js"
-/// node：环境变量 MULTIPROXY_NODE → 托管版本候选 → which node。
+/// node：环境变量 → 托管多版本目录（扫描取可用版本）→ 常见路径。
+/// 🔴 为什么托管版本优先（2026-11-13 实测）：本机 /usr/local/bin/node 是 v24，
+/// 用它启动 multi-proxy-manager 会**卡在 listen 之前**——进程活着、日志停在
+/// `[CORS] Origin`、18792 永远不通；换项目自带的 22.22.2-6 十几秒内正常就绪。
+/// 所以先扫 versions 目录，系统 node 只当最后兜底。
+/// 🔴 也别写死版本号：这里曾经钉死过 22.22.2-3，node 一升级成 -6 就静默断供
+/// （LaunchAgent 里的问题一模一样）。扫描目录才能在升级后自己跟上。
 let NODE: String = {
     for key in ["COSTGATE_NODE", "MULTIPROXY_NODE"] {
         if let n = ProcessInfo.processInfo.environment[key], !n.isEmpty { return n }
     }
     let fm = FileManager.default
     let home = NSHomeDirectory()
-    for c in [home + "/.workbuddy/binaries/node/versions/22.22.2-3/bin/node",
-              home + "/.workbuddy/binaries/node/current/bin/node",
+    let versionsRoot = home + "/.workbuddy/binaries/node/versions"
+    if let names = try? fm.contentsOfDirectory(atPath: versionsRoot) {
+        let ordered = names.sorted { $0.compare($1, options: .numeric) == .orderedDescending }
+        for name in ordered {
+            let p = versionsRoot + "/" + name + "/bin/node"
+            if fm.isExecutableFile(atPath: p) { return p }
+        }
+    }
+    for c in [home + "/.workbuddy/binaries/node/current/bin/node",
               "/opt/homebrew/bin/node", "/usr/local/bin/node"] {
         if fm.isExecutableFile(atPath: c) { return c }
     }
     return "node"
 }()
 let HEALTH      = "http://127.0.0.1:18790/health"
+/// 面板（管理台）不是网关的一部分，它是另一个进程。此前客户端只管 18790，
+/// 于是「网关绿了、面板没起」时窗口会白屏 —— 而面板才是这本账真正被看见的地方。
+/// 2026-11-13：客户端改为同时保证 18792 在跑，双击图标就能看到「今天」。
+let MANAGER_DIR   = "\(PROXY_DIR)/multi-proxy-manager"
+let MANAGER_JS    = "\(MANAGER_DIR)/server.js"
+/// 探活不用 /api/readyz：那个端点会逐个代理去问 /health，任一代理挂了就可能非 200，
+/// 于是「面板明明在跑」被判成没起。这里只问一件事：面板自己的页面能不能出来。
+let PANEL_CHECK   = "http://127.0.0.1:18792/dashboard.html"
 let DASHBOARD   = "http://127.0.0.1:18792/dashboard.html"
 let APP_NAME    = "costgate"
 /// 版本与构建号从自己的 Info.plist 读（build.sh 从 VERSION + git HEAD 写进去），
@@ -82,33 +103,73 @@ let PATCH_FILE  = "\(NSHomeDirectory())/.dsh/profiles/desktop/cordis.patch.yml"
 let SETTINGS    = "\(NSHomeDirectory())/.dsh/settings.yaml.imported"
 let LAUNCHDIR   = "\(NSHomeDirectory())/Library/LaunchAgents"
 let AGENT_PLIST = "\(LAUNCHDIR)/\(AGENT_ID).plist"
+// 面板的 LaunchAgent（App 每次启动重写，node 路径跟着运行时解析走）
+let MANAGER_AGENT_ID = "com.sifking.costgate.manager"
+let MANAGER_PLIST    = "\(LAUNCHDIR)/\(MANAGER_AGENT_ID).plist"
 // —— 崩溃自愈（watchdog）：本壳拉起的底座崩溃则退避自动重启；附着模式绝不碰外部进程 ——
 let MAX_RESTART        = 5   // 连续自动重启上限，超过则放弃并提示手动
 let WATCHDOG_INTERVAL: TimeInterval = 5   // 探活周期（秒），间隔本身即自然退避
 
 // MARK: - 工具
-/// 子进程环境：只给必要的，别把 Shell 会话的自定义变量（BASH_ENV 之类）传染过去。
-/// PATH 里的 node/python3 用本机的 WorkBuddy 托管版本（/opt/homebrew/bin 下没有 node）。
+/// 子进程的 stdout/stderr 句柄必须一直被持有。
+/// ⚠️ 踩过的坑（2026-11-13）：原来写成函数局部的 `let fh`，函数一返回 ARC 就把它释放，
+/// 底层 fd 跟着关闭 —— 子进程继续往一个已关闭的 fd 写，直接 EPIPE 崩掉，
+/// 表现是「日志文件 0 字节 + 端口起不来」，而且看日志什么线索都没有。
+/// 现在统一往这里存，进程活多久就留多久（数量极少，不做回收）。
+var childLogHandles: [FileHandle] = []
+
+/// 打开（或追加）子进程日志文件，并把句柄存起来防被释放
+func openChildLog(_ path: String) -> FileHandle? {
+    let fm = FileManager.default
+    if !fm.fileExists(atPath: path) {
+        fm.createFile(atPath: path, contents: nil)
+    }
+    guard let fh = FileHandle(forWritingAtPath: path) else { return nil }
+    fh.seekToEndOfFile()
+    childLogHandles.append(fh)
+    return fh
+}
+
+
+/// 子进程环境。
+/// 原做法是从零构造一套变量（只有 PATH/HOME/SHELL/TERM/LANG/USER/LOGNAME），
+/// 目的是甩掉 Shell 会话里的 BASH_ENV。代价是连 TMPDIR、__CF_USER_TEXT_ENCODING
+/// 这类「不写出来但 node / 系统库会用到」的变量一起丢了。
+/// 2026-11-13 改成：**继承父进程环境 + 显式覆盖关键项 + 显式删掉 BASH_ENV/ENV**，
+/// 既能甩掉 shim，又不至于让子进程缺东西。GUI 进程的环境本来就干净，继承不会带来 shell 污染。
 func childEnvironment() -> [String: String] {
     let home = NSHomeDirectory()
     // node/python 目录同样做候选探测，别写死本机托管版本路径（开源后默认回退通用 PATH）
     let nodeDir  = (NODE as NSString).deletingLastPathComponent
     let pythonDir: String = {
-        let c = home + "/.workbuddy/binaries/python/versions/3.13.12/bin"
-        if FileManager.default.isExecutableFile(atPath: c + "/python3") { return c }
+        // 与 NODE 同理：扫版本目录，不写死 3.x.y（写死过一次，升级后 PATH 里就没有 python3 了）
+        let root = home + "/.workbuddy/binaries/python/versions"
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: root) {
+            let ordered = names.sorted { $0.compare($1, options: .numeric) == .orderedDescending }
+            for name in ordered {
+                let d = root + "/" + name + "/bin"
+                if FileManager.default.isExecutableFile(atPath: d + "/python3") { return d }
+            }
+        }
+        if FileManager.default.isExecutableFile(atPath: home + "/.workbuddy/binaries/python/current/bin/python3") {
+            return home + "/.workbuddy/binaries/python/current/bin"
+        }
         return "/opt/homebrew/bin"
     }()
-    return [
-        "PATH": (nodeDir.isEmpty ? "" : nodeDir + ":")
+    var env = ProcessInfo.processInfo.environment
+    env["PATH"] = (nodeDir.isEmpty ? "" : nodeDir + ":")
                  + (pythonDir.isEmpty ? "" : pythonDir + ":")
-                 + "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "HOME": home,
-        "SHELL": "/bin/bash",
-        "TERM": "dumb",
-        "LANG": "zh_CN.UTF-8",
-        "USER": NSUserName(),
-        "LOGNAME": NSUserName(),
-    ]
+                 + "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    env["HOME"] = home
+    env["SHELL"] = "/bin/bash"
+    env["TERM"] = "dumb"
+    env["LANG"] = "zh_CN.UTF-8"
+    env["USER"] = NSUserName()
+    env["LOGNAME"] = NSUserName()
+    // 这两个是 bash 启动时要 source 的脚本入口，shim 卡死历史见 runShell 头注释
+    env.removeValue(forKey: "BASH_ENV")
+    env.removeValue(forKey: "ENV")
+    return env
 }
 
 /// ⚠️ 踩过的坑：原来用 Pipe + readDataToEndOfFile() 读输出，
@@ -206,9 +267,9 @@ func configAgeSeconds() -> Double? {
     return Date().timeIntervalSince(cm)
 }
 
-func healthOK() -> Bool {
-    guard let url = URL(string: HEALTH) else { return false }
-    var req = URLRequest(url: url); req.timeoutInterval = 3
+func httpOK(_ urlString: String, timeout: TimeInterval = 3) -> Bool {
+    guard let url = URL(string: urlString) else { return false }
+    var req = URLRequest(url: url); req.timeoutInterval = timeout
     var ok = false
     let sem = DispatchSemaphore(value: 0)
     let task = URLSession.shared.dataTask(with: req) { _, resp, _ in
@@ -216,9 +277,19 @@ func healthOK() -> Bool {
         sem.signal()
     }
     task.resume()
-    _ = sem.wait(timeout: .now() + 4)
+    _ = sem.wait(timeout: .now() + timeout + 1)
+    return ok
+}
+
+func healthOK() -> Bool {
+    let ok = httpOK(HEALTH)
     log("health -> \(ok)")
     return ok
+}
+
+/// 面板（18792）是否在跑。它和网关（18790）是两个进程：网关绿了不代表能看到账。
+func panelOK() -> Bool {
+    httpOK(PANEL_CHECK, timeout: 2)
 }
 
 /// ⚠️ 别再从客户端调 `manage.sh start codex`：同样的命令在终端里 15 秒跑完，
@@ -234,18 +305,19 @@ func startBase() -> (ok: Bool, output: String) {
     let logDir = "\(NSHomeDirectory())/Library/Logs/costgate-client"
     try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
     let logPath = "\(logDir)/codex-proxy.log"
-    FileManager.default.createFile(atPath: logPath, contents: nil)
-    guard let fh = FileHandle(forWritingAtPath: logPath) else {
-        return (false, "打不开日志 \(logPath)")
+    if !FileManager.default.fileExists(atPath: logPath) {
+        FileManager.default.createFile(atPath: logPath, contents: nil)
+    }
+    guard FileManager.default.isWritableFile(atPath: logPath) else {
+        return (false, "日志不可写：\(logPath)")
     }
 
+    // 与 startManager 同一套启动方式：bash 自己开日志并 exec 成 node。
     let t = Process()
-    t.launchPath = NODE
-    t.arguments = ["proxy.js"]
+    t.launchPath = "/bin/bash"
+    t.arguments = ["-c", "exec '\(NODE)' proxy.js >> '\(logPath)' 2>&1"]
     t.currentDirectoryPath = CODEX_DIR
     t.environment = childEnvironment()
-    t.standardOutput = fh
-    t.standardError = fh
     do {
         log("startBase: 起 node proxy.js（cwd=\(CODEX_DIR)）")
         try t.run()
@@ -266,12 +338,140 @@ func startBase() -> (ok: Bool, output: String) {
     return (false, "等了 45 秒没起来，看日志 \(logPath)")
 }
 
+/// 面板起不来时的一次性诊断。
+/// ⚠️ 这里**只允许** stat 不读内容：早先版本读了 server.js 前几个字节做校验，
+/// 结果 `Data(contentsOf:)` 在 App 权限被系统拦着时会**挂起**（等用户点授权框），
+/// 于是整段诊断把主流程卡死，日志停在最后一行之后再无输出 —— 比不诊断更难查。
+func diagnoseManagerStart() -> String {
+    let fm = FileManager.default
+    return "node=\(NODE) 可执行=\(fm.isExecutableFile(atPath: NODE)) · 面板目录存在=\(fm.fileExists(atPath: MANAGER_JS))"
+}
+
+/// 让 launchd 托管面板。
+/// 为什么比直接 spawn 强：① KeepAlive 保证常驻，App 退出后服务还在；
+/// ② launchd 启动的进程不继承 App 自己的权限上下文（App 读用户目录会弹授权框，
+/// 那一挂起就是"进程活着、日志 0 字节、端口不通"，2026-11-13 查了很久）；
+/// ③ plist 每次由 App 重写，node 路径取自运行时解析的 NODE ——
+/// 不把版本号钉死在文件里（钉死过两次，node 一升级就静默断供）。
+@discardableResult
+func bootstrapManagerAgent() -> String {
+    let fm = FileManager.default
+    try? fm.createDirectory(atPath: LAUNCHDIR, withIntermediateDirectories: true)
+    let outLog = "\(NSHomeDirectory())/Library/Logs/costgate-client/manager.out.log"
+    let errLog = "\(NSHomeDirectory())/Library/Logs/costgate-client/manager.err.log"
+    let plist = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>Label</key><string>\(MANAGER_AGENT_ID)</string>
+      <key>ProgramArguments</key>
+      <array>
+        <string>\(NODE)</string>
+        <string>\(MANAGER_JS)</string>
+      </array>
+      <key>WorkingDirectory</key><string>\(MANAGER_DIR)</string>
+      <key>RunAtLoad</key><true/>
+      <key>KeepAlive</key><true/>
+      <key>StandardOutPath</key><string>\(outLog)</string>
+      <key>StandardErrorPath</key><string>\(errLog)</string>
+    </dict>
+    </plist>
+    """
+    do {
+        try plist.write(toFile: MANAGER_PLIST, atomically: true, encoding: .utf8)
+    } catch {
+        return "写 plist 失败：\(error.localizedDescription)"
+    }
+    let uid = getuid()
+    // 先摘掉可能残留的同一 label，否则 bootstrap 会报 "already bootstrapped"
+    _ = runShell("launchctl bootout gui/\(uid)/\(MANAGER_AGENT_ID) 2>/dev/null", timeout: 10)
+    let out = runShell("launchctl bootstrap gui/\(uid) '\(MANAGER_PLIST)' 2>&1", timeout: 15)
+    let r = out.trimmingCharacters(in: .whitespacesAndNewlines)
+    log("bootstrapManagerAgent -> \(r.isEmpty ? "ok" : r)")
+    return r
+}
+
+/// 起管理台（面板 18792）。和 startBase 同样的理由绕开 manage.sh：
+/// 同一个命令在终端里跑得动，从 GUI 客户端的 bash 子进程里跑会卡死。
+/// 等待上限给到 60 秒 —— manager 启动要读全量模型定价和上千行账本，比代理慢得多。
+func startManager() -> (ok: Bool, output: String) {
+    if panelOK() { return (true, "面板本来就在跑") }
+    guard FileManager.default.fileExists(atPath: MANAGER_JS) else {
+        log("startManager 缺 server.js: \(MANAGER_JS)")
+        return (false, "找不到 \(MANAGER_JS)")
+    }
+
+    // —— 第一条路：交给 launchd ——
+    // 优先走这条，因为它同时解决两个问题：进程常驻（KeepAlive），
+    // 以及不继承 App 的权限上下文（App 直接读用户目录会被系统拦下并挂起）。
+    let bootOut = bootstrapManagerAgent()
+    var bootWaited: TimeInterval = 0
+    while bootWaited < 25 {
+        if panelOK() {
+            log("startManager ok（launchd 托管）用时 \(Int(bootWaited))s")
+            return (true, "面板已由 launchd 托管并启动（127.0.0.1:18792）")
+        }
+        Thread.sleep(forTimeInterval: 1); bootWaited += 1
+    }
+    log("startManager launchd 25 秒内没就绪，退回直接启动。bootstrap 输出：\(bootOut)")
+
+    let logDir = "\(NSHomeDirectory())/Library/Logs/costgate-client"
+    try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
+    let logPath = "\(logDir)/manager.log"
+    // bash 会自己打开这个文件做重定向（append，不清空历史），这里只确认可写 ——
+    // 不可写就早点说，别白等 60 秒再报「没起来」。
+    if !FileManager.default.fileExists(atPath: logPath) {
+        FileManager.default.createFile(atPath: logPath, contents: nil)
+    }
+    guard FileManager.default.isWritableFile(atPath: logPath) else {
+        return (false, "日志不可写：\(logPath)")
+    }
+    // 用 bash 自己打开日志并 exec 成 node：
+    // ① 重定向由 bash 完成，与 Swift 的 FileHandle 生命周期彻底解耦（见 openChildLog 的坑）；
+    // ② exec 让 bash 原地变成 node，不留中间进程，父进程退出后 node 自己独立活下去。
+    let t = Process()
+    t.launchPath = "/bin/bash"
+    t.arguments = ["-c", "exec '\(NODE)' server.js >> '\(logPath)' 2>&1"]
+    t.currentDirectoryPath = MANAGER_DIR
+    t.environment = childEnvironment()
+    do {
+        log("startManager: 起 node server.js（cwd=\(MANAGER_DIR)）")
+        try t.run()
+    } catch {
+        log("startManager 起 node 失败: \(error)")
+        return (false, "起面板失败：\(error)")
+    }
+    // 起来 1.5 秒内就退出 = 一启动就崩，把日志末尾直接带出来。
+    // 不这么做的话只能干等 60 秒，最后一句「没起来」，什么线索都没有（2026-11-13 踩过）。
+    Thread.sleep(forTimeInterval: 1.5)
+    if !t.isRunning {
+        let raw = (try? String(contentsOfFile: logPath, encoding: .utf8)) ?? ""
+        let tail = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let brief = tail.count > 300 ? String(tail.suffix(300)) : tail
+        log("startManager 进程启动后立刻退出，末尾日志：\(brief)")
+        return (false, "面板进程启动后立刻退出（日志 \(logPath)）" + (brief.isEmpty ? "" : "\n" + brief))
+    }
+    var waited: TimeInterval = 0
+    while waited < 30 {
+        if panelOK() {
+            log("startManager ok=true 用时 \(Int(waited))s")
+            return (true, "面板已启动，日志：\(logPath)")
+        }
+        Thread.sleep(forTimeInterval: 2); waited += 2
+        log("startManager 等面板 \(Int(waited))s")
+    }
+    let diag = diagnoseManagerStart()
+    let logSize = (try? FileManager.default.attributesOfItem(atPath: logPath)[.size] as? Int) ?? 0
+    let running = t.isRunning
+    log("startManager 失败诊断：进程存活=\(running) 日志字节=\(logSize ?? 0) \(diag)")
+    return (false, "等了 30 秒面板没起来。\n进程存活=\(running) · 日志 \(logSize ?? 0) 字节\n\(diag)")
+}
+
 /// 这个 pid 还活着吗（kill 前必查，防误杀）
 func pidAlive(_ pid: Int) -> Bool {
     runShell("ps -p \(pid) -o pid=").trimmingCharacters(in: .whitespacesAndNewlines).count > 0
-}
-
-/// 打开 DSH。返回是否真起来了。
+}/// 打开 DSH。返回是否真起来了。
 /// ⚠️ 两个坑：
 /// 1) `open -a '/全路径/xxx.app'`（带 -a 又给全路径）macOS 不认，会静默失败；
 ///    要么 `open '/全路径/xxx.app'`（直接给路径），要么 `open -a 'xxx'`（只给不带 .app 的名字）。
@@ -483,6 +683,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     var selfStartedBase = false    // 底座是否本壳拉起（false = 外部附着，绝不碰）
     var baseEverHealthy = false    // 底座启动后是否健康过（只在"起过又掉"时自愈）
     var restartAttempts = 0        // 距最近一次"健康"的连续重启次数（恢复即清零）
+    // 面板（18792）是独立的第二条命：自己拉的才管，计数与网关分开
+    var selfStartedPanel = false
+    var panelRestartAttempts = 0
     var isQuitting = false         // 用户主动退出（此时 watchdog 停止重启）
     let watchdogQueue = DispatchQueue(label: "costgate.base.watchdog")  // 串行队列：探活与重启不交错
     var watchdogActive = false   // watchdog 运行标志（防重复启动）
@@ -514,7 +717,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         statusLabel.isEditable = false
         statusLabel.isSelectable = false
         statusLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        statusLabel.stringValue = "正在检查网关…"
+        statusLabel.stringValue = "正在检查服务…"
         content.addSubview(statusLabel)
 
         spinner = NSProgressIndicator(frame: NSRect(x: w - 52, y: h - 42, width: 20, height: 20))
@@ -536,7 +739,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         // 2026-11-13：DSH 那几件从主菜单收进「可选集成」子菜单。
         // 理由：DSH 是可选的下游，没装的人看到这一条只会疑惑「这跟我有什么关系」。
         // 主菜单只留「让网关跑起来」相关的动作。
-        appMenu.addItem(NSMenuItem(title: "检查并启动网关", action: #selector(recheck), keyEquivalent: "r"))
+        appMenu.addItem(NSMenuItem(title: "检查并启动服务", action: #selector(recheck), keyEquivalent: "r"))
         appMenu.addItem(NSMenuItem(title: "重新加载面板", action: #selector(reloadPanel), keyEquivalent: "R"))
         let agentItem = NSMenuItem(title: "开机自动启动本客户端", action: #selector(toggleAgent), keyEquivalent: "s")
         agentItem.state = FileManager.default.fileExists(atPath: AGENT_PLIST) ? .on : .off
@@ -579,7 +782,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         spinner.startAnimation(nil); spinner.isHidden = false
-        statusLabel.stringValue = "正在检查网关…"
+        statusLabel.stringValue = "正在检查服务…"
         statusLabel.textColor = .labelColor
         webView.isHidden = true
         // 整套检查（起底座 / 等 DSH 冷启动）最长 40s+，绝不能占主线程，否则窗口一直白屏
@@ -610,6 +813,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 // 拉起失败：底座"从没起来"，不认领、不无限重试，交给手动 manage.sh
                 msg = "❌ 网关启动失败。\n手动自查：cd \(PROXY_DIR) && bash ./manage.sh start codex"
                 if !r.output.isEmpty { msg += "\n\n" + trim(r.output, max: 300) }
+            }
+        }
+
+        // —— 面板是另一个进程：网关绿了不代表能看到账 ——
+        // 这一段是本客户端存在的理由。此前只保证 18790，于是 manager 没起时窗口一片白，
+        // 而「今天花了多少、动了什么」全在面板里，看不到等于这个功能不存在。
+        if panelOK() {
+            msg += "\n✅ 面板运行中（127.0.0.1:18792）"
+            okFlag = true
+        } else {
+            setStatus("网关就绪，正在启动面板…", ok: true)
+            let m = startManager()
+            if panelOK() {
+                selfStartedPanel = true   // 本壳拉起的才归 watchdog 代管
+                msg += "\n✅ 面板已启动（127.0.0.1:18792）"
+                okFlag = true
+            } else {
+                // 面板起不来 → 窗口会是空白，此时绝不能说「✅」
+                msg += "\n⚠️ 面板没起来：" + trim(m.output, max: 200)
+                okFlag = false
             }
         }
 
@@ -735,11 +958,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         let a = NSAlert()
         a.messageText = "\(APP_NAME) \(APP_VERSION)（\(APP_COMMIT)）"
         a.informativeText = """
-        这个窗口是 costgate 的外壳：它保证本地网关在跑，然后把管理面板装进来。
-        账本在 ~/.multi-proxy-manager/ledger.jsonl，一行一笔，纯文本，可以直接 grep。
+        这个窗口是 costgate 的外壳：它保证本地两个进程在跑（网关 18790、面板 18792），然后把面板装进来。
+
+        账本在 ~/.multi-proxy-manager/，两本，都是一行一笔的纯文本，可以直接 grep：
+          cost-ledger.jsonl —— 每次请求：谁、哪个模型、多少 token
+          fs-ledger.jsonl   —— 每个文件改动：谁动了哪个路径
+
+        面板的「今天」页就是这两本的合订本，同一个数据源，CLI 跑 costgate today 也是它。
 
         网关统一入口 127.0.0.1:18880，按端口区分 agent（codex 18790 / claude 18791 / cursor 18794 …），
-        所以「谁花的」不用猜，看请求落在哪个端口。
+        所以「谁花的」不用猜，看请求落在哪个端口。改了文件的那一半靠进程目录交叉验证，
+        验证不出来就照实写「未归因」—— 错的账比没有账更糟。
 
         如果你装了 DSH，它还会顺手把 DSH 指到新配置；没装就不管这一块。
         """
@@ -776,6 +1005,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         guard !isQuitting else { return }
         if healthOK() {
             restartAttempts = 0   // 恢复健康，清零连续重启计数
+            watchPanel()         // 网关没事，顺手看面板（两条命，分开计数）
             return
         }
         // 底座掉线（18790 不通）
@@ -807,6 +1037,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         if healthOK() {
             log("watchdog: 重启成功")
             restartAttempts = 0
+        }
+    }
+
+    /// 面板自愈。和网关分开计数：面板起不来不该吃掉网关的重启预算，
+    /// 反过来也一样 —— 否则一个反复崩的小毛病会把另一个的正常重启次数耗光。
+    func watchPanel() {
+        if panelOK() {
+            if panelRestartAttempts > 0 { log("watchdog: 面板恢复") }
+            panelRestartAttempts = 0
+            return
+        }
+        guard selfStartedPanel else {
+            // 面板不是本壳拉起的（用户自己 manage.sh 起的），掉线只提示，不代管
+            log("watchdog: 外部面板已停（18792 不通），不代为重启")
+            DispatchQueue.main.async {
+                self.setStatusNow("⚠️ 面板（外部启动）已停止，点「检查并启动服务」重连", ok: false)
+            }
+            return
+        }
+        panelRestartAttempts += 1
+        if panelRestartAttempts > MAX_RESTART {
+            log("watchdog: 面板连续 \(MAX_RESTART) 次重启仍未恢复，放弃自愈")
+            DispatchQueue.main.async {
+                self.setStatusNow("❌ 面板反复崩溃（\(MAX_RESTART) 次重启无果），请手动：cd \(PROXY_DIR) && bash ./manage.sh start manager", ok: false)
+            }
+            return
+        }
+        log("watchdog: 面板掉线，第 \(panelRestartAttempts) 次自动重启…")
+        _ = startManager()
+        if panelOK() {
+            log("watchdog: 面板重启成功")
+            panelRestartAttempts = 0
         }
     }
 

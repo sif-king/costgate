@@ -572,20 +572,25 @@
        点下去地址不变、右边换一块，用户分不清它和真页面的区别。改成页内 tab 后，
        侧栏只放页面，页内切换留在页内。清单来自 nav.js 的 MPSpaViews，这里不抄第二份。 -->
   <div class="section-tabs" id="viewTabs" role="tablist" aria-label="总览视图">
-    <button type="button" class="section-tab active" role="tab" data-page="dashboard" aria-selected="true">概览</button>
+    <button type="button" class="section-tab" role="tab" data-page="dashboard" aria-selected="false">概览</button>
   </div>
   <script>
     (function () {
       var wrap = document.getElementById('viewTabs');
       var views = window.MPSpaViews || [];
+      // 默认落在哪一页由「哪个 .page 带 active」决定，这里照着它标 tab ——
+      // 写死'aashboard 才 active'的话，一改默认页 tab 高亮就和内容对不上（比没高亮更误导）。
+      var activeEl = document.querySelector('.page.active');
+      var curId = activeEl ? activeEl.id : '';
       for (var i = 0; i < views.length; i++) {
         (function (v) {
           var b = document.createElement('button');
           b.type = 'button';
-          b.className = 'section-tab';
+          var on = ('page-' + v.id) === curId;
+          b.className = 'section-tab' + (on ? ' active' : '');
           b.setAttribute('role', 'tab');
           b.setAttribute('data-page', v.id);
-          b.setAttribute('aria-selected', 'false');
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
           b.textContent = v.label;
           if (v.title) b.title = v.title;
           // 这里不绑 click：switchPage 在本页 IIFE 里，脚本外拿不到（第一版绑了，
@@ -597,8 +602,114 @@
     })();
   </script>
 
+  <!-- ==================== Today Page（2026-11-13 新增） ====================
+       为什么要这一页：面板此前叫「成本」的那一页讲的是 provider 余额与预算判级，
+       不是「我今天花了多少」。请求账本（cost-ledger.jsonl）早就记着每一笔，
+       但面板里没有任何地方能看见它 —— 桌面 App 打开半天也答不出"我今天跑了多少"。
+       本页把两本账（请求 + 文件改动）按天合成一张脸，口径与 `costgate today` 同一份
+       （都走 l2/report.js），所以 CLI 和面板永远给同一个数。
+
+       排序原则：用量在费用前面。本地全走免费池时 cost 恒为 0，
+       把 0 元放头版等于骗人，先给请求数与 tokens。 -->
+  <div class="page active" id="page-today">
+    <div class="page-header">
+      <h1 class="page-title">今天</h1>
+      <p class="page-subtitle">两本账：请求跑了多少、文件被谁动过。都落在本机 JSONL 里，一行一笔，可以直接 grep。</p>
+    </div>
+
+    <div class="filter-bar">
+      <select class="form-select" id="todayDayPicker" aria-label="选择日期" onchange="loadTodayPage(this.value)">
+        <option value="">今天</option>
+      </select>
+      <button class="btn btn-outline btn-sm" type="button" onclick="loadTodayPage(document.getElementById('todayDayPicker').value)">刷新</button>
+      <span id="todayModeHint" style="font-size:12px;color:var(--color-text-tertiary);"></span>
+    </div>
+
+    <!-- 读失败 / 今天为空时的说明条。读失败绝不渲染成"今天没花钱"——那是最危险的一种假绿 -->
+    <div class="offline-banner hidden" id="todayBanner" role="status" style="margin-bottom:16px;">
+      <span class="offline-banner-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+      <span id="todayBannerText"></span>
+    </div>
+
+    <div class="hig-stat-grid">
+      <div class="hig-stat-card blue">
+        <div class="hig-stat-icon blue">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+        </div>
+        <div class="hig-stat-value" id="todayRequests"><span class="loading-spinner"></span></div>
+        <div class="hig-stat-label">请求次数</div>
+      </div>
+      <div class="hig-stat-card green">
+        <div class="hig-stat-icon green">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        </div>
+        <div class="hig-stat-value" id="todayTokens"><span class="loading-spinner"></span></div>
+        <div class="hig-stat-label">tokens（入+出）</div>
+      </div>
+      <div class="hig-stat-card orange">
+        <div class="hig-stat-icon orange">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="hig-stat-value" id="todayFiles"><span class="loading-spinner"></span></div>
+        <div class="hig-stat-label">文件改动</div>
+      </div>
+      <div class="hig-stat-card red">
+        <div class="hig-stat-icon red">
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="hig-stat-value" id="todayUnattributed">0</div>
+        <div class="hig-stat-label">未归因文件</div>
+      </div>
+    </div>
+
+    <!-- 按 agent 分（请求 + 文件合一：同一个 agent 的两本账放在同一行才对得上） -->
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">按 agent 分</div>
+          <div class="hig-card-subtitle" id="todayAgentSub">谁跑得多、谁动得多</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="todayAgentList"><div class="empty-state"><div class="empty-text">正在读取…</div></div></div>
+      </div>
+    </div>
+
+    <!-- 文件账明细：给的是具体路径，不是汇总数字 —— 「谁动了我的文件」的答案只能是路径 -->
+    <div class="hig-card" style="margin-bottom:20px;">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">文件账 · 最近改动</div>
+          <div class="hig-card-subtitle" id="todayFileSub">按时间倒序，最近 30 条</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" class="form-input" id="todayWhoInput" placeholder="查某个文件被谁动过…" aria-label="查某个文件被谁动过"
+                 style="width:220px;" onkeydown="if(event.key==='Enter')lookupWho()">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="lookupWho()">查</button>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="todayWhoResult"></div>
+        <div id="todayFileList"><div class="empty-state"><div class="empty-text">正在读取…</div></div></div>
+      </div>
+    </div>
+
+    <!-- 要注意 -->
+    <div class="hig-card hidden" id="todayAlertsCard">
+      <div class="hig-card-header">
+        <div>
+          <div class="hig-card-title">要注意</div>
+          <div class="hig-card-subtitle">这些不该被静默吞掉</div>
+        </div>
+      </div>
+      <div class="hig-card-body">
+        <div id="todayAlertList"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== Dashboard Page ==================== -->
-  <div class="page active" id="page-dashboard">
+  <div class="page" id="page-dashboard">
     <div class="page-header">
       <h1 class="page-title">概览</h1>
       <p class="page-subtitle">管理所有代理服务的运行状态与控制</p>
@@ -1351,6 +1462,227 @@
   }
 
   // ===== Navigation =====
+  // ===== 「今天」这本账（2026-11-13） =====
+  // 数据源只有一个端点 /api/today，它内部调 l2/report.js —— 与 `costgate today` 是同一个函数。
+  // 这里**不做二次计算**（不再自己加总、不再自己算平均）：一旦前端开始自己算，
+  // CLI 和面板迟早给出两个不同的数，那种账不如没有。
+  function todayNum(n) {
+    return Number(n || 0).toLocaleString('zh-CN');
+  }
+  function todayTokens(n) {
+    var v = Number(n || 0);
+    if (v >= 1e8) return (v / 1e8).toFixed(2) + ' 亿';
+    if (v >= 1e4) return (v / 1e4).toFixed(1) + ' 万';
+    return todayNum(v);
+  }
+  function todayHm(ts) {
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '--:--';
+    var p = function (x) { return String(x).padStart(2, '0'); };
+    return p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function showTodayBanner(text) {
+    var b = document.getElementById('todayBanner');
+    var t = document.getElementById('todayBannerText');
+    if (!b || !t) return;
+    t.textContent = text;
+    b.classList.remove('hidden');
+  }
+  function hideTodayBanner() {
+    var b = document.getElementById('todayBanner');
+    if (b) b.classList.add('hidden');
+  }
+
+  // 日期下拉：只列账本里真有的日子，不造空日期（造了会让人以为"那天跑了但没记"）
+  function loadTodayDays() {
+    var sel = document.getElementById('todayDayPicker');
+    if (!sel) return;
+    fetchJSON('/api/today/days', { headers: { 'x-auth-token': authToken || '' } }).then(function (d) {
+      var cur = sel.value;
+      var keep = ['<option value="">今天</option>'];
+      (d.days || []).slice().reverse().forEach(function (day) {
+        keep.push('<option value="' + esc(day) + '">' + esc(day) + '</option>');
+      });
+      sel.innerHTML = keep.join('');
+      sel.value = cur || '';
+    }).catch(function () { /* 日期列表拿不到不影响主数据，静默跳过 */ });
+  }
+
+  async function loadTodayPage(day) {
+    var q = day ? ('?day=' + encodeURIComponent(day)) : '';
+    try {
+      var data = await fetchJSON('/api/today' + q, { headers: { 'x-auth-token': authToken || '' } });
+      renderTodayReport(data);
+      loadTodayDays();
+    } catch (e) {
+      // 读失败绝不渲染成「今天 0 次请求」—— 那会让人以为今天没花钱，是最危险的一种假绿
+      showTodayBanner('读不到账本：' + (e.message || e) + '。这不代表今天没有请求，只代表这次没读到。');
+      ['todayRequests', 'todayTokens', 'todayFiles'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = '—';
+      });
+      var msg = '<div class="empty-state"><div class="empty-text">读不到账本，重试一次</div></div>';
+      var al = document.getElementById('todayAgentList'); if (al) al.innerHTML = msg;
+      var fl = document.getElementById('todayFileList'); if (fl) fl.innerHTML = msg;
+    }
+  }
+
+  function renderTodayReport(data) {
+    if (!data || !data.ok) { showTodayBanner('接口返回异常，这次没读到账。'); return; }
+    var r = data.report;
+    if (data.mode === 'fallback') {
+      r = data.fallback.lastDay;
+      showTodayBanner(data.note + '（下面显示的是 ' + r.day + '）');
+    } else if (data.mode === 'empty') {
+      showTodayBanner('账本里还没有任何记录。把 agent 的 base_url 指到 costgate 的端口跑一次，或者跑一次 costgate watch 开始记文件改动。');
+    } else if ((r.usage || {}).requests === 0 && r.hasData) {
+      // 有文件改动、但一次请求都没记到 —— 这多半是 agent 还没指向本机端口，
+      // 不是"今天没干活"。不说清楚的话，那个 0 会被读成"没在记账"。
+      showTodayBanner('今天还没有 agent 请求经过 costgate（文件改动已记 ' + todayNum(r.files.total)
+        + ' 条）。把 agent 的 base_url 指向 127.0.0.1:18880，请求就会开始进账本。');
+    } else {
+      hideTodayBanner();
+    }
+
+    var hint = document.getElementById('todayModeHint');
+    if (hint) hint.textContent = (r.day === data.today) ? '今天的账 · ' + r.day : r.day + ' 的账';
+
+    var u = r.usage || {};
+    var tokens = (u.prompt || 0) + (u.completion || 0);
+    var set = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    set('todayRequests', todayNum(u.requests));
+    set('todayTokens', todayTokens(tokens));
+    set('todayFiles', todayNum(r.files ? r.files.total : 0));
+    set('todayUnattributed', todayNum(r.files ? r.files.unattributed : 0));
+
+    // —— 按 agent 分：请求账和文件账并排，因为同一个 agent 的两本账放在一行才对得上 ——
+    var usageBy = {};
+    (r.byAgent || []).forEach(function (a) { usageBy[a.agent] = a; });
+    var fileBy = {};
+    ((r.files && r.files.byAgent) || []).forEach(function (a) { fileBy[a.agent] = a; });
+    var names = Object.keys(usageBy);
+    Object.keys(fileBy).forEach(function (k) { if (names.indexOf(k) < 0) names.push(k); });
+    names.sort(function (a, b) {
+      var ra = (usageBy[a] ? usageBy[a].requests : 0);
+      var rb = (usageBy[b] ? usageBy[b].requests : 0);
+      if (rb !== ra) return rb - ra;
+      return ((fileBy[b] ? fileBy[b].count : 0) - (fileBy[a] ? fileBy[a].count : 0));
+    });
+
+    var sub = document.getElementById('todayAgentSub');
+    if (sub) {
+      // 「未归因」不是某个 agent，别把它数进 agent 个数里 —— 否则读起来像真有这么个 agent
+      var real = names.filter(function (n) { return n !== 'unknown'; });
+      var parts = [];
+      if (real.length) parts.push('共 ' + real.length + ' 个 agent 有记录');
+      if (names.indexOf('unknown') >= 0) {
+        parts.push('另有 ' + todayNum((r.files && r.files.unattributed) || 0) + ' 个文件改动归不到具体 agent');
+      }
+      sub.textContent = parts.length ? parts.join(' · ') : '这一天没有任何 agent 记录';
+    }
+
+    var box = document.getElementById('todayAgentList');
+    if (box) {
+      if (!names.length) {
+        box.innerHTML = '<div class="empty-state"><div class="empty-text">这一天没有记录</div></div>';
+      } else {
+        box.innerHTML = names.map(function (name) {
+          var ua = usageBy[name] || { requests: 0, prompt: 0, completion: 0, cost: 0, unpriced: 0, topModels: [] };
+          var fa = fileBy[name] || { count: 0, creates: 0, modifies: 0, deletes: 0 };
+          var isUnknown = (name === 'unknown');
+          var models = (ua.topModels || []).join(' · ');
+          var left = '<div style="font-size:13px;font-weight:600;">' + esc(isUnknown ? '未归因' : name) + '</div>'
+            + (models ? '<div style="font-size:12px;color:var(--color-text-tertiary);">' + esc(models) + '</div>' : '');
+          var right = [];
+          if (ua.requests) right.push(todayNum(ua.requests) + ' 次请求');
+          if (ua.requests) right.push(todayTokens((ua.prompt || 0) + (ua.completion || 0)) + ' tokens');
+          if (fa.count) {
+            var f = todayNum(fa.count) + ' 个文件';
+            if (fa.deletes) f += '（删 ' + fa.deletes + '）';
+            right.push(f);
+          }
+          return '<div class="alert-item">'
+            + '<div style="flex:1;min-width:0;overflow:hidden;">' + left + '</div>'
+            + '<div style="font-size:12px;color:var(--color-text-secondary);text-align:right;white-space:nowrap;">'
+            + esc(right.join(' · ')) + '</div>'
+            + '</div>';
+        }).join('');
+      }
+    }
+
+    // —— 文件账明细：给具体路径。只给汇总等于没回答「谁动了我的文件」 ——
+    var fsub = document.getElementById('todayFileSub');
+    if (fsub) {
+      fsub.textContent = (r.recentFiles && r.recentFiles.length)
+        ? '按时间倒序，最近 ' + r.recentFiles.length + ' 条'
+        : '这一天没有文件改动记录';
+    }
+    var flist = document.getElementById('todayFileList');
+    if (flist) {
+      flist.innerHTML = renderFileRows(r.recentFiles || []);
+    }
+
+    // —— 要注意 ——
+    var card = document.getElementById('todayAlertsCard');
+    var list = document.getElementById('todayAlertList');
+    if (card && list) {
+      if (!r.alerts || !r.alerts.length) {
+        card.classList.add('hidden');
+        list.innerHTML = '';
+      } else {
+        card.classList.remove('hidden');
+        list.innerHTML = r.alerts.map(function (a) {
+          var items = (a.items || []).map(function (it) {
+            return '<div style="font-size:12px;color:var(--color-text-tertiary);">' + esc(it.path) + '</div>';
+          }).join('');
+          return '<div class="alert-item"><div style="flex:1;">'
+            + '<div style="font-size:13px;font-weight:600;">' + esc(a.text) + '</div>' + items
+            + '</div></div>';
+        }).join('');
+      }
+    }
+  }
+
+  // 文件改动行。事件名、置信档都照实写 —— 置信 unknown 不等于"没记到"，是"记到了但归因不了"。
+  // 路径显示相对 home（后端给的 rel），绝对路径一排排铺满屏幕时，
+  // 真正有信息量的「哪一段变了」反而被截断掉。
+  function renderFileRows(rows) {
+    if (!rows.length) return '<div class="empty-state"><div class="empty-text">没有文件改动记录</div></div>';
+    return rows.map(function (r) {
+      var ev = r.event === 'delete' ? '删除' : (r.event === 'create' ? '新建' : '修改');
+      var who = (r.agent === 'unknown' || !r.agent) ? '未归因' : r.agent;
+      var color = r.event === 'delete' ? 'var(--color-danger, #d33)' : 'var(--color-text-secondary)';
+      var shown = r.rel || r.path;
+      return '<div class="alert-item" style="padding:10px 14px;">'
+        + '<div style="font-size:12px;color:var(--color-text-tertiary);width:44px;flex:none;">' + esc(todayHm(r.ts)) + '</div>'
+        + '<div style="font-size:12px;width:34px;flex:none;color:' + color + ';">' + esc(ev) + '</div>'
+        + '<div style="font-size:12px;width:88px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(r.agent || 'unknown') + '">' + esc(who) + '</div>'
+        + '<div style="flex:1;min-width:0;font-size:12px;font-family:var(--font-mono, ui-monospace, monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(r.path || shown) + '">' + esc(shown) + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  // 「这个文件被谁动过」= CLI 的 costgate who。查不到就说查不到，不猜。
+  async function lookupWho() {
+    var input = document.getElementById('todayWhoInput');
+    var box = document.getElementById('todayWhoResult');
+    if (!input || !box) return;
+    var q = input.value.trim();
+    if (!q) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="empty-state"><div class="empty-text">查询中…</div></div>';
+    try {
+      var d = await fetchJSON('/api/today/file?match=' + encodeURIComponent(q), { headers: { 'x-auth-token': authToken || '' } });
+      if (!d.rows || !d.rows.length) {
+        box.innerHTML = '<div class="empty-state"><div class="empty-text">账本里没有 ' + esc(q) + ' 的记录</div></div>';
+        return;
+      }
+      box.innerHTML = '<div style="font-size:12px;color:var(--color-text-tertiary);margin-bottom:8px;">'
+        + esc(q) + ' · 共 ' + d.rows.length + ' 条</div>' + renderFileRows(d.rows);
+    } catch (e) {
+      box.innerHTML = '<div class="empty-state"><div class="empty-text">查询失败：' + esc(e.message || String(e)) + '</div></div>';
+    }
+  }
+
   function switchPage(pageId) {
     // Stop status polling when leaving dashboard
     if (pageId !== 'dashboard' && window.__statusInterval) {
@@ -1385,7 +1717,8 @@
     closeMobileSidebar();
 
     // Load page-specific data
-    if (pageId === 'health') loadHealthPage();
+    if (pageId === 'today') loadTodayPage(document.getElementById('todayDayPicker') ? document.getElementById('todayDayPicker').value : '');
+    else if (pageId === 'health') loadHealthPage();
     else if (pageId === 'alerts') loadAlertsPage();
     else if (pageId === 'registry') loadRegistryPage();
     else if (pageId === 'sessions') loadSessions();
@@ -3015,6 +3348,14 @@
         loadStatus();
         loadSessions();
         loadProviderHealth();
+        // 默认页是「今天」，它也必须跟着自动刷新 —— 否则开着面板对着不动的数字，
+        // 会让人以为记账停了（这个功能最怕的就是"看起来没在记"）。
+        // 日期选择器里选的是哪天就刷哪天，不悄悄跳回今天。
+        var cur = document.querySelector('.page.active');
+        if (cur && cur.id === 'page-today') {
+          var picker = document.getElementById('todayDayPicker');
+          loadTodayPage(picker ? picker.value : '');
+        }
       }, val * 1000);
     toggle.checked = true;
   }
@@ -3156,6 +3497,8 @@
        loadProviderHealth();
        loadCostSovereignty();
        loadOnboarding();
+       // 默认页是「今天」，首屏直接把它填上（switchPage 未被调用时不会自动加载）
+       loadTodayPage('');
        // 门控状态条已由公共模块 gatebar.js 自动挂载（全站 9 页一致），此处不再单独调用。
        // Check API Key completeness
        fetch('/api/env-check')
