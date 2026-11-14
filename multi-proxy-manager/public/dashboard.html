@@ -12,6 +12,10 @@
   <link rel="stylesheet" href="./components.css">
     <script src="./icons.js"></script>
 <script src="./mp-kernel.js"></script>
+<!-- 页内视图模块（2026-11-14 起）：必须晚于 mp-kernel.js、早于页面内联脚本。
+     放 head 而不是文档末尾：内联 IIFE 在 1.3k 行处就调这些入口，晚加载即
+     「MPViews is not defined」全线崩（这是 2.3a 踩过的坑）。 -->
+<script src="./views/shadow.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>
@@ -1642,43 +1646,13 @@
     else if (pageId === 'shadow') loadShadowPage();
   }
 
-  // ===== 影子模式页：拉 /api/l2/shadow-map 并渲染能力→adapter 路由决策 =====
-  async function loadShadowPage() {
-    var summary = document.getElementById('shadowSummary');
-    var grid = document.getElementById('shadowGrid');
-    var alert = document.getElementById('shadowAlert');
-    if (!grid) return;
-    try {
-      var res = await fetch('/api/l2/shadow-map', { headers: getAuthHeader() });
-      var data = await res.json();
-      if (data.available === false) {
-        if (alert) { alert.style.display = 'block'; alert.textContent = 'L2 模块当前不可用：' + (data.error || '未知'); }
-        return;
-      }
-      if (alert) alert.style.display = 'none';
-      document.getElementById('shadowPolicy').textContent = '无候选策略：' + (data.policy || '—');
-      document.getElementById('shadowCapCount').textContent = '能力标签：' + (data.capabilityCount || 0);
-      document.getElementById('shadowGapCount').textContent = '无候选缺口：' + (data.gapCount || 0);
-      if (data.gapCount > 0 && alert) {
-        alert.style.display = 'block';
-        alert.className = 'banner banner-warn';
-        // 原开头有个 ⚠ emoji：这里走 textContent（gaps 来自接口，不能改 innerHTML 引转义风险），
-        // 且容器已有 .banner-warn 承载视觉告警——emoji 只在不同平台渲染不一致，去掉更干净。
-        alert.textContent = '存在无 adapter 承接的能力标签：' + (data.gaps || []).join(', ') + ' —— 切 reject 前必须先补 owner。';
-      }
-      grid.innerHTML = (data.capabilities || []).map(function (c) {
-        var statusClass = c.noCandidate ? 'shadow-card-bad' : (c.rejected ? 'shadow-card-warn' : 'shadow-card-ok');
-        var chosenTxt = c.chosen ? ('→ ' + c.chosen) : (c.noCandidate ? '无候选' : '—');
-        var candTxt = (c.candidates || []).map(function (x) { return x.adapterId + (x.modelTier ? '(' + x.modelTier + ')' : ''); }).join('、') || '—';
-        return '<div class="shadow-card ' + statusClass + '">' +
-          '<div class="shadow-card-type">' + esc(c.type) + '</div>' +
-          '<div class="shadow-card-chosen">' + esc(chosenTxt) + '</div>' +
-          '<div class="shadow-card-meta">档位 ' + esc(c.expectedTier || '—') + ' · 候选 ' + esc(candTxt) + '</div>' +
-          '</div>';
-      }).join('');
-    } catch (e) {
-      if (alert) { alert.style.display = 'block'; alert.textContent = '加载失败：' + (e && e.message || e); }
-    }
+  // ===== 影子模式页：实现已抽到 views/shadow.js（阶段 2.3b 第一片）=====
+  // 这里只留一个薄包装：switchPage 的分支表继续调 loadShadowPage()，指向不变，
+  // 所以抽离对页面壳零影响。为什么抽：dashboard.html 已 3.4k 行，七个页内视图的
+  // 取数/渲染挤在同一个 IIFE 里；shadow 只读一个接口、不写盘、不碰轮询，是最自治的一片。
+  function loadShadowPage() {
+    if (window.MPViews && window.MPViews.shadow) window.MPViews.shadow.load();
+    else console.error('[dashboard] views/shadow.js 未加载，路由预演页无法取数');
   }
 
   // 页内 tab 的点击也走委托，理由同上：按钮由内联脚本生成，但 switchPage 只在这个 IIFE 里，

@@ -211,3 +211,24 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - 测试：`e2e/page-data.spec.js` 加 1 条**量 computed layout** 的断言（每行标签-值间距 ≥8px、值不溢出），注入 `gap:0` 实测红、恢复转绿；`tests/node/mp-kernel-toast.test.js` 加 1 条堆叠上限（原有「type 白名单」用例按 `children[before]` 取值，上限生效后会取到 `undefined`，改为取「最新那条」——这是测试写法假设了无限增长，不是实现退化）。
   - 原「toast 遮挡」这条从待办移出，改为**已知且接受的行为**：遮挡时长 ≤3 条高度内，且不阻断操作。
 - **推翻条件**：若将来出现「需要用户停留 >10s 的带操作错误提示」（如 toast 里放按钮），遮挡就从「短暂浮层」变成「持续挡路」，那时必须改成界面留安全区或换成非覆盖式提示条。
+
+## D-016 · dashboard 视图按「一页一文件」抽离；顺带修 shadow 页的假成功
+
+- **状态**：已执行（2026-11-14，阶段 2.3b 第一片）
+- **背景**：`dashboard.html` 已 3.4k 行，7 个页内视图的取数 / 渲染全挤在一个 IIFE 里。改一页要在 2k 行代码里找位置，风险与收益都差。抽离顺序按「最自治的先抽」——shadow 只读一个接口、不写盘、不碰轮询、不被别的视图调用，是验证「一页一文件」最便宜的样本。
+- **实查意外**：抽 shadow 时先打开页面看它现在长什么样，发现 **`getAuthHeader()` 从未被定义**——全站统一用的是 `x-auth-token` 头，而这一页写的是「`getAuthHeader()`」。fetch 每次抛 ReferenceError，被 try/catch 吞掉，UI 上只剩「加载失败：getAuthHeader is not defined」一行小字。而 `e2e/spa-views.spec.js` 只断言「切换生效 + 面板文本 > 20 字」，恰好那 19 个字符的报错也 >20，假绿了几个月。这是「控件齐全、点击无声」的下位变体：**点了有反应，但反应是错误提示**。
+- **决策**：
+  - ① 抽 `public/views/shadow.js`（新目录），暴露 `window.MPViews.shadow.load()`。页面 HTML 骨架留在 `dashboard.html`（静态结构跟页面在一起更好读；抽成 JS 字符串要多一层转义风险、还会首屏空白），只有「行为」被抽走。
+  - ② 加载顺序：`<head>` 里 `mp-kernel.js` 之后、`nav.js` 之前（模块依赖 kernel；必须早于页面首个内联 script——否则 IIFE 1.3k 行处调用即崩，这是 2.3a 踩过的坑）。
+  - ③ 鉴权头改走 `MPKernel.getToken()` + `x-auth-token`（真源头），而不是一个从未存在的函数名。
+  - ④ 加两条 E2E 判据防回归：
+     - 6 视图通用：面板文本不允许出现 `加载失败 / is not defined / 读取失败 / Failed to fetch / NetworkError`——这类文案意味着数据没到却静默停在错误提示。
+     - shadow 专属 `@tier0 @pr-gate`：必须真出 ≥1 张 `shadow-card`、`#shadowAlert` 的 `display` 必须是 `none`、`#shadowPolicy` 不再停在 `—`。
+  - ⑤ 注入验证：把 shadow.js 的 fetch headers 临时改回 `getAuthHeader()`，`#shadowGrid .shadow-card` 一条都出不来，E2E 红；恢复即转绿。
+- **后果**：
+  - `dashboard.html` 里 `loadShadowPage` 变成 3 行薄包装（`MPViews.shadow.load()`），`switchPage` 分支表不动。
+  - 新增 `public/views/shadow.js` 约 80 行；抽离前 `dashboard.html` 里 shadow 相关的 38 行全部删除。
+- **推翻条件**：
+  - 若「一页一文件」形状不成立（例如发现视图之间共享变量比共享页面多），回到抽 IIFE 内分段。
+  - 若 6 视图通用断言里的 `NetworkError / 读取失败` 与某个页面合法的「读失败三态之一」文案冲突，改为按视图分档而不是全视图一刀切。
+- **未抽的其它 6 视图**：`today / health / alerts / registry / cost / dashboard(概览)`。下一片先抽 `alerts`（也只读一个接口，最自治）；`today` 有日期选择器联动、`cost` 有 watchtower 轮询、`registry` 有增删改，风险更大，排在后头。
