@@ -50,7 +50,7 @@ This file is part of the costgate project.
 | tools/verify/ | 跨平台真机验证包（Linux/macOS/Windows） | `verify.sh`, `verify.ps1`, `README.md` |
 | tools/ | 运维工具（update-check、push-gate 等） | `tools/update-check.js`, `scripts/push-gate-check.sh` |
 | systemd/ | Linux systemd 参考模板（真实 unit 由 install.sh 内联生成） | `systemd/*.service` |
-| client/ | 原生 Swift 桌面壳（多代理项目唯一桌面交付，AppKit+WKWebView；`build.sh` 出 `client/build/MultiProxy.app`） | `src/main.swift`, `build.sh` |
+| client/ | **macOS 原生应用**（多代理项目唯一桌面交付，AppKit+WKWebView，无 Electron 无第三方依赖；`build.sh` 出 `client/build/costgate.app`）。职责＝原生窗口/原生菜单/服务守护/崩溃自愈；**不含业务 UI**（面板在 `multi-proxy-manager/public/`，见 `docs/ARCHITECTURE.md` §三） | `src/main.swift`, `build.sh`, `src/Info.plist`, `tools/make-icon.swift` |
 | ~~desktop/~~ | ~~Electron 桌面壳~~ 已退场 `git rm`（2026-10-31，拍板走原生 Swift，见 INDEX #98/#99） | 历史参考：`main.js`/`first-launch-cleanup.js` 语义已移植进 `client/src/main.swift` |
 | docs/ | 项目文档（单一入口约定） | `INDEX.md`, `00-codebase-map.md`, `01-feature-matrix.md`, `quickstart.md` |
 

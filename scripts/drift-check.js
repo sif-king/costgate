@@ -63,6 +63,12 @@ const EXT_RE = new RegExp('\\.(' + EXTS.join('|') + ')$', 'i');
 const DEFAULT_WATCH = [
   'docs/01-feature-matrix.md',
   'README.md',
+  // 2026-11-14：SSOT 三件套纳入守卫。理由：新文档不进 watch-list 就会长成下一份
+  // 「前端 4 页」——写的时候对，三个月后没人知道它过时了。判定标准同上：只查
+  // backtick 里的路径存不存在，不查语义。
+  'docs/ARCHITECTURE.md',
+  'docs/FEATURES.md',
+  'docs/DECISIONS.md',
 ];
 
 // ---------- ref 解析 ----------

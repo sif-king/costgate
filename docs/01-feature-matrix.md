@@ -41,7 +41,7 @@ This file is part of the costgate project.
 
 | 能力 | 分层 | 说明 |
 |------|------|------|
-| 代理启停 / 日志聚合 / 供应商 CRUD / 模型切换 / 余额查询 / 安全认证 / 前端 4 页 | Now | 开箱即用 |
+| 代理启停 / 日志聚合 / 供应商 CRUD / 模型切换 / 余额查询 / 安全认证 / 面板 12 页（清单见 `docs/FEATURES.md` §二） | Now | 开箱即用 |
 | Codex / Claude / OpenCode / Generic / Hermes / Cursor / DSH 七代理接入 | Now | 开箱即用 |
 | Web 管理台 + 原生 Swift 桌面壳（`client/`） | Now | 开箱即用（Electron `desktop/` 已 `git rm` 退场，见 INDEX #98/#99） |
 | 成本记账 `PROXY_COST_TRACK` | Now（默认开·OOBE 红线） | 默认开，关了成本页自然空表 ≠ 没做 |
@@ -75,7 +75,7 @@ This file is part of the costgate project.
 | 会话保持 | `multi-proxy-manager/lib/session-keepalive.js` / `tmux-keepalive.js` / `worktree-manager.js` | ✅ | 有 jest | M7 方向五 |
 | 任务级 Session / 续跑 UI | `multi-proxy-manager/routes/sessions.js` + `public/sessions.html` | ✅ | 23/23 jest | M7 方向五（2026-10-09 实勘已收口：列表/abort/resume含对账409/done/fail/reconcile + 前端中止续跑 + 30s刷新） |
 | agent-owner 单一保护 | `multi-proxy-manager/lib/agent-owner.js` | ✅ | 有 jest | 防双开 |
-| 前端 4 页 | `public/dashboard/logs/proxy-config/login.html` | ✅ | 有 jest | 完整 UI + 乐观更新 |
+| 面板 12 页 | `multi-proxy-manager/public/`（`dashboard` / `floor` / `context` / `proxy-config` / `sessions` / `logs` / `knowledge` / `skills` / `settings` / `login` / `consent` / `legal`） | ✅ | 有 jest + `scripts/check-panel-coherence.sh` | 完整 UI + 乐观更新；2026-11-14 核实：此前文档写"4 页"已过时 |
 | Claude Code 接入 | `claude-proxy/proxy.js` | ✅ | 174 jest（2026-10-14 实跑） | 18791；`claude-*` 模型别名映射（opus/sonnet → deepseek-v4-pro、haiku → agnes-3.0-flash，`CLAUDE_ALIAS_*` 可覆盖）；复用 codex-proxy 的 Anthropic messages 协议路径；真机烟测通过 |
 | opencode 接入 | `opencode-proxy/proxy.js` | ✅ | 159 jest（2026-10-14 实跑） | 18798；OpenAI 兼容透传（opencode 写上游真实模型名，不改写）；`/v1/chat/completions` + `/v1/responses` 双入口；复用 per-provider 熔断 / 预算预检 / 模型目录同步 / 成本台账 |
 | Generic OpenAI 接入（Cline/Aider/OpenHands 共用） | `generic-openai-proxy/proxy.js` | ✅ | 177 jest（2026-10-15 实跑，含 failover 18 例） | 18799；一个适配器覆盖三件套（同构分叉 opencode-proxy，逻辑一致、边际成本趋零）；OpenAI 兼容透传（client 写上游真实模型名，不改写）；`/v1/chat/completions` + `/v1/responses` 双入口；按客户端（cline/aider/openhands 或 `x-agent` 头）归因成本台账；瞬态故障有界兜底（`failover.js`：5xx/429/408/网络错才切、确定性 4xx 不切、深度≤5、链耗尽 fail-loud，未声明 fallback 的 provider 行为与改造前逐字一致） |
