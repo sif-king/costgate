@@ -210,18 +210,33 @@ a { color: inherit; text-decoration: none; }
 .seg button.active { background: var(--accent-soft-bg); color: var(--accent-soft-fg);
                      border-color: var(--accent); }
 
-/* ---------------- Toast ---------------- */
-.toasts { position: fixed; top: 16px; right: 16px; z-index: var(--z-toast);
-          display: flex; flex-direction: column; gap: 8px; }
+/* ---------------- Toast ----------------
+   全站唯一 toast 观感（2026-11-14 视觉统一，老板拍板）。
+   统一前同时活着三套：右上角白底带图标（dashboard/logs/proxy-config）、
+   右下角纯色底（knowledge/sessions/skills）、右上角无样式类名（settings 的
+   .toast--info，CSS 里从没定义过）。现在只留这一套：右上角、白底、左色条、带图标。
+   背景用 --surface / 文本用 --fg，深色模式自动跟随 token，不再需要 :root.dark 覆写。
+   容器有两个历史类名（.toast-container 六页 / .toasts settings），都指向同一规则——
+   页面用哪个都不再各说各话；新代码优先 .toast-container。 */
+.toasts, .toast-container { position: fixed; top: 16px; right: 16px; z-index: var(--z-toast);
+          display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .toast { display: flex; align-items: flex-start; gap: 10px; padding: 11px 15px;
          background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
          border-radius: var(--r-md); box-shadow: var(--shadow-md); font-size: var(--fs-sm);
-         max-width: 360px; color: var(--fg); animation: toast-in var(--dur-slow) var(--ease); }
+         max-width: 360px; color: var(--fg); pointer-events: auto;
+         animation: toast-in var(--dur-slow) var(--ease); }
 .toast svg { width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px; }
+.toast-icon { display: flex; }
+/* 提示正文允许后端错误串里的换行；长串（URL / 模型名）必须能断行，否则撑破 360px */
+.toast-msg { white-space: pre-line; word-break: break-word; min-width: 0; }
 .toast.success { border-left-color: var(--ok); } .toast.success svg { color: var(--ok); }
 .toast.error   { border-left-color: var(--danger); } .toast.error svg { color: var(--danger); }
 .toast.warning { border-left-color: var(--warn); } .toast.warning svg { color: var(--warn); }
+.toast.info    { border-left-color: var(--info); } .toast.info svg { color: var(--info); }
 @keyframes toast-in { from { transform: translateX(120%); opacity: 0; } }
+/* 淡出动画原先只定义在 shared-styles.css（旧层）。把它复制到这一层，
+   否则哪天旧层退场，showToast 里的 toast-out 就静默失效——提示会直接消失而不是滑出。 */
+@keyframes toast-out { from { transform: translateX(0); opacity: 1; } to { transform: translateX(120%); opacity: 0; } }
 
 /* ---------------- Empty / Loading / Progress ---------------- */
 .empty { text-align: center; padding: 40px 24px; color: var(--subtle); font-size: var(--fs-sm);

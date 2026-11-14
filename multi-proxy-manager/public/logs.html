@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="./tokens.css">
   <link rel="stylesheet" href="./components.css">
   <script src="./theme.js"></script>
+  <script src="./mp-kernel.js"></script>
   <link rel="stylesheet" href="./unify.css">
 </head>
 <style>
@@ -657,7 +658,7 @@ body {
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand"><strong>costgate</strong></div>
   <nav class="sidebar-nav" id="sidebarNav"></nav>
-  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">v1.0.0</span></div>
+  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">—</span></div>
 </aside>
 
 <!-- Main Content -->
@@ -767,30 +768,13 @@ body {
   var allLogs = [];
   var currentTimeRange = 0;
   var authToken = sessionStorage.getItem('auth_token');
-  var versionCache = {};
   var searchDebounceTimer = null;
 
-  // ===== Toast System (Rule 5: light backgrounds with colored borders) =====
+  // ===== Toast System =====
+  // 实现已收到 mp-kernel.js（全站一套观感，2026-11-14 视觉统一）。
+  // 保留同名包装而非 var 别名：函数声明 hoist，定义之前的调用照旧可用。
   function showToast(message, type, duration) {
-    if (duration === undefined) duration = 3000;
-    var container = document.getElementById('toastContainer');
-    var toast = document.createElement('div');
-    toast.className = 'toast ' + (type || 'info');
-
-    var icons = { success: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>', error: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>', info: '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' };
-    var iconSpan = document.createElement('span');
-    iconSpan.innerHTML = icons[type] || '';
-    var msgSpan = document.createElement('span');
-    msgSpan.textContent = message;
-    toast.appendChild(iconSpan);
-    toast.appendChild(msgSpan);
-
-    container.appendChild(toast);
-
-    setTimeout(function() {
-      toast.style.animation = 'toast-out 0.3s ease forwards';
-      setTimeout(function() { toast.remove(); }, 300);
-    }, duration);
+    return MPKernel.showToast(message, type, duration);
   }
 
   // ===== Escaping Utility =====
@@ -1399,28 +1383,9 @@ body {
   function init() {
     initDarkMode();
     fetchProxyConfigs().then(function() {
-    // Load version info
-    fetch('/api/version')
-      .then(function(res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-      })
-      .then(function(data) {
-        versionCache = data;
-        var sidebarVer = document.getElementById('sidebarVersion');
-        if (sidebarVer && data && data.version) {
-          sidebarVer.textContent = 'Manager ' + data.version;
-        }
-      })
-      .catch(function() {
-        // 2026-10-16：过去这里兜底 getMockVersion()——假版本 '1.0.3' 加三个假
-        // 子版本号（codex v1.2.0 / hermes v0.9.4 / cursor v2.1.0），侧边栏显示
-        // "Manager 1.0.3"。版本号是「要不要升级」的判断依据，喂假值会让用户
-        // 放弃一次本该做的升级。现在如实说读不到。
-        versionCache = null;
-        var sidebarVer = document.getElementById('sidebarVersion');
-        if (sidebarVer) sidebarVer.textContent = '版本读取失败';
-      });
+    // 版本号已收口到 nav.js 的 fillSidebarVersion()（2026-11-14）：
+    // 侧栏 #sidebarVersion 由 renderNav 重建，页面填进去的值会被下一次渲染冲掉，
+    // 所以取数与填充归 nav.js 一处。这里原来那段 fetch + versionCache 只写不读，一并删掉。
 
     // Load dynamic proxy nav
     fetch('/api/installed')
@@ -1458,7 +1423,6 @@ body {
 })();
 </script>
     <script src="./icons.js"></script>
-<script src="./mp-kernel.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>

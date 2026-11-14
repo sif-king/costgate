@@ -154,17 +154,43 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 
 ## D-013 · 跨页共享助手收进 `mp-kernel.js`；去重前先分族，同语义才合并
 
-- **状态**：已执行（2026-11-14，阶段 2.3a）
+- **状态**：已执行（2026-11-14，阶段 2.3a）；其中 `showToast` 部分**当日已被 D-014 推翻并执行**（老板拍板视觉统一）
 - **背景**：`esc` 在 `public/` 下被抄了 **8 份**（dashboard / context / floor / knowledge / logs / proxy-config / sessions / skills），`showToast` 抄了 6 份，`showReadError` 抄了 2 份，`auth_token` 这个存储键散布在 10 个文件 26 处。抄本本身不致命，致命的是**会分叉**：`esc` 已经分成两族（`textContent+innerHTML` 与正则五替换），输出等价纯属巧合；一旦有人只改其中一份，同一套面板就会对同一段字符串给出两种转义。
 - **决策**：
   - ① 抽 `public/mp-kernel.js`，公开面**只放机制**：`esc` / `fetchJSON` / `showReadError` / `getToken`。不放任何一页的业务（不碰 `PROXY_CONFIGS`、不碰页面状态、不碰 `/api` 语义）。
-  - ② **去重前先分族**：只有「同一件事的不同写法」可以合并；「不同的事长得像」不许合并。本轮据此**拒绝**了两处看似重复的东西——
-     - `showToast`：dashboard / logs / proxy-config 是「右上角 + 图标 + `.toast.<type>`」，knowledge / sessions / skills 是「右下角 + 纯色底 + `.toast-<type>`」，各有本地 CSS 撑着。合并＝改三个页面的观感，属于视觉决定，不混进去重。
-     - `showReadError`：dashboard 那份是 empty-state 族（带图标、含重试按钮），proxy-config 那份是内联 padding 块（无图标）。合并同上。
+  - ② **去重前先分族**：只有「同一件事的不同写法」可以合并；「不同的事长得像」不许合并。本轮据此**暂缓**了两处——注意「暂缓」不等于「永不合并」，它只是要求先把视觉决定做完（见 D-014）：
+     - `showToast`：dashboard / logs / proxy-config 是「右上角 + 图标 + `.toast.<type>`」，knowledge / sessions / skills 是「右下角 + 纯色底 + `.toast-<type>`」，各有本地 CSS 撑着。合并＝改三个页面的观感，属于视觉决定，不混进去重。→ **当日由老板拍板统一，D-014 执行完毕。**
+     - `showReadError`：dashboard 那份是 empty-state 族（带图标、含重试按钮），proxy-config 那份是内联 padding 块（无图标）。合并同上，**仍暂缓**。
   - ③ **模块自足优先于去重**：`nav.js` / `states.js` / `gatebar.js` 里的私有 `esc` **保持不动**。它们能被单独加载（`login.html` / `consent.html` / `legal.html` 只引 `nav.js`），依赖 kernel 就多一条隐形前置。
   - ④ `getToken()` **每次现读** `sessionStorage`，不缓存——页内登录/登出会改这个值，缓存一份就是拿过期令牌去请求，然后把 401 显示成「读取失败」。
 - **后果**：
   - 8 份 `esc` → 1 份实现 + 8 个别名；`fetchJSON` / `showReadError` 同理（dashboard）。
   - `tests/unit/esc.test.js` 的契约从「每个页面源码里必须含转义策略」改为「页面要么自带实现、要么引用 `MPKernel.esc`，引用者不得再留本地副本」，并新增**真跑 kernel** 的行为用例（`vm` 里加载真文件，断实体逐项正确 + XSS 语料中性化 + `getToken` 不缓存）。
   - 三个 `tests/node/` 沙箱改为**先加载真 `mp-kernel.js`** 再跑页面脚本，而不是塞桩——桩测的是桩。
-- **推翻条件**：若要把 `showToast` / `showReadError` 也收进来，必须先做一次显式的视觉统一（同一个 toast 只有一种长相），并同步改三页的本地 CSS 与 E2E 断言。
+- **推翻条件**：`showReadError` 若要合并，同样必须先做一次显式的视觉统一（dashboard 的 empty-state 族 vs proxy-config 的内联块），并同步改两页断言。`showToast` 的推翻条件已由 D-014 兑现。
+
+---
+
+## D-014 · toast 视觉合成一套（老板拍板）；同时把版本号收成单一来源
+
+- **状态**：已执行（2026-11-14，阶段 2.3b 前置）
+- **背景**：D-013 曾以「合并＝改观感」为由**暂缓** `showToast`。老板当日拍板「统一」与「视觉合成一套」，前提条件消失，于是执行。实查发现不只是「两套」而是**三套**，且其中一套根本没样式：
+  | 家族 | 页面 | 类名 | 位置 / 观感 |
+  |---|---|---|---|
+  | A | dashboard / logs / proxy-config | `.toast <type>` | 右上、白底、左色条；**但 proxy-config 那份没图标、时长 2500** |
+  | B | knowledge / sessions / skills | `.toast-<type>`（连字符） | 右下 24px、**纯色底白字**、无图标 |
+  | C | settings | `.toast--info` | 右上；**该类名在 CSS 里从未定义**，等于加了类没样式 |
+- **决策**：
+  - ① 统一到 **A**：它是 `components.css`（设计系统新层）的形态，也是三页在用的形态。位置/配色/图标尺寸**全部由 CSS 决定**，`MPKernel.showToast` 只产出结构（`.toast <type>` > `.toast-icon` + `.toast-msg`），页面**不许**再写自己的 `.toast` CSS。
+  - ② `.toast-container` 与 `.toasts` 两个历史容器类名都在 `components.css` 指向同一规则；页面统一用前者。
+  - ③ `type` 走**白名单**（success / error / warning，其余落 info）。过去 proxy-config 把 type 直接拼进 className，C 的 `.toast--info` 正是这个路子留下的：类名写上了、样式从没定义、也没人发现。
+  - ④ 消息用 `textContent`（不是 innerHTML）：提示内容常含后端错误串。
+  - ⑤ 顺手补 `role="status"` + `aria-live="polite"`——读屏用户也该听到「保存失败」。
+  - ⑥ **版本号同批收口**（老板同一轮拍板「统一」）：唯一源是仓库根 `VERSION`（经 `/api/version` 下发）。过去 `nav.js buildFooter()` 写死 `v1.0.0`，**九个页面的侧栏常年显示同一个假版本**；设置页「关于」另写死「1.0（v1.0 收尾）」。版本号是判断「要不要升级」的依据，写死等于永远告诉用户「已是最新」。
+- **后果**：
+  - 6 份 `showToast` + settings 2 份 `toast` 全部改为 `MPKernel.showToast` 的薄包装（保留函数声明 hoist，定义前的调用不会变 undefined）。
+  - 三页内联纯色 toast CSS（`.toast-container` bottom / `.toast` / `.toast-success|-error|-info` / `@keyframes slideIn`）删除；`shared-styles.css` 的旧 toast 段标注「别名桥，改这里不生效」。
+  - 侧栏版本号归 `nav.js` 的 `fillSidebarVersion()`（页面写进去的值会被下一次 `renderNav` 冲掉，所以取数必须归一处）；读失败显示「版本读取失败」，**不回退任何像样的假值**。
+  - 守卫：`check-panel-coherence.sh` 加第 5/6 项——`mp-kernel.js` 的 script 标签必须早于页面内联脚本；`#sidebarVersion` / `#aboutVersion` 里不许出现数字或 `v` 开头。
+  - 测试：`tests/node/mp-kernel-toast.test.js`（6 条，真跑 kernel：结构契约 / type 白名单 / HTML 载荷 / 容器缺失 / 淡出移除 / duration）+ `e2e/toast-unified.spec.js`（2 条：右上位置 + 图标 + 浅色底；knowledge 页同样一套）+ `e2e/page-data.spec.js`（3 条版本号：正常路径 / 读失败 / 设置页）。
+- **推翻条件**：若要改 toast 观感，改 `components.css` 的 `.toast` 段一次即可；改页面内联 CSS 或 `shared-styles.css` 都不会生效（后者加载在前）。

@@ -11,13 +11,14 @@
    <link rel="stylesheet" href="./tokens.css">
    <link rel="stylesheet" href="./components.css">
    <script src="./theme.js"></script>
+  <script src="./mp-kernel.js"></script>
   <link rel="stylesheet" href="./unify.css">
 </head>
 <body>
    <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand"><strong>costgate</strong></div>
   <nav class="sidebar-nav" id="sidebarNav"></nav>
-  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">v1.0.0</span></div>
+  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">—</span></div>
 </aside>
    <div id="ui-shell" data-shell></div>
    <main class="content main">
@@ -53,7 +54,10 @@
          <h3 class="card-h">版本信息</h3>
          <div class="kv">
            <div class="kv-row"><span class="kv-k">应用</span><span class="kv-v">costgate</span></div>
-           <div class="kv-row"><span class="kv-k">版本</span><span class="kv-v">1.0（v1.0 收尾）</span></div>
+           <!-- 版本号不写死：唯一源是仓库根 VERSION，经 /api/version 下发。
+                原先这里硬编码「1.0（v1.0 收尾）」，改一次版本就得记得改这里，
+                而概览页走的是真接口——同一个应用两处版本号会各说各话。 -->
+           <div class="kv-row"><span class="kv-k">版本</span><span class="kv-v" id="aboutVersion">—</span></div>
            <div class="kv-row"><span class="kv-k">运行模式</span><span class="kv-v" id="aboutMode">本地管理面板（绑定 127.0.0.1）</span></div>
            <div class="kv-row"><span class="kv-k">数据目录</span><span class="kv-v">~/.multi-proxy-manager/</span></div>
            </div>
@@ -77,7 +81,7 @@
          <div class="row">
            <div class="row-main">
              <div class="row-title">检查更新</div>
-             <div class="row-desc">v1.0 正式发布时接入更新源；当前为占位，点击提示「更新源待发布」。</div>
+             <div class="row-desc">更新源尚未接入，当前为占位：点击只提示「更新源待发布」，不会联网检查。</div>
            </div>
            <button class="btn btn-ghost" id="chkUpdate" type="button">检查更新</button>
          </div>
@@ -139,18 +143,16 @@
 
    </main>
 
-   <div id="toasts" class="toasts"></div>
+   <!-- toast 容器统一为 .toast-container + #toastContainer（原为 #toasts.toasts，
+        components.css 两套类名同名规则，现统一到一处，新代码只认这一个） -->
+   <div class="toast-container" id="toastContainer"></div>
 
    <script>
      (function(){
+       // 实现已收到 mp-kernel.js（全站一套观感，2026-11-14 视觉统一）。
+       // 原先这里拼 'toast--info' 类名，而 CSS 里从未定义过该类 —— 等于加了类却没样式。
        function toast(msg, kind){
-         var box = document.getElementById('toasts');
-         if (!box) return;
-         var el = document.createElement('div');
-         el.className = 'toast' + (kind === 'info' ? ' toast--info' : '');
-         el.textContent = msg;
-         box.appendChild(el);
-         setTimeout(function(){ el.remove(); }, 3200);
+         return MPKernel.showToast(msg, kind);
        }
        // tab 切页
        var tabs = document.querySelectorAll('#settingsTabs .tab');
@@ -165,10 +167,32 @@
            });
          });
        // 暗色模式入口已收口到统一侧栏页脚的三态切换（浅色/深色/跟随系统），此处不再重复
-     // 检查更新：v1.0 占位，诚实提示更新源待发布
+       // ===== 版本信息（唯一源：仓库根 VERSION → /api/version）=====
+       // 侧栏那个 #sidebarVersion 由 nav.js 统一填，这里只管「关于」卡里的版本行。
+       // 读失败写「读取失败」而不是留 '—' 或补个 1.0.0：版本号是判断「要不要升级」
+       // 的依据，假值和空值都会让人以为「没事可做」。
+       var verEl = document.getElementById('aboutVersion');
+       if (verEl) {
+         fetch('/api/version')
+           .then(function(r){
+             if (!r.ok) throw new Error('HTTP ' + r.status);
+             return r.json();
+           })
+           .then(function(d){
+             if (!d || !d.version || d.version === 'unknown') throw new Error('版本未知');
+             verEl.textContent = d.version + (d.date ? '（' + d.date + '）' : '');
+           })
+           .catch(function(e){
+             verEl.textContent = '读取失败';
+             verEl.title = (e && e.message) || 'manager 不可达';
+             verEl.style.color = '#d97706';
+           });
+       }
+
+       // 检查更新：更新源未接入，如实说占位（不假装检查过）
        var chk = document.getElementById('chkUpdate');
        if (chk) chk.addEventListener('click', function(){
-         toast('应用内更新：v1.0 正式发布时接入更新源，当前为占位。', 'info');
+         toast('应用内更新：更新源尚未接入，当前为占位。', 'info');
          });
      // 撤销首启授权：接 /api/consent/revoke，回首启同意门
        var rev = document.getElementById('revConsent');
@@ -220,14 +244,10 @@
   <script>if(window.renderNav){renderNav(document.getElementById('sidebarNav'),{current:'settings'});}</script>
   <script>
     (function(){
+      // 实现已收到 mp-kernel.js（全站一套观感）。本页两段 IIFE 各有一份同名 toast，
+      // 都是同一件事，一并收口。
       function toast(msg, kind){
-        var box = document.getElementById('toasts');
-        if (!box) return;
-        var el = document.createElement('div');
-        el.className = 'toast' + (kind === 'info' ? ' toast--info' : '');
-        el.textContent = msg;
-        box.appendChild(el);
-        setTimeout(function(){ el.remove(); }, 3600);
+        return MPKernel.showToast(msg, kind);
       }
       var statusEl = document.getElementById('flpStatus');
       var provEl = document.getElementById('flpProviders');

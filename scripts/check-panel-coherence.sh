@@ -127,8 +127,45 @@ if [ -f "$DASH" ]; then
            | sed -E 's/.*id="(page-[a-z-]+)".*/\1/' | sort -u)
 fi
 
+# ── 5. 引了 mp-kernel.js 的页面，script 标签必须早于页面自己的内联脚本 ──
+# 2026-11-14 新增。触发案例：8 个页面改成 `var esc = MPKernel.esc` 别名后，
+# 7 个页面的 <script src="./mp-kernel.js"> 被插在文档末尾，而页面 IIFE 在前
+# ——执行到别名赋值时 MPKernel 还没定义，整页脚本抛 ReferenceError 全死。
+# 这种坏法**不会让页面变空白**（静态 HTML 照旧渲染），所以「body 有文字」类
+# E2E 全绿也照样是坏的；只能比对行号抓。
+for f in "$PANEL_DIR"/*.html; do
+  [ -e "$f" ] || continue
+  grep -qF 'mp-kernel.js' "$f" || continue
+  # 只算真的 script 标签，注释里提到文件名不算
+  kline=$(grep -nE '<script[^>]*src="\./mp-kernel\.js"' "$f" | head -1 | cut -d: -f1)
+  if [ -z "$kline" ]; then
+    fail "$(basename "$f") 提到 mp-kernel.js 却没有对应的 <script src> 标签（别名会 ReferenceError）"
+    continue
+  fi
+  # 内联脚本起始行（排除外链 script）
+  iline=$(grep -nE '<script>|<script [^>]*>[^<]' "$f" | grep -vE 'src=' | head -1 | cut -d: -f1)
+  if [ -n "$iline" ] && [ "$kline" -gt "$iline" ]; then
+    fail "$(basename "$f") 的 mp-kernel.js 标签在第 ${kline} 行，晚于内联脚本第 ${iline} 行 —— 页面执行到 MPKernel.* 时它还没加载（移进 <head>）"
+  fi
+done
+
+# ── 6. 版本号不许写死在 HTML / nav.js ──────────────────────────────
+# 2026-11-14 新增（老板拍板「版本信息统一到 /api/version」）。
+# 触发案例：nav.js 的 buildFooter() 写死 'v1.0.0'，九个页面的侧栏常年显示同一个
+# 假版本；设置页「关于」卡另写死「1.0（v1.0 收尾）」。版本号是判断「要不要升级」
+# 的依据，写死等于永远告诉用户「已是最新」——这跟喂假成本数字是同一个毛病。
+# 判据：这两个 id 的元素里只允许出现占位符 '—'，出现数字或 v 开头即红。
+# 版本号的唯一真源是仓库根 VERSION（经 /api/version 下发）。
+while IFS= read -r hit; do
+  [ -n "$hit" ] || continue
+  fail "版本号写死：$hit（改为占位 '—' + 从 /api/version 填）"
+done < <(grep -HnE 'id="(sidebarVersion|aboutVersion)">[0-9vV]' "$PANEL_DIR"/*.html 2>/dev/null)
+if grep -qE 'id="sidebarVersion">[0-9vV]' "$NAV_JS"; then
+  fail "nav.js 的 buildFooter() 里写死了版本号（改成 '—'，由 fillSidebarVersion() 从 /api/version 填）"
+fi
+
 if [ "$FAILS" -eq 0 ]; then
-  ok "页面清单 / 导航可达 / 孤儿后端标注 / 容器入口 四项一致"
+  ok "页面清单 / 导航可达 / 孤儿后端标注 / 容器入口 / kernel 加载顺序 / 版本号单一来源 六项一致"
   echo "结果：全过"
   exit 0
 fi

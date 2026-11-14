@@ -119,12 +119,20 @@ function makeEnv(fetchStub) {
   return { sandbox, getEl };
 }
 
-// showToast 是页面内部函数，外部替换不了；它 `createElement('div')` 后
-// `t.textContent = msg` 再 appendChild 到 toastContainer。所以从 DOM 读。
+// showToast 已收口到 mp-kernel.js（2026-11-14 视觉统一）。结构从「一个 div 直接带
+// textContent」变成「div.toast > span.toast-icon + span.toast-msg」，所以不能只读
+// 顶层 textContent——那样会读到空串，把「提示丢失」这个真 bug 报成「测试跟不上」。
+// 改为递归拼接文本节点，与浏览器 innerText 的语义对齐。
+function textOf(node) {
+  if (!node) return '';
+  if (node._text) return String(node._text);
+  return (node.children || []).map(textOf).join('');
+}
+
 function readToasts(getEl) {
   const c = getEl('toastContainer');
   return (c.children || []).map(t => ({
-    msg: t.textContent || '',
+    msg: textOf(t),
     type: String(t.className || '').replace(/^toast\s*/, '')
   }));
 }

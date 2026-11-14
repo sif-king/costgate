@@ -11,6 +11,7 @@
    <link rel="stylesheet" href="./tokens.css">
    <link rel="stylesheet" href="./components.css">
   <script src="./theme.js"></script>
+  <script src="./mp-kernel.js"></script>
   <link rel="stylesheet" href="./unify.css">
 </head>
 <style>
@@ -72,12 +73,6 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
 .kb-stat-item b { color: var(--color-text); font-size: 16px; font-weight: 600; margin-right: 4px; }
 .retrieval-result { border-left: 3px solid var(--color-primary); padding: 10px 14px; margin: 8px 0; background: var(--color-bg-secondary); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .retrieval-score { font-size: 11px; color: var(--color-text-tertiary); float: right; }
-.toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
-.toast { padding: 12px 16px; border-radius: var(--radius-sm); font-size: 13px; box-shadow: var(--shadow-lg); animation: slideIn 0.2s ease; max-width: 320px; }
-.toast-success { background: var(--color-success); color: white; }
-.toast-error { background: var(--color-danger); color: white; }
-.toast-info { background: var(--color-info); color: white; }
-@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @media (max-width: 768px) { .mobile-menu-btn { display: flex; } .sidebar { position: fixed; left: -100%; transition: left 0.3s ease; } .sidebar.open { left: 0; } .sidebar-overlay.show { display: block; } }
 </style>
 <body>
@@ -89,7 +84,7 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand"><strong>costgate</strong></div>
   <nav class="sidebar-nav" id="sidebarNav"></nav>
-  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">v1.0.0</span></div>
+  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">—</span></div>
 </aside>
 
 <div class="loading-bar" id="loadingBar"></div>
@@ -222,14 +217,10 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
    })();
 
    // ===== Toast / Loading =====
+   // 实现已收到 mp-kernel.js（全站一套观感，2026-11-14 视觉统一）。
+   // 本页原来的「右下角纯色底」样式与 .toast-success 等内联 CSS 已删。
    function showToast(msg, type, duration) {
-     duration = duration || 3000;
-     var container = document.getElementById('toastContainer');
-     var toast = document.createElement('div');
-     toast.className = 'toast toast-' + (type || 'info');
-     toast.textContent = msg;
-     container.appendChild(toast);
-     setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 200); }, duration);
+     return MPKernel.showToast(msg, type, duration);
    }
    function showLoading() { var b = document.getElementById('loadingBar'); if (b) b.classList.add('active'); }
    function hideLoading() { var b = document.getElementById('loadingBar'); if (b) b.classList.remove('active'); }
@@ -573,7 +564,6 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
 })();
 </script>
     <script src="./icons.js"></script>
-<script src="./mp-kernel.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>

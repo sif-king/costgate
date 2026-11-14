@@ -75,3 +75,43 @@ for (const [route, sel, label] of [
     expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
   });
 }
+
+// ==================== 版本号必须来自接口（2026-11-14 拍板）====================
+// 背景：侧栏 #sidebarVersion 曾在 nav.js 里写死 'v1.0.0'，九个页面常年显示同一个
+// 假版本；设置页「关于」卡另写死「1.0（v1.0 收尾）」。版本号是判断「要不要升级」
+// 的依据，写死等于永远告诉用户「已是最新」。这两条断言分别锁住：
+//   ① 正常路径：显示值必须等于 /api/version 的返回值（写死就必然对不上）；
+//   ② 读失败：必须明说读失败，不许回退成任何像样的版本号。
+test('侧栏版本号取自 /api/version，不是写死的字面量', { tag: ['@tier1'] }, async ({ page }) => {
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  const api = await page.evaluate(() => fetch('/api/version').then((r) => r.json()));
+
+  // 先等填充完成（初始是 '—'），再比对；写死 'v1.0.0' 会因为缺少 'Manager ' 前缀而失败。
+  await expect(page.locator('#sidebarVersion')).toHaveText(new RegExp('Manager\\s+' + api.version.replace(/\./g, '\\.')), { timeout: 15000 });
+});
+
+test('侧栏版本号读失败时明说读失败，不回退成假版本', { tag: ['@tier1'] }, async ({ page }) => {
+  await seedAuth(page);
+  await page.route('**/api/version', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' }));
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  const el = page.locator('#sidebarVersion');
+  await expect(el).toHaveText(/版本读取失败/, { timeout: 15000 });
+  // 不许出现任何形如 x.y.z 的版本串——那意味着兜底了一个像样的假值。
+  await expect(el).not.toHaveText(/\d+\.\d+\.\d+/);
+});
+
+test('设置页「关于」版本行取自 /api/version', { tag: ['@tier1'] }, async ({ page }) => {
+  await seedAuth(page);
+  await page.goto('/settings', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  const api = await page.evaluate(() => fetch('/api/version').then((r) => r.json()));
+  const ver = page.locator('#aboutVersion');
+  await expect(ver).toContainText(api.version, { timeout: 15000 });
+  if (api.date) await expect(ver).toContainText(api.date);
+});

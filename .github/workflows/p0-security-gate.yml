@@ -136,11 +136,12 @@ jobs:
             # → api.test.js:106 / e2e-scenarios.test.js:36 / api.test.js:67 全绿
             # 跨 test module-level flaky ~10%，retry 3 次压平；不碰热路径不碰门控
           npx jest --silent --forceExit --rerunFailsAtMost=2
-      # 面板行为测试（2026-11-14 加）：三条纯 node 断言，零依赖不装包——
+      # 面板行为测试（2026-11-14 加）：四条纯 node 断言，零依赖不装包——
       #   ① panel-syntax-guard：每个面板页的内联 <script> 语法必须能解析
       #   ② panel-read-failure：读失败必须显示「读取失败」，不许喂 mock / 兜底成空态
       #   ③ proxy-config-write-safety：写失败不许乐观更新本地状态
-      # 为什么现在才加：这三个文件在 tests/node/ 里躺了很久，**没有任何闸门跑过它们**，
+      #   ④ mp-kernel-toast：toast 结构与类名契约、type 白名单、消息不当 HTML
+      # 为什么现在才加：这几个文件在 tests/node/ 里躺了很久，**没有任何闸门跑过它们**，
       # 于是页面重构后脚手架跟不上也无人知晓——实测长期 5 + 6 条假红
       # （MPStates 未 stub、正则只取到外链 <script src>、沙箱缺 addEventListener）。
       # 假红不致命，真正致命的是「它红了也没人知道」：刹车网在硬盘上，闸却没拉。
@@ -150,6 +151,7 @@ jobs:
           node tests/node/panel-syntax-guard.test.js
           node tests/node/panel-read-failure.test.js
           node tests/node/proxy-config-write-safety.test.js
+          node tests/node/mp-kernel-toast.test.js
       # 元守卫：MCP 边界门（GATE 1）自证。跑两遍 mcp-server 单测——
       #   门开缺省 必须 0 失败；门关（PROXY_MCP_SCHEMA_GUARD=0）必须恰好 2 红（GATE 1 / decompose 缺 input）。
       # 为什么：GATE 1 的用例只有在「坏参数真被拒」时才有意义。若 checkArgs 被删或断言被放宽，

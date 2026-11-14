@@ -142,11 +142,16 @@ costgate 是**本地 AI 编码工具的网关 + 中台**：把 Codex / Claude / 
 - 导航：`public/nav.js` 的 `GROUPS`（侧栏）+ `SPA_VIEWS`（dashboard 页内 tab）。改导航只改这里。
 - 图标：`public/icons.js` 的 `nav` 集。`nav.js` 有一份同形回退副本，改图标两边都要改。
 - 门控条：`public/gatebar.js`。三态写 `data-loaded`，**读失败绝不 fallback 成「全部未开启」**。
-- 共享助手：`public/mp-kernel.js` 的 `MPKernel` = `esc` / `fetchJSON` / `showReadError` / `getToken`。
+- 共享助手：`public/mp-kernel.js` 的 `MPKernel` = `esc` / `fetchJSON` / `showReadError` / `showToast` / `getToken`。
   8 个页面原先各抄一份 `esc`（已分叉成两族写法），现收敛为「1 份实现 + 8 个别名」。
-  边界：只放跨页**机制**，不放任何一页的业务；`showToast` / `showReadError` 因存在两套视觉
-  **有意不收**；`nav.js` / `states.js` / `gatebar.js` 的私有 `esc` **不动**（要能被单独加载，
-  见 D-013）。
+  边界：只放跨页**机制**，不放任何一页的业务；`showReadError` 因存在两套视觉**仍暂缓**；
+  `nav.js` / `states.js` / `gatebar.js` 的私有 `esc` **不动**（要能被单独加载，见 D-013）。
+- toast：**唯一规范是 `components.css` 的 `.toast` 段**（右上角、白底、左色条、带图标；
+  容器 `.toast-container` 与 `.toasts` 规则相同）。`shared-styles.css` 同段已降级为别名桥，
+  改它不生效。页面不许再写自己的 `.toast` CSS（见 D-014）。
+- 版本号：**唯一源是仓库根 `VERSION`**，经 `/api/version` 下发。侧栏由 `nav.js` 的
+  `fillSidebarVersion()` 填（页面自己写会被下一次 `renderNav` 冲掉），设置页「关于」由
+  `#aboutVersion` 填。**任何地方都不许写死版本号**——`check-panel-coherence.sh` 第 6 项会拦。
 
 **已确认的结构债**（详细清单见 `docs/FEATURES.md` §四，整改计划见本机台账 `PROJECT-STATE/COSTGATE-UI-COMB-REPORT-2026-11-14.md`，不入仓）：
 

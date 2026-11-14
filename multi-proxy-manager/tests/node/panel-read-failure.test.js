@@ -50,6 +50,11 @@ function makeEl(id) {
     },
     appendChild() {},
     remove() {},
+    // mp-kernel 的 showToast 会给 toast 元素设 role / aria-live（读屏用），
+    // stub 缺 setAttribute 就抛 TypeError，六个用例集体 unhandledRejection。
+    // 这里只做空实现：这些属性不参与断言，但没有它们函数跑不完。
+    setAttribute() {},
+    getAttribute() { return null; },
     addEventListener() {},
     dispatchEvent() { return true; },
     closest() { return null; },

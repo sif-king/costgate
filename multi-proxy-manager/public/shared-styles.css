@@ -135,9 +135,12 @@
 }
 
 /* ============================================
-   Unified Toast System (Rule D5)
-   All pages share this CSS class.
-   Light backgrounds with colored left border.
+   Unified Toast System (Rule D5) —— 别名桥，不再是规范来源
+   ⚠️ 2026-11-14 视觉统一后，toast 的唯一规范是 components.css 的 .toast 段
+   （白底 + 左色条 + 图标 + 右上角，token 驱动、深色模式自动跟随）。
+   这一段留在原处只为两件事：① design-system.test.js 仍在读本文件；
+   ② 老页面万一漏引 components.css 时不至于完全没有样式。
+   改 toast 观感请改 components.css；改这里不会生效（后者加载在最后）。
    ============================================ */
 .toast-container {
   position: fixed;

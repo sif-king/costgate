@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="./tokens.css">
     <link rel="stylesheet" href="./components.css">
   <script src="./theme.js"></script>
+  <script src="./mp-kernel.js"></script>
   <link rel="stylesheet" href="./unify.css">
 </head>
 <style>
@@ -506,7 +507,7 @@
   <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand"><strong>costgate</strong></div>
   <nav class="sidebar-nav" id="sidebarNav"></nav>
-  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">v1.0.0</span></div>
+  <div class="sidebar-footer"><span class="version-info" id="sidebarVersion">—</span></div>
 </aside>
 
   <div class="loading-bar" id="loadingBar"></div>
@@ -2237,18 +2238,10 @@
       }
     }
 
-    function showToast(msg, type) {
-      type = type || 'info';
-      var c = document.getElementById('toastContainer');
-      var t = document.createElement('div');
-      t.className = 'toast ' + type;
-      t.textContent = msg;
-      c.appendChild(t);
-      setTimeout(function() {
-        t.style.transition = 'opacity 0.3s ease';
-        t.style.opacity = '0';
-        setTimeout(function() { t.remove(); }, 300);
-      }, 2500);
+    // 实现已收到 mp-kernel.js（全站一套观感）。原先这份连图标都没有、时长 2500，
+    // 与 dashboard / logs 的长相并不相同——这正是「长得像就以为是一件事」的陷阱。
+    function showToast(msg, type, duration) {
+      return MPKernel.showToast(msg, type, duration);
     }
 
     function toggleSidebar() {
@@ -2486,7 +2479,6 @@
     });
   </script>
     <script src="./icons.js"></script>
-<script src="./mp-kernel.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>

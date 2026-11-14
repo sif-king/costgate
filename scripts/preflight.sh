@@ -181,15 +181,16 @@ run_step "shell 脚本门禁（tests/shell/check.sh）" bash tests/shell/check.s
 run_step "面板清单/导航可达/孤儿后端标注（scripts/check-panel-coherence.sh）" bash scripts/check-panel-coherence.sh
 
 # ── 3c. 面板行为（CI: manager job「panel behavior tests」）──
-# 三条纯 node 断言：内联脚本语法 / 读失败不许假绿 / 写失败不许乐观更新。
+# 四条纯 node 断言：内联脚本语法 / 读失败不许假绿 / 写失败不许乐观更新 / toast 结构契约。
 # 它们长期没进任何闸门 —— 结果页面重构后脚手架脱节，红了也没人知道
 # （实测 5 + 6 条假红：MPStates 未 stub、只取到外链 <script src>、缺 addEventListener）。
 # 不并入 jest：它们不需要 npm ci，跑一次不到 2 秒，放在最前面最快暴露。
-run_step "面板行为测试（tests/node 三条）" bash -c '
+run_step "面板行为测试（tests/node 四条）" bash -c '
   cd multi-proxy-manager &&
   node tests/node/panel-syntax-guard.test.js &&
   node tests/node/panel-read-failure.test.js &&
-  node tests/node/proxy-config-write-safety.test.js
+  node tests/node/proxy-config-write-safety.test.js &&
+  node tests/node/mp-kernel-toast.test.js
 '
 
 # ── 4. 版权头（CI: license-header job）──

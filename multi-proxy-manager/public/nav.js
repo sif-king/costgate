@@ -223,6 +223,7 @@
 
     var navEl = sidebar.querySelector('#sidebarNav');
     if (opts.proxyNav) wireProxyGroup(sidebar);
+    fillSidebarVersion();
 
     // 主题三态切换器：全站唯一主题入口，点击直接走 MPTheme.set
     var ts = sidebar.querySelector('.mp-theme-switch');
@@ -282,8 +283,12 @@
     });
     theme += '</div>';
     // 版本 + 登出。法务入口收口到「设置 → 法务」（#2 评估：侧栏不再重复放法务链接）。
+    // 版本号**不在这里写死**：唯一源是仓库根 VERSION（经 /api/version 下发），
+    // 渲染后由 fillSidebarVersion() 异步填。原先写死 'v1.0.0'，九个页面的侧栏
+    // 常年显示同一个假版本——版本号是「要不要升级」的判断依据，写死等于永远
+    // 告诉用户「已是最新」。先放 '—'（未取到），不预填任何像样的假值。
     var meta = '<div class="sidebar-foot-meta">' +
-      '<span class="version-info" id="sidebarVersion">v1.0.0</span>' +
+      '<span class="version-info" id="sidebarVersion">—</span>' +
       '<button class="btn-logout" type="button" onclick="handleLogout()" title="退出登录">登出</button>' +
       '</div>';
     return '<div class="sidebar-footer">' + theme + meta + '</div>';
@@ -297,6 +302,42 @@
     for (var i = 0; i < btns.length; i++) {
       btns[i].classList.toggle('active', btns[i].getAttribute('data-theme-opt') === cur);
     }
+  }
+
+  // 侧栏版本号：全站唯一取数点。
+  // renderNav 会重建整个侧栏（sidebar.innerHTML = ...），页面自己往 #sidebarVersion
+  // 写的东西会被下一次渲染冲掉——所以取数与填充必须归这里，各页不再各填一份。
+  // 成功 → "Manager x.y.z"；失败 → 「版本读取失败」，绝不回退成 'v1.0.0' 一类假值。
+  // 不引 mp-kernel：本文件要能被 login/consent/legal 单独加载，不给自己加隐形前置。
+  function fillSidebarVersion() {
+    var el = document.getElementById('sidebarVersion');
+    if (!el || typeof global.fetch !== 'function') return;
+    el.setAttribute('title', '正在读取版本…');
+    global.fetch('/api/version')
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        // 重新取节点：异步期间可能又渲染过一次侧栏，旧节点已不在文档里。
+        var n = document.getElementById('sidebarVersion');
+        if (!n) return;
+        if (d && d.version && d.version !== 'unknown') {
+          n.textContent = 'Manager ' + d.version;
+          n.setAttribute('title', d.date ? ('发布 ' + d.date) : '');
+        } else {
+          // 'unknown' 是服务端读不到 VERSION 时的约定值（routes/meta.js），
+          // 它和「读失败」在用户眼里是一件事，合并成一个说法。
+          n.textContent = '版本读取失败';
+          n.setAttribute('title', '仓库根 VERSION 读不到或格式不对');
+        }
+      })
+      .catch(function (e) {
+        var n = document.getElementById('sidebarVersion');
+        if (!n) return;
+        n.textContent = '版本读取失败';
+        n.setAttribute('title', (e && e.message) || 'manager 不可达');
+      });
   }
 
   // 主题变化时同步切换器高亮

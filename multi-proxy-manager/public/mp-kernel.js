@@ -21,14 +21,19 @@
      esc(s)                                        HTML 转义（文本 + 属性双安全）
      fetchJSON(url, opts)                          fetch + 非 2xx 抛错 + 带出 body.hint
      showReadError(id, title, detail, hint, retry) 读失败块（三态里的 error 态）
+     showToast(message, type, duration)            轻提示（全站一套观感）
      getToken()                                    读 auth_token（读入口收这一处）
 
-   注意：showToast **故意不收进来**。它不是重复实现那么简单——dashboard / logs /
-   proxy-config 用的是「右上角、带图标、.toast.<type>」，而 knowledge / sessions /
-   skills 用的是「右下角、纯色底、.toast-<type>」，两套视觉各有各的本地 CSS 撑着。
-   合并等于改三个页面的观感，那是一次视觉决定的活，不该混在去重里偷偷做。
-   同理 showReadError 暂只覆盖 dashboard（empty-state 族、带图标）；proxy-config
-   那份是内联 padding 块、无图标，合并会改观感，留待视觉统一时一起做。
+   showToast 的来历（2026-11-14 老板拍板「视觉合成一套」前，它是被**拒绝**收进来的）：
+   当时面板里同时活着三套——
+     A. dashboard / logs / proxy-config：右上角、白底、左色条、带图标、`.toast.<type>`
+     B. knowledge / sessions / skills：右下角、纯色底白字、无图标、`.toast-<type>`
+     C. settings：右上角、`.toast--info`（这个类 CSS 里根本没定义，等于没样式）
+   合并等于改观感，所以当初只登记不合并。老板拍板后统一到 A 这一套：它是
+   components.css（设计系统新层）的形态，也是三页已经在用的形态；B 的纯色底
+   与 C 的空类名是旧写法，按「新层为准」收口。
+   视觉统一必须落在 CSS 层一次做完：本函数只负责 DOM 结构与类名（`.toast <type>`），
+   位置 / 配色 / 图标尺寸全由 components.css 决定，页面不许再写自己的 .toast 样式。
 
    还有一类「看起来也该合并」但**不能**合并的：nav.js / states.js / gatebar.js 里的
    私有 esc。它们是能被单独加载的独立模块（login.html / consent.html / legal.html
@@ -106,6 +111,57 @@
     }
   }
 
+  // 轻提示：全站唯一实现。观感由 components.css 的 `.toast` 决定（右上角、白底、
+  // 左色条、带图标），本函数只产出结构，不写样式——页面也**不许**再写自己的 .toast CSS，
+  // 否则又是「同一套面板两种长相」。
+  //
+  // 三类空必须分清的老规矩在提示语上同样成立：调用方别把「读失败」写成「暂无数据」。
+  // 图标用内联 SVG（与 icons.js 同风格），不引外部图标字体——面板零网络依赖。
+  var TOAST_ICONS = {
+    success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>',
+    error:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+    warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    info:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+  };
+
+  // type 白名单：传了别的值一律当 info。过去 proxy-config 直接把 type 拼进 className，
+  // 一个手滑的 'error ' 之类就会造出没有样式的类名（settings 的 `.toast--info` 就是这么来的：
+  // 类名写上了，CSS 里从没定义，等于没样式还没人发现）。
+  function showToast(message, type, duration) {
+    var kind = (type === 'success' || type === 'error' || type === 'warning') ? type : 'info';
+    var ms = (typeof duration === 'number' && duration > 0) ? duration : 3000;
+    // 容器兼容两种历史 id：toastContainer（6 页）/ toasts（settings）。收口后应统一成前者，
+    // 这里留兼容是为了「先改 CSS 再改 HTML」也不会出现提示消失的中间态。
+    var host = document.getElementById('toastContainer') || document.getElementById('toasts');
+    if (!host) return;
+
+    var el = document.createElement('div');
+    el.className = 'toast ' + kind;
+    // role=status + aria-live：读屏用户也该听到「保存成功」「读取失败」，
+    // 而不是只有视觉用户知道发生了什么。
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+
+    var icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.innerHTML = TOAST_ICONS[kind];
+
+    var msg = document.createElement('span');
+    msg.className = 'toast-msg';
+    msg.textContent = message;   // 文本节点，不拼 HTML：提示内容常含后端错误串
+
+    el.appendChild(icon);
+    el.appendChild(msg);
+    host.appendChild(el);
+
+    setTimeout(function () {
+      el.style.animation = 'toast-out 0.3s ease forwards';
+      setTimeout(function () {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 300);
+    }, ms);
+  }
+
   // 每次现读，不缓存：登录/登出会在同一页里改这个值，缓存一份就等于让页面
   // 拿着一枚过期令牌去请求，然后把它显示成「读取失败」。
   // 边界（别把它当"令牌已收口"）：本函数只管**读**。各页登出时的
@@ -120,6 +176,7 @@
     esc: esc,
     fetchJSON: fetchJSON,
     showReadError: showReadError,
+    showToast: showToast,
     getToken: getToken
   };
 })(typeof window !== 'undefined' ? window : globalThis);
