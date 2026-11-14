@@ -232,3 +232,15 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - 若「一页一文件」形状不成立（例如发现视图之间共享变量比共享页面多），回到抽 IIFE 内分段。
   - 若 6 视图通用断言里的 `NetworkError / 读取失败` 与某个页面合法的「读失败三态之一」文案冲突，改为按视图分档而不是全视图一刀切。
 - **未抽的其它 6 视图**：`today / health / alerts / registry / cost / dashboard(概览)`。下一片先抽 `alerts`（也只读一个接口，最自治）；`today` 有日期选择器联动、`cost` 有 watchtower 轮询、`registry` 有增删改，风险更大，排在后头。
+
+## D-017 · 内联 handler 引用的函数必须挂到 window（13 个坏控件的根因）
+
+- **状态**：已执行（2026-11-14，随 2.3b 第二、三片）
+- **背景**：HTML 里 `onclick/onchange/oninput/onkeydown` 在**全局作用域**解析函数名，页面 IIFE 里的局部函数它们看不见。Playwright 逐个真点实测：**13 个被引用的函数从未挂到 window**——告警搜索/两个筛选/刷新、今天页日期选择器/刷新/文件查询、registry 搜索与筛选、成本/watchtower/概览刷新、健康页刷新、健康历史条数下拉（`loadHealthHistory` 引用的函数**从未定义过**）、watchtower 卡「看成本明细」（`switchPage`）、统一入口复制、API key 横幅关闭。症状全部是「控件齐全、点击无声」：按钮渲染出来了，点了抛 ReferenceError。E2E 只点过 tab、没点过这些控件，假绿至今。与 D-016 修的 shadow 假成功同族（下位变体）。
+- **决策**：
+  - ① IIFE 末尾统一挂载段：所有被静态 HTML 内联 handler 引用的函数 → `window.X = X`（handler 函数由 views/*.js 实现的，由模块以 `global.X` 挂载，页面不再重复挂）。
+  - ② `loadHealthHistory` 从未定义：语义是「按 `#healthHistoryLimit` 当前值重拉健康页」。`loadHealthPage` 改为读下拉值取历史条数（fetch limit + slice 共用），`window.loadHealthHistory = loadHealthPage` 别名。
+  - ③ 守卫 `tests/node/panel-inline-handlers.test.js`：**纯静态交叉验证**，不跑页面脚本（vm 脚手架对浏览器 API 太脆，炸在半路守卫就失效）——剥掉 `<script>` 块后的静态 HTML 里，内联 handler 引用的每个标识符 ⊆ window 挂载清单（含 views/*.js 的 `global.X` 挂载）；被引用的每个挂载必须有真身（右侧 function 表达式或已声明标识符，防拼错名字挂了 undefined）。注入两式（删挂载 / 挂载拼错）实测红。
+  - ④ **提取边界的坑**：动态生成的 onclick 在 JS 字符串里（`onclick=\"...\"` 形态），先剥 `<script>` 块再提取是干净边界；用 lookbehind 拦 `\"` 已被证明不可靠（JS 转义会造出绕过 lookbehind 的形态）。
+- **后果**：真浏览器复测三处链路（告警搜索、今天日期下拉、who 查询）零 pageerror；13 个控件从「点击无声」恢复可用。
+- **推翻条件**：若未来把内联 handler 全部改为 addEventListener 委托，守卫的提取对象应随之改为「委托选择器清单」；在那之前新增内联 handler 必须同步进挂载段或模块挂载。
