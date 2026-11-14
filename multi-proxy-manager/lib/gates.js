@@ -162,6 +162,19 @@ const GATES = [
     impact: '默认开（OOBE 红线）。关闭后热路径不提取 usage，成本页自然为空表——不是功能没做。',
   },
   {
+    id: 'context-track',
+    env: 'PROXY_CONTEXT_TRACK',
+    label: '上下文构成采集',
+    group: '账本主权',
+    kind: 'opt-in',
+    // 判定落在 l2/context-report.js（仓根下），代理侧 generic-openai-proxy 也读同一个 env
+    // ⇒ source 用仓库根当基准。2026-11-14 之前它是「隐形门控」：只读 env、不进本表，
+    // 于是面板门控条看不见、用户界面上开不了。登记它就是为了让状态条别再说谎。
+    scope: 'repo',
+    source: 'l2/context-report.js:35',
+    impact: '默认关（关时 observe() 首次判断即返回，零开销）。关闭时 context.html 与「上下文构成」面无数据——不是页面没做。',
+  },
+  {
     id: 'cost-schedule',
     env: 'PROXY_COST_SCHEDULE',
     label: '成本定时调度',

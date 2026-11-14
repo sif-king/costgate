@@ -30,9 +30,13 @@ const SHIP_TIMEOUT_MS = 2000;
 /** 最多记住多少个 clientKey 的上一帧（generic lane 多客户端场景）。超出按插入序淘汰。 */
 const MAX_CLIENTS = 8;
 
-/** 门控：与 cost-track.enabled() 同构，默认关。 */
+/** 门控：与 cost-track.enabled() 同构，默认关。
+ *  2026-11-14：原来是裸比 process.env（大小写/空白敏感），'ON' 会被判成关，
+ *  与 gates.js 的 opt-in 判定（1/true/on，大小写不敏感）不一致 —— 同一门控两套语义。
+ *  按本注释本来就该「同构」，改成与 cost-track 同写法：trim + toLowerCase。
+ *  只放宽被接受的字面值，默认态仍是关，判定位置不变。 */
 function enabled() {
-  const v = process.env.PROXY_CONTEXT_TRACK;
+  const v = String(process.env.PROXY_CONTEXT_TRACK ?? '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'on';
 }
 

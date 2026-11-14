@@ -165,6 +165,21 @@ describe('lib/gates.js — 门控真源', () => {
             }
         });
 
+        // 2026-11-14：context-track 此前是「隐形门控」——l2/context-report.js 与
+        // generic-openai-proxy 都读 PROXY_CONTEXT_TRACK，但没进 GATES 表，
+        // 于是面板门控条看不见它。登记后必须对拍，防止它再漂回视野外。
+        it('context-report.enabled() 与本表 context-track 一致', () => {
+            const g = fresh();
+            const ctxRep = require(path.join(__dirname, '..', '..', '..', 'l2', 'context-report.js'));
+            for (const v of [undefined, '', '1', 'on', 'ON', '0', 'false', 'off', 'true']) {
+                if (v === undefined) delete process.env.PROXY_CONTEXT_TRACK;
+                else process.env.PROXY_CONTEXT_TRACK = v;
+                const row = g.list().find((r) => r.id === 'context-track');
+                expect(row).toBeTruthy();
+                expect(row.on).toBe(ctxRep.enabled());
+            }
+        });
+
         it('每个登记项的 source 都真实存在于对应文件（防门控搬走后真源变谎源）', () => {
             const fs = require('fs');
             const repoRoot = path.join(__dirname, '..', '..', '..');
