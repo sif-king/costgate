@@ -98,6 +98,19 @@ function makeEnv(fetchStub) {
     clearTimeout: () => {},
     setInterval: () => 1,
     clearInterval: () => {},
+    // 页面在 IIFE 里注册 window.addEventListener('hashchange'/'DOMContentLoaded')，
+    // 沙箱缺这两个就会在加载阶段就抛错，六个用例全部假红。
+    addEventListener() {},
+    removeEventListener() {},
+    // states.js 的空态/错误态四件套（浏览器里由 states.js 先加载注入）。
+    // 页面在 updateProvider / deleteProviderById / loadProviders 里用 MPStates.error/empty
+    // 渲染读失败，沙箱缺它就会在断言前抛 ReferenceError。
+    MPStates: {
+      empty: (o) => '[empty]' + ((o && o.title) || ''),
+      error: (o) => '[error]' + ((o && o.title) || '') + ((o && (o.message || o.error)) || ''),
+      registerRetry: () => {},
+      svg: () => ''
+    },
     URLSearchParams: URLSearchParams
   };
   sandbox.window = sandbox;
@@ -118,15 +131,28 @@ function readToasts(getEl) {
 
 function runProxyConfig(fetchStub) {
   const html = fs.readFileSync(path.join(PUBLIC, 'proxy-config.html'), 'utf8');
-  const code = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/i)[1];
+  // 只取「内联」script：必须排除带 src 的外链标签。
+  // 老写法 /<script\b[^>]*>([\s\S]*?)<\/script>/ 的第一个匹配是页面顶部
+  // `<script src="./theme.js"></script>`——正文为空，于是 code 恒为 ''，
+  // 后面禁 init() 必然失败、六个用例集体假红（2026-11-14 修）。
+  const code = html.match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/i)[1];
+  if (!code.trim()) throw new Error('取到的内联 script 为空——选择器又匹配到外链标签了，请修基座');
   const EXPORTS = [
     'fetchAdminApi', 'loadProviders', 'addProvider', 'updateProvider',
     'deleteProviderById', 'toggleProviderEnabledApi', 'changeRoutingMode',
     'clearHistory', 'showReadError', 'showToast', 'renderProviders'
   ].join(', ');
-  // 禁掉顶层 init()：stub DOM 跑不起真实初始化（会碰一堆不存在的元素）。
+  // 禁掉启动调用：stub DOM 跑不起真实初始化（会碰一堆不存在的元素）。
   // 只删这一次调用，函数定义保留。
-  const patched = code.replace(/\n    init\(\);\n/, '\n    /* init() 由测试基座禁用 */\n');
+  // 页面有两代形态，基座必须都认，否则测试会「因为脚手架跟不上」而长期假红：
+  //   ① 旧形态：IIFE 末尾直接 `init();`
+  //   ② 现形态：`(function waitForStates(attempt){ if (window.MPStates) { init(); return; } ... })(0);`
+  //      —— 这是 states.js 加载时序的轮询守卫（Phase C），init() 嵌在函数体里。
+  let patched = code.replace(
+    /\(function waitForStates\(attempt\)[ \t]*\{[\s\S]*?\}\)\(0\);/,
+    '/* waitForStates 由测试基座禁用 */'
+  );
+  if (patched === code) patched = code.replace(/\n[ \t]*init\(\);[ \t]*\n/, '\n    /* init() 由测试基座禁用 */\n');
   if (patched === code) throw new Error('没能禁掉 init()——基座与页面结构脱节了，请更新');
   const { sandbox, getEl, toasts } = makeEnv(fetchStub);
   vm.runInContext(patched + '\n;window.__panel = {' + EXPORTS + '};', sandbox, { filename: 'proxy-config.html' });

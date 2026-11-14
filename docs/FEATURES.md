@@ -121,12 +121,13 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 |---|---|---|---|
 | 1 | 单体页 | `dashboard.html` 3535 行（6 子视图内联）；`proxy-config.html` 2504 行（6 类关注点） | 改一个子视图要读整文件 |
 | 2 | 零子目录 | `public/` 是**完全平铺**的：12 个 HTML + 13 个 JS/CSS（`nav.js`/`icons.js`/`gatebar.js`/`states.js`/`theme.js`/`floor-view.js`/`skill-ledger-diff.js` + 6 个 css），无任何子目录 | 三条旅程的代码被切碎在 25 个平级文件里，没有"域"可挂 |
-| 3 | 重复看账面 | today / cost / floor / context 四处答同一问题 | 用户分不清哪个是真的 |
+| 3 | 重复看账面 | 总览「账本主权」卡与成本页曾**各渲染一遍同一个 `/api/cost/watchtower`**（连"为什么这样算"的解释块都抄了两份）。**2026-11-14 已收口**：总览只报「上周花了多少」一个数 + 一个入口，明细与口径唯一归成本页。today / floor / context 三处仍待逐个定唯一职责（阶段 2.1 剩余） | 用户分不清哪个是真的 |
 | 4 | 归属可疑 | 路由模式藏 `proxy-config.html`；设置页混撤销授权 + 插件 | 用户找不到 |
 | 5 | 孤儿页 | `context.html` 有路由无导航（**2026-11-14 已补回**） | 只能手敲 URL |
 | 6 | 孤儿后端 | 7 条 `/api/*` 面板零引用（已标 `BACKEND-ONLY`） | 以为没做 |
 | 7 | 门控未登记 | `PROXY_CONTEXT_TRACK` 曾未进 `gates.js`（**2026-11-14 已登记**，§五） | 门控条看不见、界面开不了 |
 | 8 | 文档过时 | `docs/01-feature-matrix.md` 写"前端 4 页"（实为 12 页）；本机索引 `docs/INDEX.md` 项目一句话仍写"管理三个代理"（`manage.sh` 的 `SERVICES` 实为 9 项） | 误导后续 agent 在错的目录/范围里找功能 |
+| 9 | 面板测试没人跑 | `multi-proxy-manager/tests/node/` 三个文件共 29 条断言（面板语法 / 读失败不许假绿 / 写失败不许乐观更新）**不在任何 CI 或 preflight 里**，实测长期 5 + 6 条假红。**2026-11-14 已修好并接入 preflight 3c + CI manager job** | 刹车网在硬盘上、闸没拉——页面重构等于裸奔 |
 
 ---
 

@@ -140,13 +140,36 @@ function runPanel(file, fetchStub, exportList) {
     setTimeout: (f) => { try { f(); } catch (e) {} return 1; },
     clearTimeout: () => {},
     setInterval: () => 1,
-    clearInterval: () => {}
+    clearInterval: () => {},
+    // states.js 在浏览器里先于页面脚本加载，把空态/错误态四件套挂在 window.MPStates。
+    // 面板（dashboard 的成本卡）现在用它渲染空态与错误态，测试不 stub 就会
+    // ReferenceError: MPStates is not defined —— 这是 2026-11-14 修掉的假失败之一。
+    MPStates: {
+      empty: function (o) { return '[empty]' + ((o && o.title) || ''); },
+      error: function (o) { return '[error]' + ((o && o.title) || '') + ((o && (o.message || o.error)) || ''); },
+      registerRetry: function () {}
+    }
   };
   // window 必须指向 sandbox 自身，且 location 可写（面板会 window.location.href = ...）
   sandbox.window = sandbox;
   sandbox.location = { href: '' };
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox, { filename: file });
+  // 注入兜底：logs.html 把函数挂在 window 上（window.loadLogs = function(){}），
+  // 且它的 IIFE 收尾形态与 dashboard 不同，上面两条正则都匹配不到 →
+  // __panel 为 undefined，三个日志用例因此常年报 "reading 'loadLogs'"。
+  // 这里按导出表从 window/global 回捞一次，保证两种写法都能被测到。
+  if (!sandbox.__panel && names) {
+    const obj = {};
+    names.split(',').forEach(function (pair) {
+      const parts = pair.split(':');
+      const key = (parts[0] || '').trim();
+      const expr = (parts[1] || '').trim() || key;
+      const name = expr.replace(/^window\./, '').trim();
+      if (typeof sandbox[name] === 'function') obj[key] = sandbox[name];
+    });
+    sandbox.__panel = obj;
+  }
   return sandbox.__panel;
 }
 
