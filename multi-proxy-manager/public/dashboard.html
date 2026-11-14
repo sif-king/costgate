@@ -792,8 +792,8 @@
     <div class="hig-card" id="costSovereigntyCard" style="margin-bottom:20px;">
       <div class="hig-card-header">
         <div>
-          <div class="hig-card-title">账本主权 · 上周节省</div>
-          <div class="hig-card-subtitle">多 agent 统一网关的核心差异：每一笔花销按 agent 归因、本地流量零成本、账本归你</div>
+          <div class="hig-card-title">账本主权 · 上周花费</div>
+          <div class="hig-card-subtitle">这里只报一个数；按 agent / 模型归因、省了多少的明细在「成本」页（唯一归属）</div>
         </div>
         <button class="btn btn-outline btn-sm" onclick="loadCostSovereignty()">刷新</button>
       </div>
@@ -2783,27 +2783,24 @@
             '<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:6px;">' + wtEsc((w && w.error) || '未知错误') + '</div></div>';
           return;
         }
+        // 2026-11-14（梳理 2.1 · 看账面唯一职责）：
+        // 同一份 /api/cost/watchtower 曾在本卡与「成本」页各渲染一遍，连「为什么这样算」的
+        // 解释块都抄了两份 —— 两处口径迟早漂移，用户也分不清哪个是准的。
+        // 现在本卡只承担一件事：总览报「上周花了多少」这一个数 + 一个入口；
+        // 按 agent/模型归因、省了多少、零花费占比的明细与口径统一归「成本」页（loadWatchtower）。
         var cur = (w.spend && w.spend.currency) || null;
-        var cards = [
-          { label: '实际花费', value: wtMoney(w.spend && w.spend.actualCost, cur), sub: ((w.spend && w.spend.requestCount) || 0) + ' 次请求' },
-          { label: '模型重写已省', value: w.saved && w.saved.computable ? wtMoney(w.saved.byRouting, cur) : '—',
-            sub: w.saved && w.saved.computable ? ('对标 ' + wtMoney(w.saved.baselineCost, cur)) : (w.saved && w.saved.reason ? wtEsc(w.saved.reason) : '算不出') },
-          { label: '零花费请求占比', value: (w.zeroCost && w.zeroCost.ratio !== null && w.zeroCost.ratio !== undefined) ? Math.round(w.zeroCost.ratio * 100) + '%' : '—',
-            sub: ((w.zeroCost && w.zeroCost.requestCount) || 0) + ' / ' + ((w.spend && w.spend.requestCount) || 0) }
-        ];
+        var actual = wtMoney(w.spend && w.spend.actualCost, cur);
+        var reqs = (w.spend && w.spend.requestCount) || 0;
         body.innerHTML =
-          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">' +
-          cards.map(function(c) {
-            var neg = (typeof c.value === 'string' && c.value.indexOf('-') === 0);
-            return '<div style="flex:1;min-width:140px;padding:14px;background:var(--color-bg-secondary);border-radius:8px;">' +
-              '<div style="font-size:12px;color:var(--muted-foreground);margin-bottom:4px;">' + c.label + '</div>' +
-              '<div style="font-size:20px;font-weight:700;color:' + (neg ? '#ef4444' : 'var(--foreground)') + ';">' + wtEsc(c.value) + '</div>' +
-              '<div style="font-size:11px;color:var(--muted-foreground);margin-top:4px;">' + c.sub + '</div></div>';
-          }).join('') + '</div>' +
-          '<details style="font-size:12px;line-height:1.6;color:var(--muted-foreground);padding:8px 12px;border-radius:8px;background:var(--color-bg-secondary);border:1px solid var(--color-border);">' +
-          '<summary style="cursor:pointer;">为什么这样算？· 账本主权</summary>' +
-          '<div style="margin-top:6px;"><b>账本主权。</b>钱花在哪个 agent、哪个模型上，你自己能查、能导、能对账。省下来的数字都写在账本里，谁都能复核。</div>' +
-          '</details>';
+          '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">' +
+            '<div style="font-size:28px;font-weight:700;line-height:1;' +
+              (String(actual).charAt(0) === '-' ? 'color:#ef4444;' : '') + '">' + wtEsc(actual) + '</div>' +
+            '<div style="font-size:12px;color:var(--muted-foreground);">上周实际花费 · ' + reqs + ' 次请求</div>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--muted-foreground);line-height:1.7;margin:10px 0 12px;">' +
+            '按 agent / 模型归因、模型重写省了多少、零花费占比 —— 明细与口径在「成本」页。' +
+          '</div>' +
+          '<button class="btn btn-outline btn-sm" type="button" onclick="switchPage(\'cost\')">看成本明细</button>';
       })
       .catch(function() {
         body.innerHTML = '<div class="empty-state"><div class="empty-text">无法获取账本（manager 未运行或未登录）</div></div>';
