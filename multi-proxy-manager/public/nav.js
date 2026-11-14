@@ -1,7 +1,7 @@
 // costgate — Copyright © 2026 sif-king (Jason)
 // Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md).
 // 单一导航来源（P0-5）：dashboard / knowledge / proxy-config / floor 共用。
-// 主导航 8 项（真实页面/路由，统一中文化），键盘可激活（<a>/<button>）。
+// 主导航 9 项（真实页面/路由，统一中文化），键盘可激活（<a>/<button>）。
 // dashboard 额外渲染页内 SPA 子视图（健康/告警/注册表/成本/影子）+ 动态代理容器，
 // 其余页面只渲染主导航，保证 4 页主导航一致。
 
@@ -25,7 +25,8 @@
     registry:  '<svg class="icon-svg nav-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     cost:      '<svg class="icon-svg nav-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     shadow:    '<svg class="icon-svg nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>',
-    today:     '<svg class="icon-svg nav-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
+    today:     '<svg class="icon-svg nav-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+    context:   '<svg class="icon-svg nav-icon" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>'
   };
 
   // 品牌徽标（与既有 .cg-badge / .cg-glyph 同形；侧栏由 nav.js 单源渲染，避免各页 SVG 不一致）
@@ -45,6 +46,10 @@
       label: '',            // 首组不额外加标题，紧跟在品牌区下面
       items: [
         { id: 'dashboard', label: '总览',     href: '/dashboard', icon: ICON.overview },
+        // 2026-11-14：补回上下文构成。这页一直有路由（server.js 的 /context）却没有导航入口，
+        // 用户只能手敲 URL —— 是 11-13 重排侧栏时漏掉的，不是有意隐藏。
+        // 归属：它答的是「这笔钱由哪几类 token 组成」，和总览/盘面同属看账面，所以放首组。
+        { id: 'context',   label: '上下文构成', href: '/context',  icon: ICON.context },
         { id: 'floor',     label: '实时盘面', href: '/floor',     icon: ICON.floor }
       ]
     },

@@ -176,6 +176,10 @@ run_step "交付体系 live 校验（scripts/verify-delivery.js）" node scripts
 # ── 3. shell 脚本门禁（CI: shell job）──
 run_step "shell 脚本门禁（tests/shell/check.sh）" bash tests/shell/check.sh
 
+# ── 3b. 面板一致性（防「页面还在、入口没了」/「后端挂着、前端没调」）──
+# 这两类都不报错，跑一遍也一切正常，只有用户点不到。所以必须机器判。
+run_step "面板清单/导航可达/孤儿后端标注（scripts/check-panel-coherence.sh）" bash scripts/check-panel-coherence.sh
+
 # ── 4. 版权头（CI: license-header job）──
 # CI 判据是「候选文件数 == 0」，调的是同一个脚本。
 # ⚠️ 这一步在本机要 6 分钟左右（要扫 dist/ 那几千个构建产物），所以**默认不跑**，

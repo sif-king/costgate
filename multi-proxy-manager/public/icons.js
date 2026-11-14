@@ -33,6 +33,8 @@
     shadow: N('<path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/>'),
     // 「今天」是日历，不是钟——钟已在 sessions 用过，两个 tab 用同一个图标会分不清
     today: N('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'),
+    // 上下文构成用「分层」：这一页回答的是「花掉的钱由哪几类 token 组成」，不是又一个图表
+    context: N('<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>'),
     legal: N('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>')
   };
 

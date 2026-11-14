@@ -95,11 +95,11 @@ app.use('/api', controlRoutes);
 app.use('/api/registry', registryRoutes);
 // L2 P2：orchestration — 编排引擎接线（门控 PROXY_ORCHESTRATION 默认关，shadow 默认开）
 const orchestrationRoutes = require('./routes/orchestration');
-app.use('/api/orchestration', orchestrationRoutes);
+app.use('/api/orchestration', orchestrationRoutes);  // BACKEND-ONLY: 面板无操作面（仅 dashboard 只读「路由预演」间接用），走 API/CLI
 // M7 Sessions：挂在代理 wildcard 之前，确保 /api/sessions/* 不被误捕获
 app.use('/api/sessions', sessionsRoutes);
 // B 类链路业务侧端点（独立存储 guard-business，供外部项目如审核平台经 HTTP 接入）
-app.use('/api/guard', guardBusinessRoutes);
+app.use('/api/guard', guardBusinessRoutes);  // BACKEND-ONLY: 供外部项目（如审核平台）经 HTTP 接入，面板无操作面
 // M2 Provider Health：只读展示层，挂在代理 wildcard 之前（与 registry/sessions 同模式）
 app.use('/api/provider-health', require('./routes/provider-health'));
 // L2 P2 告警生产接线：/api/alert 把 alert.js 内核接上真实信号源（门控 PROXY_HEALTH_ALERT 默认关）
@@ -108,9 +108,9 @@ app.use('/api/alert', alertRoutes);
 // L2 P3：skill-service + memory-merge 生产接线（门控 PROXY_L2_SKILL / PROXY_L2_MEMORY 默认关，非侵入）
 // 与 orchestration/sessions/alert 同模式，挂在代理 wildcard（apiRoutes）之前。
 const skillServiceRoutes = require('./routes/skill-service');
-app.use('/api/skill-service', skillServiceRoutes);
+app.use('/api/skill-service', skillServiceRoutes);  // BACKEND-ONLY: 面板无入口（技能页走 /api/skill-hosts），走 API/CLI
 const memoryMergeRoutes = require('./routes/memory-merge');
-app.use('/api/memory-merge', memoryMergeRoutes);
+app.use('/api/memory-merge', memoryMergeRoutes);  // BACKEND-ONLY: 面板无入口，走 API/CLI
 // L2 P3 · skill-hosts 宿主 adapter 生产接线：/api/skill-hosts 把 l2/skill-hosts.js 接上 manager。
 // 门控 PROXY_L2_SKILLHOSTS 默认关（同 skill/memory/mcp 模式），**只读面**（scan + plan dry-run，绝不写 agent 目录）。
 const skillHostsRoutes = require('./routes/skill-hosts');
@@ -118,7 +118,7 @@ app.use('/api/skill-hosts', skillHostsRoutes);
 // L2 P3 · MCP Bridge 生产接线：/api/mcp 把 l2/mcp-server.js（JSON-RPC 2.0）接上 manager
 // 门控 PROXY_L2_MCP 默认关（非侵入，与 skill/memory 同模式），只暴露只读查询 + 路由决策（shadow）。
 const mcpRoutes = require('./routes/mcp');
-app.use('/api/mcp', mcpRoutes);
+app.use('/api/mcp', mcpRoutes);  // BACKEND-ONLY: MCP 客户端直连 JSON-RPC，面板无操作面
 // L2 P0 · knowledge-base（RAG 知识库）生产接线：/api/knowledge 把 l2/knowledge-base 接上 manager
 // 门控 PROXY_KNOWLEDGE_BASE 默认关（非侵入，与 skill/memory/mcp 同模式）；拉模式：读不鉴权、写鉴权（requireAuth）
 const knowledgeRoutes = require('./routes/knowledge-base');
@@ -144,11 +144,11 @@ app.use('/api/budget', require('./routes/budget'));
 // h3web Guard：外部本地服务（h3web :8731）检测 / 提醒 / 可选一键开启。
 // 与 provider-health/sessions 同模式，挂在代理 wildcard 之前（否则 /api/h3web 被 :proxy=h3web 误捕获）。
 // 分工（维护者 2026-10-10）：不替 h3web 配 launchd 常驻，只在使用侧「发现没起就提醒」+ 留门控一键开启。
-app.use('/api/h3web', require('./routes/h3web-guard'));
+app.use('/api/h3web', require('./routes/h3web-guard'));  // BACKEND-ONLY: 检测/提醒面，面板无入口
 // L2 P4 · IM 入站通道：把 IM 平台（飞书/Telegram/…）的消息接进本地 agent 执行并回投。
 // 门控 PROXY_IM_INBOUND 默认关（非侵入，与 orchestration/alert 同模式），
 // 真执行另受 PROXY_EXECUTOR_BIND 门控（缺省 0）→ 不开不触下游、不花钱。
-app.use('/api/im-inbound', require('./routes/im-inbound'));
+app.use('/api/im-inbound', require('./routes/im-inbound'));  // BACKEND-ONLY: IM 平台回调入口，面板无操作面
 // 首启同意门端点：必须挂在代理 wildcard（apiRoutes 的 /:proxy/*）之前，
 // 否则 /api/consent 会被 :proxy=consent 误捕获。本机单人面，读写均不加 requireAuth。
 app.get('/api/consent', (_req, res) => {
