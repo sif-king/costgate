@@ -1938,12 +1938,18 @@
 
   function loadHealthPage() {
     showLoading();
+    // 历史条数取下拉框当前值（默认 50）。2026-11-14 之前这个下拉的
+    // onchange="loadHealthHistory()" 引用的是一个**从未定义**的函数——换了条数
+    // 只会抛 ReferenceError、列表纹丝不动。现在 loadHealthHistory 就是本函数的
+    // 别名（见文件末尾的全局暴露段），条数在这里读一次。
+    var limitSel = document.getElementById('healthHistoryLimit');
+    var historyLimit = parseInt((limitSel && limitSel.value) || '50', 10) || 50;
     // 三个请求各自标记读失败：一个挂了不让另外两个也跟着变空白，
     // 但绝不喂 mock 假数据——挂掉的那段必须显示「读不到」。
     Promise.all([
       fetchJSON('/api/status').catch(function(e) { return { __readError: e }; }),
       fetchJSON('/api/provider-health').catch(function(e) { return { __readError: e }; }),
-      fetchJSON('/api/health-history?limit=50').catch(function(e) { return { __readError: e }; }),
+      fetchJSON('/api/health-history?limit=' + historyLimit).catch(function(e) { return { __readError: e }; }),
       // /api/readyz 会对每个代理真发一次 /health 请求（不是看端口在不在听）。
       // /api/status 的 health 可能是缓存或推断，两者冲突时以 readyz 为准。
       fetchJSON('/api/readyz').catch(function(e) { return { __readError: e }; })
@@ -2061,7 +2067,7 @@
         if (history.length === 0) {
           historyList.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="empty-text">暂无健康历史</div></div>';
         } else {
-          historyList.innerHTML = history.slice(0, 50).map(function(h) {
+          historyList.innerHTML = history.slice(0, historyLimit).map(function(h) {
             var hClass = h.status === 'ok' ? 'status-badge online' : h.status === 'degraded' ? 'status-badge degraded' : 'status-badge offline';
             var hText = h.status === 'ok' ? '健康' : h.status === 'degraded' ? '降级' : '故障';
             var time = h.timestamp ? new Date(h.timestamp).toLocaleString('zh-CN') : '-';
@@ -3400,6 +3406,38 @@
       });
     });
   }
+
+  // ===== 内联 handler 的全局暴露（2026-11-14 修复）=====
+  // HTML 里的 onclick/onchange/oninput/onkeydown 是在**全局作用域**解析的，IIFE 里的
+  // 函数它们看不见。实测（Playwright 逐个真点）发现 13 个被内联 handler 引用的函数
+  // 从未挂到 window：
+  //   告警页搜索/两个筛选/刷新（filterAlerts / loadAlertsPage）、
+  //   今天页日期选择器/刷新/文件查询（loadTodayPage / lookupWho）、
+  //   registry 搜索与筛选（filterRegistry）、成本/watchtower/概览刷新
+  //   （loadCostPage / loadWatchtower / loadCostSovereignty）、
+  //   健康页刷新（loadHealthPage）、健康历史条数下拉（loadHealthHistory，
+  //   引用的函数**从未定义过**，换了条数只抛 ReferenceError）、
+  //   watchtower 卡「看成本明细」（switchPage）、统一入口复制（copyUnifiedIngressUrl）、
+  //   API key 横幅关闭（dismissApiKeyBanner）。
+  // 症状全部是「控件齐全、点击无声」：按钮渲染出来了，点了抛 ReferenceError（还被
+  // 各自的静默路径吃掉）。E2E 只点过 tab、没点过这些控件，所以假绿至今。
+  // 守卫：tests/node/panel-inline-handlers.test.js 静态交叉验证（引用⊆挂载⊆有真身）。
+  window.dismissApiKeyBanner = dismissApiKeyBanner;
+  window.loadTodayPage = loadTodayPage;
+  window.lookupWho = lookupWho;
+  window.loadCostSovereignty = loadCostSovereignty;
+  window.copyUnifiedIngressUrl = copyUnifiedIngressUrl;
+  window.loadHealthPage = loadHealthPage;
+  // 健康历史条数下拉的原引用 loadHealthHistory 从未定义过（换了条数只会
+  // ReferenceError、列表不动）。语义就是「按当前下拉值重拉健康页」，别名即可。
+  window.loadHealthHistory = loadHealthPage;
+  window.filterAlerts = filterAlerts;
+  window.loadAlertsPage = loadAlertsPage;
+  window.filterRegistry = filterRegistry;
+  window.loadRegistryPage = loadRegistryPage;
+  window.loadCostPage = loadCostPage;
+  window.loadWatchtower = loadWatchtower;
+  window.switchPage = switchPage;
 
   init();
 })();
