@@ -1163,33 +1163,16 @@
     </div>
   </div>
 
-  <!-- ==================== Sessions Page ==================== -->
-  <div class="page" id="page-sessions">
-    <div class="page-header">
-      <h1 class="page-title">任务管理</h1>
-      <p class="page-subtitle">L2 编排引擎 Session 状态</p>
-    </div>
-    <div class="hig-card">
-      <div class="hig-card-header">
-        <div>
-          <div class="hig-card-title">运行中任务</div>
-          <div class="hig-card-subtitle">自动刷新</div>
-        </div>
-        <button class="btn btn-outline btn-sm" onclick="loadSessions()">
-          <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          刷新
-        </button>
-      </div>
-      <div class="hig-card-body">
-        <div id="sessionsListFull">
-          <div class="empty-state">
-            <div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-            <div class="empty-text">暂无运行中任务</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- ==================== （已删除）Sessions Page ====================
+       这里曾有一个 page-sessions 容器（内含 sessionsListFull）。
+       2026-11-14 删除，依据是三条实查：
+         ① SPA_VIEWS 里没有 sessions → 页内 tab 从来不会造出它的入口；
+         ② 侧栏「任务管理」href=/sessions，server.js:229 直接发 sessions.html（独立页）；
+         ③ 全仓无 switchPage('sessions') 调用。
+       也就是说它是「页面还在、入口没了」的死容器，但 loadSessions() 仍在往里渲染，
+       并把读失败提示也写进这个看不见的容器（见 loadSessions 注释），
+       于是可见的那张卡只剩一句「暂无运行中任务」—— 读失败被渲染成了「没有任务」。
+       删容器 + 把提示改指向可见容器，两件事必须同时做，否则修一半。 -->
 
   <!-- ==================== Cost Page ==================== -->
   <div class="page" id="page-cost">
@@ -1712,7 +1695,8 @@
     else if (pageId === 'health') loadHealthPage();
     else if (pageId === 'alerts') loadAlertsPage();
     else if (pageId === 'registry') loadRegistryPage();
-    else if (pageId === 'sessions') loadSessions();
+    // 'sessions' 不再有分支：侧栏「任务管理」走 /sessions（独立页 sessions.html），
+    // 页内 session 容器已于 2026-11-14 删除，留着这个分支只会指向不存在的容器。
     else if (pageId === 'cost') { loadCostPage(); loadWatchtower(); }
     else if (pageId === 'dashboard') loadCostSovereignty();
     else if (pageId === 'shadow') loadShadowPage();
@@ -2147,40 +2131,15 @@
         }
       }
 
-      // Render provider health
+      // Render provider health（渲染与读失败都走公共函数，见 renderProviderIsolation）
       var phList = el('healthPagePhList');
-      var phSub = el('healthPagePhSubtitle');
       if (phList) {
         if (phResult.__readError) {
           // 「所有 Provider 健康」这句话只有在真读到「无隔离项」时才配说。
           // 读失败时说它，等于替一个没查过的系统开健康证明。
-          if (phSub) phSub.textContent = '—';
-          showReadError('healthPagePhList', '读取失败',
-            phResult.__readError.message || '未知错误',
-            'provider 隔离状态读不到，不代表 Provider 都健康。', loadHealthPage);
+          showProviderReadError('healthPagePhList', 'healthPagePhSubtitle', phResult.__readError, loadHealthPage);
         } else {
-        if (phSub) phSub.textContent = (phData.isolateEnabled ? '自动隔离已开启（live）' : 'observe 模式');
-        var list = phData.isolated || [];
-        if (list.length === 0) {
-          phList.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="empty-text">所有 Provider 健康</div></div>';
-        } else {
-          phList.innerHTML = list.map(function(p) {
-            var remainMs = (p.unhealthyUntil || 0) - Date.now();
-            var remainMin = Math.max(0, Math.round(remainMs / 60000));
-            var corr = p.correlation || {};
-            var verdictText = corr.verdict === 'network-wide' ? '全网故障' : '单 Proxy 抖动';
-            var verdictClass = corr.verdict === 'network-wide' ? 'badge-error' : 'badge-warning';
-            var sources = (corr.sources || []).join(', ') || '—';
-            return '<div class="session-item">' +
-              '<div class="session-header">' +
-                '<span class="session-proxy-badge badge-' + esc(p.providerId) + '">' + esc(p.providerId) + '</span>' +
-                '<span class="' + verdictClass + '">' + verdictText + '</span>' +
-                '<span class="session-age">⏱ ' + remainMin + 'min 后恢复</span>' +
-              '</div>' +
-              '<div class="session-id">连续失败 ' + (p.consecutiveFailures || 0) + ' 次 · 来源：' + esc(sources) + '</div>' +
-            '</div>';
-          }).join('');
-        }
+          renderProviderIsolation('healthPagePhList', 'healthPagePhSubtitle', phData);
         }
       }
 
@@ -2549,15 +2508,17 @@
        .then(function(data) {
         var sessions = data.sessions || [];
         renderSessionsList(sessions, 'sessionsList');
-        renderSessionsList(sessions, 'sessionsListFull');
        })
        .catch(function(err) {
         // 过去这里是 `.catch(function() { /* 静默失败 */ })`：API 一挂，会话列表停在旧内容，
         // 用户以为「没有任务在跑」——而真相可能是「有三个任务在跑但没显示出来」。
         // 中止一个你看不见的任务，比没有中止按钮更危险。
-        renderSessionsList([], 'sessionsList');
-        renderSessionsList([], 'sessionsListFull');
-        showReadError('sessionsListFull', '读取失败', err && err.message || '未知错误',
+        //
+        // 2026-11-14 修：提示原先写进 sessionsListFull，而那个容器所在的 page-sessions
+        // 是无入口的死容器（已删）。于是「读失败」的提示谁也看不见，可见的卡只剩
+        // 一句「暂无运行中任务」—— 正是本文件反复强调的「读失败 ≠ 没有」被破了一次。
+        // 现在不再预渲染空态、直接把读失败写进可见容器。
+        showReadError('sessionsList', '读取失败', err && err.message || '未知错误',
           '会话列表读不到，不代表没有任务在跑。中止操作前请先确认本页能正常加载。', loadSessions);
         showToast('会话列表读取失败', 'error');
        });
@@ -3007,8 +2968,7 @@
     if (!container) return;
 
     if (!sessions || sessions.length === 0) {
-      var emptyText = containerId === 'sessionsListFull' ? '暂无运行中任务' : '暂无运行中任务';
-      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-text">' + emptyText + '</div></div>';
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-text">暂无运行中任务</div></div>';
       return;
     }
 
@@ -3058,29 +3018,25 @@
   };
 
   // ===== Provider Health Loading =====
-  function loadProviderHealth() {
-    fetchJSON('/api/provider-health', { headers: { 'x-auth-token': authToken || '' } })
-      .then(function(data) {
-        var list = data.isolated || [];
-        renderProviderHealth(list, data.isolateEnabled, data.threshold);
-      })
-      .catch(function(err) {
-        // 「所有 Provider 健康」这句话不能靠读失败来说。总览卡读不到时显示读失败，
-        // 否则一次网络抖动就会被渲染成「全网健康」的假证明。
-        renderProviderHealth([], null, null);
-        var sub = document.getElementById('phSubtitle');
-        if (sub) sub.innerHTML = '<span style="color:#d97706;">读取失败：' + esc((err && err.message) || '未知错误') + '</span>';
-      });
-  }
-
-  function renderProviderHealth(list, isolateEnabled, threshold) {
-    var container = document.getElementById('phList');
+  // ===== Provider 隔离状态（概览卡 + 健康页共用一份渲染）=====
+  // 2026-11-14 合并：这两处原先各写一遍几乎逐字相同的 HTML 生成代码（连
+  // 「连续失败 N 次 · 来源」那段都一样），同一份数据两处渲染，口径迟早漂。
+  //
+  // 两条铁律，都是被真 bug 换来的：
+  //   ① 这里只负责「读到了」的渲染；读失败必须走 showProviderReadError()。
+  //      原概览的 catch 先 renderProviderHealth([], …) 再改副标题，于是卡体写着
+  //      「所有 Provider 健康」、副标题写着「读取失败」—— 替一个没查过的系统开了
+  //      健康证明。注释明写着不许，实现却这么干了（读失败 ≠ 没有）。
+  //   ② 副标题必须一起清空，否则「observe 模式」会和「读取失败」并排出现，
+  //      被读成「一切正常，只是没数据」。
+  function renderProviderIsolation(containerId, subId, data) {
+    var container = document.getElementById(containerId);
     if (!container) return;
+    var sub = document.getElementById(subId);
+    if (sub) sub.textContent = (data && data.isolateEnabled) ? '自动隔离已开启（live）' : 'observe 模式（仅建议，不改路由）';
 
-    var sub = document.getElementById('phSubtitle');
-    if (sub) sub.textContent = (isolateEnabled ? '自动隔离已开启（live）' : 'observe 模式（仅建议，不改路由）');
-
-    if (!list || list.length === 0) {
+    var list = (data && data.isolated) || [];
+    if (list.length === 0) {
       container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="empty-text">所有 Provider 健康</div></div>';
       return;
     }
@@ -3092,16 +3048,32 @@
       var verdictText = corr.verdict === 'network-wide' ? '全网故障' : '单 Proxy 抖动';
       var verdictClass = corr.verdict === 'network-wide' ? 'badge-error' : 'badge-warning';
       var sources = (corr.sources || []).join(', ') || '—';
-      var fails = p.consecutiveFailures || 0;
       return '<div class="session-item">' +
         '<div class="session-header">' +
           '<span class="session-proxy-badge badge-' + esc(p.providerId) + '">' + esc(p.providerId) + '</span>' +
           '<span class="' + verdictClass + '">' + verdictText + '</span>' +
           '<span class="session-age">⏱ ' + remainMin + 'min 后恢复</span>' +
         '</div>' +
-        '<div class="session-id">连续失败 ' + fails + ' 次 · 来源：' + esc(sources) + '</div>' +
+        '<div class="session-id">连续失败 ' + (p.consecutiveFailures || 0) + ' 次 · 来源：' + esc(sources) + '</div>' +
       '</div>';
     }).join('');
+  }
+
+  function showProviderReadError(containerId, subId, err, retryFn) {
+    var sub = document.getElementById(subId);
+    if (sub) sub.textContent = '—';
+    showReadError(containerId, '读取失败', (err && err.message) || '未知错误',
+      'Provider 隔离状态读不到，不代表 Provider 都健康。', retryFn);
+  }
+
+  function loadProviderHealth() {
+    fetchJSON('/api/provider-health', { headers: { 'x-auth-token': authToken || '' } })
+      .then(function(data) {
+        renderProviderIsolation('phList', 'phSubtitle', data);
+      })
+      .catch(function(err) {
+        showProviderReadError('phList', 'phSubtitle', err, loadProviderHealth);
+      });
   }
 
   // ===== Data Loading =====

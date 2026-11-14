@@ -251,6 +251,25 @@ test('health 页：provider-health 500 → 不说「所有 Provider 健康」', 
   if (!(html.indexOf('所有 Provider 健康') === -1)) throw new Error('读失败时不许开健康证明');
 });
 
+test('总览 loadProviderHealth：provider-health 500 → 不说「所有 Provider 健康」', async () => {
+  // 2026-11-14 补：概览卡原先在 catch 里先 renderProviderHealth([], …) 再改副标题，
+  // 于是卡体写着「所有 Provider 健康」、副标题写着「读取失败」——卡体那句就是
+  // 替一个没查过的系统开健康证明。健康页早有同类断言（上一条），概览这张漏了。
+  registry.clear();
+  const fetchStub = makeFetch([
+    { match: /\/api\/provider-health/, response: () => ({ ok: false, status: 503, json: async () => ({ error: 'provider 探测超时' }) }) }
+  ]);
+  const api = runPanel('dashboard.html', fetchStub);
+  api.loadProviderHealth();
+  await settle();
+  const html = getEl('phList').innerHTML;
+  assert.ok(html.indexOf('读取失败') !== -1, '应显示读取失败，实际：' + html.slice(0, 200));
+  if (html.indexOf('所有 Provider 健康') !== -1) throw new Error('读失败时不许开健康证明');
+  assert.ok(html.indexOf('provider 探测超时') !== -1, '应带出后端原因');
+  const sub = getEl('phSubtitle').textContent;
+  if (sub.indexOf('observe') !== -1) throw new Error('读失败时副标题不许还写着 observe 模式');
+});
+
 test('alerts 页：/api/alert 500 → 显示「读取失败」，不说「暂无告警事件」', async () => {
   registry.clear();
   const fetchStub = makeFetch([
@@ -288,9 +307,15 @@ test('sessions 页：读失败 → 显示读取失败（过去是静默 catch，
   const api = runPanel('dashboard.html', fetchStub);
   api.loadSessions();
   await settle();
-  const html = getEl('sessionsListFull').innerHTML;
+  // 2026-11-14：断言目标从 sessionsListFull 改成 sessionsList。
+  // 前者所在的 page-sessions 是无入口死容器（SPA_VIEWS 无 sessions、侧栏走
+  // /sessions → sessions.html），提示写进去谁也看不见，而用户可见的那张卡只说
+  // 「暂无运行中任务」—— 读失败被渲染成「没有任务」，测试却是绿的。
+  // 这条测试原先正是在给那个假绿背书，所以改断言目标本身就是修复的一部分。
+  const html = getEl('sessionsList').innerHTML;
   assert.ok(html.indexOf('读取失败') !== -1, '应显示读取失败，实际：' + html.slice(0, 200));
   if (!(html.indexOf('session store 锁冲突') !== -1)) throw new Error('应带出原因');
+  if (html.indexOf('暂无运行中任务') !== -1) throw new Error('读失败不许说成「暂无运行中任务」（读不到 ≠ 没有）');
 });
 
 test('registry 页：读失败 → 显示读取失败，不说「暂无 Agent」', async () => {

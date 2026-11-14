@@ -102,8 +102,33 @@ while IFS= read -r route; do
 done < <(grep -E "^app\.use\('/api/[a-zA-Z0-9_-]+'" "$SERVER_JS" \
            | sed -E "s#^app\.use\('/api/([a-zA-Z0-9_-]+)'.*#\1#" | sort -u)
 
+# ── 4. dashboard.html 里的 .page 容器必须有入口 ─────────────────────
+# 2026-11-14 新增。触发案例：page-sessions 容器存在、有内容、被 loadSessions() 持续渲染，
+# 但 SPA_VIEWS 里没有它、侧栏 /sessions 走的是独立 sessions.html、也没有任何
+# switchPage('sessions') 调用 —— 也就是说用户永远看不到它，而读失败提示还写进它里面，
+# 可见的卡只剩「暂无运行中任务」。这类死容器不报错、不崩，只能靠树里比对抓。
+# 入口算三类：页内 tab（SPA_VIEWS）/ 硬编码 tab（data-page）/ 代码跳转（switchPage）。
+DASH="$PANEL_DIR/dashboard.html"
+if [ -f "$DASH" ]; then
+  spa_ids=$(awk '/var SPA_VIEWS = \[/,/^  \];/' "$NAV_JS" \
+            | grep -oE "id: '[a-z-]+'" | sed -E "s/id: '//; s/'//" | sort -u)
+  while IFS= read -r cid; do
+    [ -n "$cid" ] || continue
+    short="${cid#page-}"
+    reachable=0
+    printf '%s\n' "$spa_ids" | grep -qxF -- "$short" && reachable=1
+    grep -qF -- "data-page=\"${short}\"" "$DASH" && reachable=1
+    grep -qF -- "switchPage('${short}')" "$DASH" && reachable=1
+    grep -qE "class=\"page active\" id=\"${cid}\"" "$DASH" && reachable=1
+    if [ "$reachable" -eq 0 ]; then
+      fail "dashboard.html 的 #${cid} 没有任何入口（不在 SPA_VIEWS / 无 data-page / 无 switchPage 跳转 / 不是默认页）—— 死容器，删掉或补入口"
+    fi
+  done < <(grep -oE 'class="page( active)?" id="page-[a-z-]+"' "$DASH" \
+           | sed -E 's/.*id="(page-[a-z-]+)".*/\1/' | sort -u)
+fi
+
 if [ "$FAILS" -eq 0 ]; then
-  ok "页面清单 / 导航可达 / 孤儿后端标注 三项一致"
+  ok "页面清单 / 导航可达 / 孤儿后端标注 / 容器入口 四项一致"
   echo "结果：全过"
   exit 0
 fi
