@@ -170,17 +170,23 @@ function runPanel(file, fetchStub, exportList) {
   sandbox.window = sandbox;
   sandbox.location = { href: '' };
   vm.createContext(sandbox);
-  // 2026-11-14：esc / fetchJSON / showReadError 收到 public/mp-kernel.js（8 页共用一份）。
-  // 浏览器里它是 <script src> 先于页面脚本执行，这里必须同序先跑——不然页面 IIFE 顶上
-  // 那句 `var esc = MPKernel.esc` 直接 ReferenceError。
-  // 有意 load 真文件而不是塞桩：桩测的是桩，真 kernel 才测得到「转义/读失败提示」本身。
-  vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'mp-kernel.js'), 'utf8'), sandbox, { filename: 'mp-kernel.js' });
-  // 2.3b 第二片（2026-11-14）：告警页实现抽到 views/alerts.js。浏览器加载顺序是
-  // mp-kernel → views/* → 页面内联脚本，这里同序——页面 IIFE 的 switchPage 走
-  // loadAlertsPage 薄包装（调 MPViews.alerts.load），模块不在就 console.error。
-  // dashboard.html 还定义了 MPShell（页面壳：加载条/离线横幅），模块 load 时要用；
-  // 它在 IIFE 末尾挂载，页面脚本跑完就有了——不必 stub。
-  vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'views', 'alerts.js'), 'utf8'), sandbox, { filename: 'views/alerts.js' });
+  // 2026-11-15：按 dashboard.html <head> 的**真实顺序**加载共享件与视图模块。
+  // 之前这里只跑 mp-kernel.js + views/alerts.js，并写着「MPShell 在 IIFE 末尾挂载，
+  // 页面脚本跑完就有了」——抽 registry / 把 MPShell 归位到 mp-shell.js 之后，
+  // 那句话过期了：页面薄包装里的 `window.MPShell.showLoading()` 会在沙箱里
+  // TypeError，registry 读失败用例也因为实现在外链模块里而测不到（假红 5 条）。
+  // 判据：沙箱的加载顺序必须和浏览器一致，否则测的是另一套装配方式。
+  const headScripts = [
+    'mp-kernel.js',
+    'mp-shell.js',
+    'views/shadow.js',
+    'views/alerts.js',
+    'views/today.js',
+    'views/registry.js',
+  ];
+  for (const rel of headScripts) {
+    vm.runInContext(fs.readFileSync(path.join(PUBLIC, rel), 'utf8'), sandbox, { filename: rel });
+  }
   vm.runInContext(code, sandbox, { filename: file });
   // 注入兜底：logs.html 把函数挂在 window 上（window.loadLogs = function(){}），
   // 且它的 IIFE 收尾形态与 dashboard 不同，上面两条正则都匹配不到 →

@@ -163,6 +163,12 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
+      # 面板一致性守卫（2026-11-15 接进 CI）：此前只在 scripts/preflight.sh 本地跑，
+      # CI 完全没有它 —— 于是「views/*.js 忘接线 / 脚本顺序错 / 版本号写死」这类
+      # 不报错、不白屏的坏法在 PR 里无人拦。第 7 项（视图接线与加载顺序）尤其必须进闸：
+      # 它盯的是 mp-shell.js 是否早于 views/*.js，晚了就是壳机制静默失效。
+      - name: panel coherence (page registry / views wiring / script order)
+        run: bash scripts/check-panel-coherence.sh
       # 生产依赖卫生（2026-11-09 加）：抓「开发工具混进 dependencies」与「没人用的孤儿包」。
       # 这类问题本机永远测不出来 —— node_modules 早装好了、UI-AUDIT 也在，
       # 代价全部落在外部用户身上（多下载 + 可能失败的 postinstall）。

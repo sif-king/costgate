@@ -266,3 +266,20 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - 四种注入全部**真红且恢复干净**：A 删 `window.filterRegistry` 挂载 → E2E 契约层 + 运行层 2 红（运行层拿到真的 `Uncaught ReferenceError: filterRegistry is not defined`）；B 挂载名拼错 → 修复前静态守卫假绿、修复后 `not ok 2 / # fail 1` 精确点名；C 删掉 E2E 守卫文件 → 登记表 `rc=1` 点名「守卫被删，回归将无人喊」；D CI 退回手写名单 → 登记表 `rc=1`。
   - 坑：**注释式注入会让静态守卫假绿**（正则仍匹配注释里的 `window.X = X` 文本），注入验证必须用「改值 / 删文件 / 改 CI 步骤」这类让功能真不跑的形态。
 - **推翻条件**：若将来把内联 handler 全改为 addEventListener 委托，运行态守卫的「静态 HTML 属性清单」要换成「委托选择器清单」，登记表条目同步更名；若 `tests/node/` 出现必须单独跑（不能并发）的用例，全量通配要改为分组执行，但仍不许退回手写白名单。
+
+## D-019 · 第四片抽 registry；MPShell 归位 head；共享状态层暂不硬迁
+
+- **状态**：已执行（2026-11-15，2.3b 第四片）
+- **背景**：D-016 留了推翻条件「一页一文件形状不成立就回到 IIFE 内分段」。继续抽剩余 `health / cost / registry / 概览` 之前先查共享面：`proxyStatus` 20 处引用、`PROXY_CONFIGS` 13 处、`versionCache` 5 处，且 health 写 `proxyStatus`、概览也写；`reasonText / renderProviderIsolation / showProviderReadError` 是概览与 health 共用的渲染件。若为了抽离把这些平铺到 `window`，那不是分层，是把 IIFE 变量全局化。
+- **实查意外（真 bug）**：`views/alerts.js` 在 `<head>` 里执行 `var S = global.MPShell;`，而 MPShell 原本挂在 `dashboard.html` 的 IIFE **末尾（约 3108 行）**。模块加载那一刻它永远是 undefined ⇒ 告警页的 `showLoading / hideLoading / hideOfflineBanner` 三处全走 `console.error` 分支，加载条不亮、离线横幅不收。不报错、不白屏、页面照常出数据，只是壳机制静默失效 —— 与 D-016 的 shadow 假成功、D-017 的控件点击无声同族：**看着接好了，其实没接**。
+- **决策**：
+  - ① **先抽不需要共享状态的那一**：`registry` 只围绕 `/api/registry/agents` + 两个私有状态（`registryAgents / editingAgentId`），不读 `proxyStatus`、不碰轮询、不被别的视图调用。抽到 `views/registry.js`，私有状态留在模块里、不挂 window；页面只留薄包装，`switchPage` 分支表与 HTML 内联 handler 名字不变。⇒ 「一页一文件」形状仍然成立，D-016 不必推翻。
+  - ② **MPShell 归位**：新建 `public/mp-shell.js`，在 `<head>` 里 `mp-kernel.js` 之后、**所有 views/\*.js 之前**加载；`dashboard.html` 保留同名薄包装（函数声明 hoist，定义前调用照旧可用，调用点零改动）。真实现只有一份，视图模块只调用不复制。
+  - ③ **不建 MPState 全量共享层**：`health / cost / 概览` 的抽离前置是「共享状态单一真源迁移」，本轮不硬迁 20+13+5 处引用，也不为了凑「继续抽」把变量挂到 window。明确登记为下一片的前置，而非假装做完。
+  - ④ **脚手架必须同序**：`tests/node/panel-read-failure.test.js` 的 vm 沙箱原本只跑 `mp-kernel.js + views/alerts.js`，还写着「MPShell 在 IIFE 末尾挂载，页面脚本跑完就有了」——抽离后那句话过期，实测 5 条假红（`Cannot read properties of undefined (reading 'showLoading')` + registry 读失败测不到）。改为按 `<head>` 真实顺序加载 6 个**真文件**（kernel → shell → shadow/alerts/today/registry），不塞桩。
+  - ⑤ **静态守卫加第 7 项**：`scripts/check-panel-coherence.sh` 钉「每个 `views/*.js` 都接线」＋「`mp-shell.js` 行号 < 每个 views < 首个内联 `<script>`」。🔴 又查出它**此前只在本地 `preflight.sh` 跑、CI 完全没有** ⇒ 同 D-018 的「闸没拉」病，一并接进 `p0-security-gate.yml` 的 shell job，并让守卫登记表反向钉住这一步不再被摘。
+  - ⑥ **运行态守卫**：`e2e/spa-views.spec.js` 加 1 条 `@tier0`（stub 两条 Agent → 真出 2 张卡 → 搜探针词剩 1 → 清空恢复 2 → 真点「新增 Agent／取消」弹窗 → 真点卡片里**动态生成**的 `editAgent` 并断言表单 id 被填入）。
+- **后果**：`dashboard.html` 3121 → **2937 行**（−184）。真跑：node **41/41**、coherence **七项**、全量 E2E **57/57**、tier0 闸门 **43/43**。
+- **注入验证（全部真红 + SHA 校验恢复）**：A 删掉 `views/registry.js` 接线 → coherence **精确 1 项违规** + registry E2E **1 failed**（卡片渲染不出来）；B 把 `mp-shell.js` 挪到 views 之后 → coherence **4 项顺序违规**；C 摘掉 CI 的 coherence 步骤 → 守卫登记表 **rc=1**（点名「不能只留在本地 preflight」）。
+- 🔴 **本轮环境坑（写进日志，不写进代码）**：Bash 命令在沙箱外运行、编辑工具在沙箱内，两者对同一文件可能看到不同视图 —— 跨调用做「备份 → 注入 → 恢复」时，`cp` 备份到的是旧视图，恢复会把污染写回去，表现为「`restored=true` 但文件仍是坏的」。解法：把「修复 + 注入 + 跑守卫 + `cp` 恢复 + `shasum` 校验」放进**同一次调用**，以 `git diff` 的视角为准。
+- **推翻条件 / 剩余**：若 health/cost 抽离时证明共享状态「只读不写」，可用 getter 而不必做完整 store；若概览页证明它本质就是页面壳而非业务视图，则保留在 `dashboard.html` 并在此登记为「一页一文件」的明确例外。**仍未抽**：`health / cost / 概览`；前置＝共享状态单一真源迁移（20+13+5 处引用逐个改 `MPState.get/set`）+ 三个共享渲染件归位。

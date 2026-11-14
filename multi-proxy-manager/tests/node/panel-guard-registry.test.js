@@ -73,4 +73,9 @@ test('CI 两个闸门都真的会跑到面板守卫', () => {
   // 必须用通配全量跑，以后新增 tests/node/*.test.js 才会自动进闸门。
   assert.match(p0, /node\s+--test\s+tests\/node\/\*\.test\.js/,
     'p0 gate 的 panel behavior tests 必须全量跑 node --test tests/node/*.test.js，不能退回手写文件名单');
+  // 2026-11-15 补：check-panel-coherence.sh 此前**只在本地 preflight 跑**，CI 里
+  // 完全没有它。第 7 项（views/*.js 接线与 mp-shell.js 顺序）若没进闸，就等于
+  // 把「视图忘接线 / 壳机制静默失效」重新放回无人看管的盲区。
+  assert.match(p0, /bash\s+scripts\/check-panel-coherence\.sh/,
+    'p0 gate 必须跑 check-panel-coherence.sh（面板一致性守卫不能只留在本地 preflight）');
 });

@@ -148,3 +148,60 @@ test('dashboard 子视图「告警中心」搜索框过滤真生效（filterAler
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// registry 视图专属断言（2026-11-15，2.3b 第四片）
+// 为什么单独加：这一片把取数/渲染/筛选/增删改整块搬到 views/registry.js，
+// 页面只剩薄包装。最容易出的坏法不是「白屏」，而是「script 没接线 / 顺序错了」——
+// 页面骨架照常渲染、tab 照常切换、只有卡片是空的，只点 tab 的 SPA 用例全绿。
+// 所以这里同时钉住三件事：真出卡片、筛选真生效、弹窗与动态生成的编辑按钮真点得动。
+test('dashboard 子视图「Agent 清单」筛选与弹窗真生效（views/registry.js 接线）', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  // 给确定性的两条数据，链路验证与本机注册表状态无关。写请求也 stub 掉，
+  // 避免「点一遍控件」真的往注册表里写脏数据。
+  await page.route('**/api/registry/agents', (route) => {
+    if (route.request().method() !== 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, success: true }) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ agents: [
+        { id: 'probe-hit-agent', name: '探针 Agent', type: 'codex', capabilityTags: ['probe-hit'], description: '含探针词' },
+        { id: 'plain-agent', name: '普通 Agent', type: 'hermes', capabilityTags: [], description: '不含' },
+      ] }) });
+  });
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  await page.click('#viewTabs .section-tab[data-page="registry"]');
+  const panel = page.locator('#page-registry');
+  await expect(panel).toHaveClass(/active/, { timeout: 15000 });
+
+  const cards = page.locator('#registryGrid .registry-card');
+  await expect(cards, 'stub 的两个 Agent 都应渲染成卡片').toHaveCount(2, { timeout: 15000 });
+
+  // oninput → window.filterRegistry → 过滤渲染（D-017 曾漏挂的那个函数之一）
+  await page.fill('#registrySearch', 'probe-hit');
+  await page.waitForTimeout(300);
+  await expect(cards, '搜索探针词后应只剩 1 张卡').toHaveCount(1);
+  await page.fill('#registrySearch', '');
+  await page.waitForTimeout(300);
+  await expect(cards, '清空搜索词后应恢复 2 张卡').toHaveCount(2);
+
+  // 静态内联「新增 Agent」→ 弹窗；「取消」→ 关掉。
+  await page.locator('#page-registry button[onclick="showAddAgentModal()"]').click();
+  await expect(page.locator('#agentModal')).toBeVisible({ timeout: 15000 });
+  await page.locator('#agentModal button[onclick="closeAgentModal()"]').click();
+  await expect(page.locator('#agentModal')).toBeHidden({ timeout: 15000 });
+
+  // 卡片里**动态生成**的 onclick（editAgent）也要真点得动：它挂全局是模块的责任。
+  await cards.first().locator('button[onclick^="editAgent("]').click();
+  await expect(page.locator('#agentModal')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#agentId'), '编辑态应把 id 填进表单').toHaveValue('probe-hit-agent');
+  await page.locator('#agentModal button[onclick="closeAgentModal()"]').click();
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});

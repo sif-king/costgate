@@ -164,8 +164,39 @@ if grep -qE 'id="sidebarVersion">[0-9vV]' "$NAV_JS"; then
   fail "nav.js 的 buildFooter() 里写死了版本号（改成 '—'，由 fillSidebarVersion() 从 /api/version 填）"
 fi
 
+# ── 7. views/*.js 接线与加载顺序（2026-11-15 加）──
+# 触发案例：MPShell 原本挂在 dashboard.html 的 IIFE **末尾**，而 views/alerts.js
+# 在 <head> 里就执行 `var S = global.MPShell` —— 加载那一刻永远是 undefined，
+# 告警页的加载条 / 离线横幅三处全走 console.error 分支，不报错、不白屏、
+# 页面照常出数据，只是壳机制静默失效。另一个同族坑（2.3a）：视图 script 放到
+# 文档末尾，页面 IIFE 在 1.3k 行处就调入口 → MPViews is not defined 全线崩。
+# 所以判定只看树里的行号：mp-shell.js < 每个 views/*.js < 首个内联 <script>。
+DASH="$PANEL_DIR/dashboard.html"
+if [ -f "$DASH" ]; then
+  first_inline=$(grep -nE '<script>|<script [^>]*>[^<]' "$DASH" | grep -vE 'src=' | head -1 | cut -d: -f1)
+  shell_line=$(grep -nE '<script[^>]*src="\./mp-shell\.js"' "$DASH" | head -1 | cut -d: -f1)
+  if [ -z "$shell_line" ]; then
+    fail "dashboard.html 没引 mp-shell.js（views/*.js 会拿到 undefined 的 MPShell，壳机制静默失效）"
+  fi
+  for vf in "$PANEL_DIR"/views/*.js; do
+    [ -e "$vf" ] || continue
+    vname=$(basename "$vf")
+    vline=$(grep -nF "<script src=\"./views/$vname\"" "$DASH" | head -1 | cut -d: -f1)
+    if [ -z "$vline" ]; then
+      fail "views/$vname 没在 dashboard.html 接线（新增视图必须补 <script src>）"
+      continue
+    fi
+    if [ -n "$first_inline" ] && [ "$vline" -gt "$first_inline" ]; then
+      fail "views/$vname 的 script 在第 ${vline} 行，晚于首个内联脚本第 ${first_inline} 行（模块会在页面 IIFE 之后才加载）"
+    fi
+    if [ -n "$shell_line" ] && [ "$vline" -lt "$shell_line" ]; then
+      fail "views/$vname 在第 ${vline} 行，早于 mp-shell.js 第 ${shell_line} 行（模块加载时取不到 MPShell）"
+    fi
+  done
+fi
+
 if [ "$FAILS" -eq 0 ]; then
-  ok "页面清单 / 导航可达 / 孤儿后端标注 / 容器入口 / kernel 加载顺序 / 版本号单一来源 六项一致"
+  ok "页面清单 / 导航可达 / 孤儿后端标注 / 容器入口 / kernel 加载顺序 / 版本号单一来源 / 视图接线顺序 七项一致"
   echo "结果：全过"
   exit 0
 fi

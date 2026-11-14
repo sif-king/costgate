@@ -14,7 +14,9 @@
    依赖（必须先加载，见 dashboard.html head）：
      · mp-kernel.js  → MPKernel.esc / fetchJSON / showReadError / showToast / getToken
      · icons.js      → MPIcons.severity（严重度图标；缺了走内置圆点兜底）
-     · MPShell       → 页面壳的加载条 / 离线横幅（dashboard.html 的 IIFE 里定义）
+     · mp-shell.js   → MPShell 的加载条 / 离线横幅（2026-11-15 起在 <head>
+       先于所有 views/*.js 加载；曾挂在 dashboard.html 的 IIFE 末尾，本模块
+       加载时取到 undefined，壳机制静默失效）
      · views/shadow.js 等 MPViews 兄弟模块与本文件互不依赖
 
    公开面：window.MPViews.alerts.{ load, events, filter, collect }

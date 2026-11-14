@@ -12,12 +12,16 @@
   <link rel="stylesheet" href="./components.css">
     <script src="./icons.js"></script>
 <script src="./mp-kernel.js"></script>
-<!-- 页内视图模块（2026-11-14 起）：必须晚于 mp-kernel.js、早于页面内联脚本。
+<!-- 页面壳机制（2026-11-15 从 IIFE 末尾抽出）：必须先于所有 views/*.js。
+     views 在 head 里就会取 global.MPShell，晚一步就永远拿到 undefined。 -->
+<script src="./mp-shell.js"></script>
+<!-- 页内视图模块（2026-11-14 起）：必须晚于 mp-kernel.js / mp-shell.js、早于页面内联脚本。
      放 head 而不是文档末尾：内联 IIFE 在 1.3k 行处就调这些入口，晚加载即
      「MPViews is not defined」全线崩（这是 2.3a 踩过的坑）。 -->
 <script src="./views/shadow.js"></script>
 <script src="./views/alerts.js"></script>
 <script src="./views/today.js"></script>
+<script src="./views/registry.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>
@@ -1358,8 +1362,7 @@
   var fetchJSON = MPKernel.fetchJSON;
   var showReadError = MPKernel.showReadError;
   var versionCache = {};
-  var registryAgents = [];
-  var editingAgentId = null;
+  // registryAgents / editingAgentId 已随 2.3b 第四片搬进 views/registry.js（模块私有，不挂 window）。
 
   // ===== Toast System =====
   // 实现已收到 mp-kernel.js（全站一套观感，2026-11-14 视觉统一）。
@@ -1506,14 +1509,10 @@
   // 已收到 mp-kernel.js（esc）；本页只留别名，见上方 State 段。
 
   // ===== Loading Bar =====
-  function showLoading() {
-    var bar = document.getElementById('loadingBar');
-    if (bar) bar.classList.add('active');
-  }
-  function hideLoading() {
-    var bar = document.getElementById('loadingBar');
-    if (bar) bar.classList.remove('active');
-  }
+  // 真实现已抽到 mp-shell.js（head 里先于 views/*.js 加载）。这里保留同名
+  // 薄包装：函数声明会 hoist，页面里在定义之前调用的地方照旧可用，调用点零改动。
+  function showLoading() { return window.MPShell.showLoading(); }
+  function hideLoading() { return window.MPShell.hideLoading(); }
 
   // ===== Mock Data =====
   // 说明：原 getMockStatus() / getMockVersion() 已于 2026-10-16 删除。
@@ -1898,187 +1897,15 @@
     else console.error('[dashboard] views/alerts.js 未加载，告警页无法取数');
   }
 
-  // ===== Registry Page =====
+  // ===== Registry Page（2.3b 第四片，2026-11-15）=====
+  // 实现（取数 / 渲染 / 筛选 / 增删改弹窗）已抽到 views/registry.js。
+  // 与 alerts/today 同形：本页只留薄包装，switchPage 分支表与 HTML 内联
+  // handler 继续用同一个名字；私有状态 registryAgents / editingAgentId 留在模块里，
+  // 不挂 window、不与页面壳共享 —— 抽离 ≠ 把 IIFE 变量全局化。
   function loadRegistryPage() {
-    showLoading();
-    fetchJSON('/api/registry/agents')
-      .then(function(data) {
-        registryAgents = data.agents || [];
-        renderRegistryGrid(registryAgents);
-        updateRegistryStats(registryAgents);
-        hideOfflineBanner();
-        hideLoading();
-      })
-      .catch(function(err) {
-        // 过去这里 catch 成空列表 → 显示「暂无 Agent · 点击新增创建」。
-        // 那是把「读不到」说成「一个都没有」，会让刚注册的 agent 像凭空消失。
-        registryAgents = [];
-        renderRegistryGrid([]);
-        updateRegistryStats([]);
-        showReadError('registryGrid', '读取失败', err && err.message || '未知错误',
-          'Agent 清单读不到，不代表清单是空的。', loadRegistryPage);
-        hideLoading();
-      });
+    if (window.MPViews && window.MPViews.registry) window.MPViews.registry.load();
+    else console.error('[dashboard] views/registry.js 未加载，Agent 清单无法取数');
   }
-
-  function renderRegistryGrid(agents) {
-    var grid = document.getElementById('registryGrid');
-    if (!grid) return;
-
-    if (agents.length === 0) {
-      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><div class="empty-text">暂无 Agent · 点击「新增 Agent」创建</div></div>';
-      return;
-    }
-
-    grid.innerHTML = agents.map(function(a) {
-      var tags = (a.capabilityTags || []).map(function(t) { return '<span class="registry-tag">' + esc(t) + '</span>'; }).join('');
-      var created = a.createdAt ? new Date(a.createdAt).toLocaleDateString('zh-CN') : '-';
-      var updated = a.updatedAt ? new Date(a.updatedAt).toLocaleDateString('zh-CN') : '-';
-
-      return '<div class="registry-card" id="registry-card-' + esc(a.id) + '">' +
-        '<div class="registry-card-header">' +
-          '<div class="registry-card-title">' + esc(a.name) + '</div>' +
-          '<span class="registry-card-type">' + esc(a.type) + '</span>' +
-        '</div>' +
-        '<div class="registry-card-body">' +
-          '<div style="font-size:12px;color:var(--color-text-tertiary);margin-bottom:8px;"><strong>ID:</strong> ' + esc(a.id) + '</div>' +
-          (a.description ? '<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px;">' + esc(a.description) + '</div>' : '') +
-          '<div style="font-size:11px;color:var(--color-text-tertiary);">创建: ' + esc(created) + ' · 更新: ' + esc(updated) + '</div>' +
-        '</div>' +
-        '<div class="registry-card-tags">' + tags + '</div>' +
-        '<div class="registry-card-actions">' +
-          '<button class="btn btn-outline btn-sm" onclick="editAgent(\'' + esc(a.id) + '\')">编辑</button>' +
-          '<button class="btn btn-danger btn-sm" onclick="deleteAgent(\'' + esc(a.id) + '\')">删除</button>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-  }
-
-  function updateRegistryStats(agents) {
-    var el = function(id) { return document.getElementById(id); };
-    if (el('registryTotalCount')) el('registryTotalCount').textContent = agents.length;
-    if (el('registryCodexCount')) el('registryCodexCount').textContent = agents.filter(function(a) { return a.type === 'codex'; }).length;
-    if (el('registryHermesCount')) el('registryHermesCount').textContent = agents.filter(function(a) { return a.type === 'hermes'; }).length;
-    if (el('registryCursorCount')) el('registryCursorCount').textContent = agents.filter(function(a) { return a.type === 'cursor'; }).length;
-  }
-
-  function filterRegistry() {
-    var search = (document.getElementById('registrySearch') || {}).value || '';
-    var typeFilter = (document.getElementById('registryTypeFilter') || {}).value || '';
-
-    var filtered = registryAgents.filter(function(a) {
-      if (typeFilter && a.type !== typeFilter) return false;
-      if (search) {
-        var hay = (a.name + ' ' + a.id + ' ' + (a.capabilityTags || []).join(' ')).toLowerCase();
-        if (hay.indexOf(search.toLowerCase()) === -1) return false;
-      }
-      return true;
-    });
-
-    renderRegistryGrid(filtered);
-  }
-
-  window.showAddAgentModal = function() {
-    editingAgentId = null;
-    document.getElementById('agentModalTitle').textContent = '新增 Agent';
-    document.getElementById('agentModalSave').textContent = '创建';
-    document.getElementById('agentId').value = '';
-    document.getElementById('agentId').disabled = false;
-    document.getElementById('agentName').value = '';
-    document.getElementById('agentType').value = 'custom';
-    document.getElementById('agentTags').value = '';
-    document.getElementById('agentModelType').value = 'text';
-    document.getElementById('agentDesc').value = '';
-    document.getElementById('agentModal').style.display = 'flex';
-  };
-
-  window.editAgent = function(id) {
-    var agent = registryAgents.find(function(a) { return a.id === id; });
-    if (!agent) return;
-
-    editingAgentId = id;
-    document.getElementById('agentModalTitle').textContent = '编辑 Agent';
-    document.getElementById('agentModalSave').textContent = '保存';
-    document.getElementById('agentId').value = agent.id;
-    document.getElementById('agentId').disabled = true;
-    document.getElementById('agentName').value = agent.name || '';
-    document.getElementById('agentType').value = agent.type || 'custom';
-    document.getElementById('agentTags').value = (agent.capabilityTags || []).join(', ');
-    document.getElementById('agentModelType').value = agent.modelType || 'text';
-    document.getElementById('agentDesc').value = agent.description || '';
-    document.getElementById('agentModal').style.display = 'flex';
-  };
-
-  window.closeAgentModal = function() {
-    document.getElementById('agentModal').style.display = 'none';
-  };
-
-  window.saveAgent = function() {
-    var id = document.getElementById('agentId').value.trim();
-    var name = document.getElementById('agentName').value.trim();
-    var type = document.getElementById('agentType').value;
-    var tagsStr = document.getElementById('agentTags').value.trim();
-    var modelType = document.getElementById('agentModelType').value;
-    var description = document.getElementById('agentDesc').value.trim();
-
-    if (!id || !name) {
-      showToast('ID 和名称为必填项', 'error');
-      return;
-    }
-
-    var tags = tagsStr ? tagsStr.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
-
-    var payload = {
-      id: id,
-      name: name,
-      type: type,
-      capabilityTags: tags,
-      modelType: modelType,
-      description: description
-    };
-
-    var url = '/api/registry/agents' + (editingAgentId ? '/' + encodeURIComponent(editingAgentId) : '');
-    var method = editingAgentId ? 'PUT' : 'POST';
-
-    fetch(url, {
-      method: method,
-      headers: { 'Content-Type': 'application/json', 'x-auth-token': authToken || '' },
-      body: JSON.stringify(payload)
-    })
-    .then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.id || data.success) {
-        showToast(editingAgentId ? 'Agent 已更新' : 'Agent 已创建', 'success');
-        closeAgentModal();
-        loadRegistryPage();
-      } else {
-        showToast(data.error || '操作失败', 'error');
-      }
-    })
-    .catch(function(err) {
-      showToast('操作失败: ' + err.message, 'error');
-    });
-  };
-
-  window.deleteAgent = function(id) {
-    if (!confirm('确认删除 Agent "' + id + '"？')) return;
-    fetch('/api/registry/agents/' + encodeURIComponent(id), {
-      method: 'DELETE',
-      headers: { 'x-auth-token': authToken || '' }
-    })
-    .then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.success) {
-        showToast('Agent 已删除', 'success');
-        loadRegistryPage();
-      } else {
-        showToast(data.error || '删除失败', 'error');
-      }
-    })
-    .catch(function(err) {
-      showToast('删除失败: ' + err.message, 'error');
-    });
-  };
 
   // ===== Sessions Loading =====
   function loadSessions() {
@@ -2766,14 +2593,9 @@
   }
 
   // ===== Offline Banner =====
-  function showOfflineBanner() {
-    var banner = document.getElementById('offlineBanner');
-    if (banner) banner.classList.remove('hidden');
-  }
-  function hideOfflineBanner() {
-    var banner = document.getElementById('offlineBanner');
-    if (banner) banner.classList.add('hidden');
-  }
+  // 同上：真实现在 mp-shell.js，本页只留薄包装。
+  function showOfflineBanner() { return window.MPShell.showOfflineBanner(); }
+  function hideOfflineBanner() { return window.MPShell.hideOfflineBanner(); }
   function showDemoBanner() {
     var banner = document.getElementById('demoBanner');
     if (banner) banner.classList.remove('hidden');
@@ -3096,21 +2918,15 @@
   // 健康历史条数下拉的原引用 loadHealthHistory 从未定义过（换了条数只会
   // ReferenceError、列表不动）。语义就是「按当前下拉值重拉健康页」，别名即可。
   window.loadHealthHistory = loadHealthPage;
-  // filterAlerts / loadAlertsPage / collectAlerts 已由 views/alerts.js 挂载，本段不再重复。
-  window.filterRegistry = filterRegistry;
-  window.loadRegistryPage = loadRegistryPage;
+  // filterAlerts / loadAlertsPage / collectAlerts 已由 views/alerts.js 挂载；
+  // loadRegistryPage / filterRegistry / showAddAgentModal / closeAgentModal /
+  // saveAgent / editAgent / deleteAgent 已由 views/registry.js 挂载，本段不再重复。
   window.loadCostPage = loadCostPage;
   window.loadWatchtower = loadWatchtower;
   window.switchPage = switchPage;
-  // 页面壳机制（加载条 / 离线横幅）收在这里给 views/*.js 用：单一定义，视图模块
-  // 只调用不复制。加载条逻辑现在是 3 行纯 DOM，真复杂化（计数器/并发请求）时
-  // 先收口这里再扩散。
-  window.MPShell = {
-    showLoading: showLoading,
-    hideLoading: hideLoading,
-    showOfflineBanner: showOfflineBanner,
-    hideOfflineBanner: hideOfflineBanner,
-  };
+  // 页面壳机制 MPShell 已于 2026-11-15 抽到 mp-shell.js 并在 <head> 挂载。
+  // 必须早于 views/*.js：模块在加载那一刻就会取 global.MPShell，挂在 IIFE 末尾
+  // 会让它们永远拿到 undefined（告警页的加载条 / 离线横幅曾因此静默失效）。
 
   init();
 })();
