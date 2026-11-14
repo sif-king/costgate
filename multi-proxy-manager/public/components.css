@@ -140,6 +140,21 @@ a { color: inherit; text-decoration: none; }
 .card .desc { font-size: var(--fs-xs); color: var(--subtle); }
 .card .card-top { display: flex; align-items: center; justify-content: space-between;
                   gap: 12px; margin-bottom: 4px; }
+
+/* ---------------- Key-value list（卡片内「标签 → 值」） ----------------
+   2026-11-14：.kv / .kv-row / .kv-k / .kv-v 从首个公开快照（58a1097）起就写在
+   settings.html 里，而全站 CSS **从未定义过这四个类**（git log -S ".kv-row" -- '*.css'
+   为空）。症状是设置页「关于」卡片渲染成「应用costgate」——标签和值紧贴。
+   这不是某次改动把间距弄丢了，是「加了类名」被当成「有了样式」的老毛病（K34 同族）。
+   定义放这里而不是 unify.css：kv 是组件，不是页面补丁。
+   label 列固定 88px（中文标签最长 4 字≈56px+余量），值列吃剩余宽度并允许断词
+   （数据目录是 ~/.multi-proxy-manager/ 这类长路径，不断词会撑破卡片）。 */
+.kv { display: flex; flex-direction: column; }
+.kv-row { display: grid; grid-template-columns: 88px minmax(0, 1fr);
+          gap: var(--sp-4); align-items: baseline; padding: 7px 0; }
+.kv-row + .kv-row { border-top: 1px solid var(--border); }
+.kv-k { font-size: var(--fs-sm); color: var(--subtle); }
+.kv-v { font-size: var(--fs-sm); color: var(--fg); word-break: break-word; }
 .grid { display: grid; gap: var(--sp-4); }
 .g-2 { grid-template-columns: repeat(2, 1fr); }
 .g-3 { grid-template-columns: repeat(3, 1fr); }

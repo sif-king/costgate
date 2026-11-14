@@ -48,7 +48,18 @@ function makeEl(id) {
       remove(c) { this._s.delete(c); },
       contains(c) { return this._s.has(c); }
     },
-    appendChild() {},
+    // appendChild 必须真的挂上去并维护 children：mp-kernel 的 showToast 有
+    // 堆叠上限（最多 3 条，超出摘最旧的），它靠 host.children.length 判断。
+    // 空实现的 appendChild 会让 children 恒 undefined，六个用例集体
+    // unhandledRejection（TypeError: Cannot read properties of undefined）。
+    children: [],
+    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+    removeChild(c) {
+      const i = this.children.indexOf(c);
+      if (i >= 0) this.children.splice(i, 1);
+      c.parentNode = null;
+      return c;
+    },
     remove() {},
     // mp-kernel 的 showToast 会给 toast 元素设 role / aria-live（读屏用），
     // stub 缺 setAttribute 就抛 TypeError，六个用例集体 unhandledRejection。

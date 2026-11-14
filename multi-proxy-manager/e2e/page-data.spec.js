@@ -115,3 +115,32 @@ test('设置页「关于」版本行取自 /api/version', { tag: ['@tier0', '@pr
   await expect(ver).toContainText(api.version, { timeout: 15000 });
   if (api.date) await expect(ver).toContainText(api.date);
 });
+
+// ==================== 键值行必须有间距（2026-11-14）====================
+// 为什么测「间距」这种视觉细节：.kv / .kv-row / .kv-k / .kv-v 从首个公开快照起
+// 就写在 settings.html 里，而全站 CSS **从未定义过这四个类**——标签和值渲染成
+// 「应用costgate」，谁都没发现，因为没人测过它长什么样。「加了类名」不等于
+// 「有了样式」，只有量出来的 computed layout 才算数。
+test('设置页键值行标签与值之间有间距，且值不溢出卡片', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  await seedAuth(page);
+  await page.goto('/settings', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.click('.tab[data-tab="about"]');
+
+  const rows = page.locator('.kv-row');
+  await expect(rows.first()).toBeVisible({ timeout: 5000 });
+  const n = await rows.count();
+  expect(n, '「关于」卡片应有 4 条键值行').toBeGreaterThanOrEqual(4);
+
+  for (let i = 0; i < n; i++) {
+    const m = await rows.nth(i).evaluate((row) => {
+      const k = row.querySelector('.kv-k'), v = row.querySelector('.kv-v');
+      const kb = k.getBoundingClientRect(), vb = v.getBoundingClientRect();
+      const rb = row.getBoundingClientRect();
+      return { gap: Math.round(vb.x - kb.right), overflow: Math.round(vb.right - rb.right),
+               text: row.textContent.trim() };
+    });
+    expect(m.gap, `第 ${i + 1} 行「${m.text}」标签与值间距应 ≥ 8px（0 表示类名没有样式）`).toBeGreaterThanOrEqual(8);
+    expect(m.overflow, `第 ${i + 1} 行「${m.text}」的值不应溢出行的右边界`).toBeLessThanOrEqual(0);
+  }
+});

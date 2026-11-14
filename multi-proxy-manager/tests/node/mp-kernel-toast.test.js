@@ -112,17 +112,17 @@ test('showToast：结构与类名契约（CSS 靠它生效）', () => {
 
 test('showToast：type 白名单，脏值不产生没有样式的类名', () => {
   const { sandbox, getEl } = makeSandbox();
+  // 断言「最新挂上的那条」，不按 children[before] 取——有了堆叠上限（3 条）之后，
+  // 索引会被挤动，按索引取会取到 undefined 而不是被测的那条。
+  const newest = () => lastToast(getEl);
   for (const dirty of ['ERROR', 'bogus', '', null, undefined, 'info ', 'success"']) {
-    const before = getEl('toastContainer').children.length;
     sandbox.MPKernel.showToast('x', dirty);
-    const el = getEl('toastContainer').children[before];
-    assert.strictEqual(el.className, 'toast info', `type=${JSON.stringify(dirty)} 应落到 info，而不是拼进类名`);
+    assert.strictEqual(newest().className, 'toast info', `type=${JSON.stringify(dirty)} 应落到 info，而不是拼进类名`);
   }
   // 合法值原样保留
   for (const ok of ['success', 'error', 'warning']) {
-    const before = getEl('toastContainer').children.length;
     sandbox.MPKernel.showToast('x', ok);
-    assert.strictEqual(getEl('toastContainer').children[before].className, 'toast ' + ok);
+    assert.strictEqual(newest().className, 'toast ' + ok);
   }
 });
 
@@ -163,4 +163,26 @@ test('showToast：显式 duration 生效（proxy-config 原来 2500 / settings 3
   const { sandbox, timers } = makeSandbox();
   sandbox.MPKernel.showToast('x', 'info', 1200);
   assert.strictEqual(timers[0].ms, 1200);
+});
+
+// 遮挡边界（2026-11-14 实测后定的）：toast 是覆盖式浮层，条数不限就会往下长。
+// 1440×900 下 dashboard 的「展开全部」按钮在 y≈122，单条 toast 只到 y=80（不重叠），
+// 3 条堆到 y≈224 就会压住它。不引入全站顶部安全区，改为封住堆叠高度。
+test('showToast：最多堆 3 条，超出摘最旧的（封住遮挡高度）', () => {
+  const { sandbox, getEl } = makeSandbox();
+  const host = getEl('toastContainer');
+
+  sandbox.MPKernel.showToast('第一条', 'info');
+  sandbox.MPKernel.showToast('第二条', 'info');
+  sandbox.MPKernel.showToast('第三条', 'info');
+  assert.strictEqual(host.children.length, 3, '3 条以内全留');
+
+  sandbox.MPKernel.showToast('第四条', 'success');
+  assert.strictEqual(host.children.length, 3, '第 4 条进来后仍是 3 条');
+  const texts = host.children.map((c) => c.children[1].textContent);
+  assert.deepStrictEqual(texts, ['第二条', '第三条', '第四条'], '最旧的（第一条）被摘掉，新的在末尾');
+  assert.ok(
+    host.children[host.children.length - 1].className === 'toast success',
+    '新挂上的那条不能被自己挤掉'
+  );
 });

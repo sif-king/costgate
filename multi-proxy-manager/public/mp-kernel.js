@@ -124,6 +124,15 @@
     info:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
   };
 
+  // 堆叠上限：右上角浮层是覆盖式的，条数不限就会一路往下长。dashboard 的
+  // 能力门控条（含「展开全部」按钮）就在 y≈122 处，第 3 条 toast 的底边就能
+  // 压到它上面（实测 1440×900：单条 16→80 不重叠，3 条 16→224 重叠）。
+  // 结论是**不给全站顶部留永久安全区**（那是为 3 秒浮层让 9 个页面集体空一条），
+  // 而是把最长遮挡封在 3 条高度内：容器 pointer-events:none + 单条 auto 保证
+  // 被盖住也点得到（实测 elementFromPoint 命中的仍是那个按钮）。
+  // 超出时直接摘最旧的、不播淡出：它正被新内容替代，动画只会让右上角同时晃。
+  var MAX_TOASTS = 3;
+
   // type 白名单：传了别的值一律当 info。过去 proxy-config 直接把 type 拼进 className，
   // 一个手滑的 'error ' 之类就会造出没有样式的类名（settings 的 `.toast--info` 就是这么来的：
   // 类名写上了，CSS 里从没定义，等于没样式还没人发现）。
@@ -153,6 +162,14 @@
     el.appendChild(icon);
     el.appendChild(msg);
     host.appendChild(el);
+
+    // 顺序不能反过来：先挂新的再挤旧的，否则一次连发两条会出现「刚挂上就被当成
+    // 最旧的那条摘掉」的闪烁。
+    while (host.children.length > MAX_TOASTS) {
+      var oldest = host.children[0];
+      if (!oldest || oldest.parentNode !== host) break;
+      host.removeChild(oldest);
+    }
 
     setTimeout(function () {
       el.style.animation = 'toast-out 0.3s ease forwards';

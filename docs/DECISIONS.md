@@ -194,3 +194,20 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - 守卫：`check-panel-coherence.sh` 加第 5/6 项——`mp-kernel.js` 的 script 标签必须早于页面内联脚本；`#sidebarVersion` / `#aboutVersion` 里不许出现数字或 `v` 开头。
   - 测试：`tests/node/mp-kernel-toast.test.js`（6 条，真跑 kernel：结构契约 / type 白名单 / HTML 载荷 / 容器缺失 / 淡出移除 / duration）+ `e2e/toast-unified.spec.js`（2 条：右上位置 + 图标 + 浅色底；knowledge 页同样一套）+ `e2e/page-data.spec.js`（3 条版本号：正常路径 / 读失败 / 设置页）。
 - **推翻条件**：若要改 toast 观感，改 `components.css` 的 `.toast` 段一次即可；改页面内联 CSS 或 `shared-styles.css` 都不会生效（后者加载在前）。
+
+## D-015 · 类名必须有 CSS 定义；toast 遮挡靠「封堆叠高度 + 不挡点击」而不是留安全区
+
+- **状态**：已执行（2026-11-14）
+- **背景**：D-014 收口时登记了两条「看起来是本次引入、但没核实」的现象。当日查清了，结论与登记时的猜测**都不同**：
+  - **① 设置页键值行「应用costgate」紧贴**：不是某次改动把间距弄丢了，而是 `.kv / .kv-row / .kv-k / .kv-v` **从首个公开快照 `58a1097` 起就写在 `settings.html` 里，而全站 CSS 从未定义过这四个类**（`git log -S ".kv-row" -- '*.css'` 为空）。所以它不是回归，是「类名写上了、样式从来没有、也没人测过它长什么样」——D-014 里 `.toast--info` 的同一个病。
+  - **② toast 遮挡「展开全部」按钮**：1440×900 实测**单条不重叠**（toast 16→80，按钮 y=122），我上一轮在截图里看到的是误判。但**堆到 3 条就完全盖住**（16→164，重叠 111×17，即按钮整块被压住）。
+- **决策**：
+  - ① `.kv` 系列定义进 `components.css`（不放 `unify.css`：kv 是组件不是页面补丁）。`grid-template-columns: 88px minmax(0,1fr)` + `--sp-4` 间距 + 行间 `border-top`；label 列定宽（中文标签最长 4 字）、值列 `minmax(0,1fr)` 允许断词（`~/.multi-proxy-manager/` 这类长路径不断词会撑破卡片）。
+  - ② **不给全站顶部留永久安全区**：那是「为 3 秒浮层让 9 个页面集体空一条」，成本错配。改为两条机械保障：
+    - 容器 `pointer-events: none` + 单条 `auto`（D-014 已落）⇒ 被盖住也**点得到**（实测 `elementFromPoint` 命中仍是 `button.gate-bar-toggle`）；
+    - `MPKernel.showToast` 加**堆叠上限 3**，超出直接摘最旧的（不播淡出：它正被替代，动画只会让右上角同时晃）⇒ 把最长遮挡高度从「无限增长」封到 3 条。
+- **后果**：
+  - `settings.html` 「关于」段顺手修正缩进（结构本来就对，是缩进错乱到看不出层级）。
+  - 测试：`e2e/page-data.spec.js` 加 1 条**量 computed layout** 的断言（每行标签-值间距 ≥8px、值不溢出），注入 `gap:0` 实测红、恢复转绿；`tests/node/mp-kernel-toast.test.js` 加 1 条堆叠上限（原有「type 白名单」用例按 `children[before]` 取值，上限生效后会取到 `undefined`，改为取「最新那条」——这是测试写法假设了无限增长，不是实现退化）。
+  - 原「toast 遮挡」这条从待办移出，改为**已知且接受的行为**：遮挡时长 ≤3 条高度内，且不阻断操作。
+- **推翻条件**：若将来出现「需要用户停留 >10s 的带操作错误提示」（如 toast 里放按钮），遮挡就从「短暂浮层」变成「持续挡路」，那时必须改成界面留安全区或换成非覆盖式提示条。
