@@ -90,7 +90,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 
 ## 三、桌面客户端现状（客户端的准确口径）
 
-**`client/` 是 macOS 原生应用**，不是"误归的壳"：2026-10-31 老板拍板「桌面二选一 → 走原生 Swift」，Electron `desktop/` 退场（`docs/INDEX.md` #98/#99）。
+**`client/` 是 macOS 原生应用**，不是"误归的壳"：2026-10-31 老板拍板「桌面二选一 → 走原生 Swift」，Electron `desktop/` 退场（决策台账见本机 `docs/INDEX.md` #98/#99，该索引不入仓）。
 
 已实现（`client/src/main.swift`，1123 行，AppKit + WKWebView，无 Electron 无第三方依赖）：
 
@@ -126,7 +126,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 | 5 | 孤儿页 | `context.html` 有路由无导航（**2026-11-14 已补回**） | 只能手敲 URL |
 | 6 | 孤儿后端 | 7 条 `/api/*` 面板零引用（已标 `BACKEND-ONLY`） | 以为没做 |
 | 7 | 门控未登记 | `PROXY_CONTEXT_TRACK` 未进 `gates.js`（§五） | 门控条看不见，界面开不了 |
-| 8 | 文档过时 | `docs/01-feature-matrix.md` 写"前端 4 页"（实为 12 页）；`docs/INDEX.md` 项目一句话仍写"管理三个代理"（服务清单实为 9 个） | 误导后续 agent 在错的目录/范围里找功能 |
+| 8 | 文档过时 | `docs/01-feature-matrix.md` 写"前端 4 页"（实为 12 页）；本机索引 `docs/INDEX.md` 项目一句话仍写"管理三个代理"（`manage.sh` 的 `SERVICES` 实为 9 项） | 误导后续 agent 在错的目录/范围里找功能 |
 
 ---
 

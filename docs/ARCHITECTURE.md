@@ -60,8 +60,8 @@ costgate 是**本地 AI 编码工具的网关 + 中台**：把 Codex / Claude / 
 | `l2/` | 编排内核：路由、熔断、告警、编排、上下文折叠、知识库、MCP、技能宿主 | HTTP 层 |
 | `*-proxy/` | 各工具的协议适配（Anthropic / OpenAI 兼容 / 自有协议） | 跨代理共享逻辑（走 `l2/`） |
 | `scripts/` | 守卫与工具：`preflight.sh`（能不能过 CI）、`doctor.sh`（环境）、`verify.sh`（项目）、各 `check-*.sh` | 业务代码 |
-| `docs/` | 文档。**入口只有 `docs/INDEX.md`**，SSOT 三件套见 §七 | 一次性草稿 |
-| `PROJECT-STATE/` | 工作台账（append-only 日志、交接单、报告） | 对外文档 |
+| `docs/` | 文档。**本仓入口是 `docs/ARCHITECTURE.md`（SSOT）**；`docs/INDEX.md` 是本机维护的索引（不入仓），`docs/01-feature-matrix.md` 是历史台账 | 一次性草稿 |
+| `PROJECT-STATE/` | 本机工作台账（append-only 日志、交接单、报告）。**不入仓**（`.gitignore:28`） | 对外文档 |
 
 ---
 
@@ -143,7 +143,7 @@ costgate 是**本地 AI 编码工具的网关 + 中台**：把 Codex / Claude / 
 - 图标：`public/icons.js` 的 `nav` 集。`nav.js` 有一份同形回退副本，改图标两边都要改。
 - 门控条：`public/gatebar.js`。三态写 `data-loaded`，**读失败绝不 fallback 成「全部未开启」**。
 
-**已确认的结构债**（详细清单见 `docs/FEATURES.md` §四，整改计划见 `PROJECT-STATE/COSTGATE-UI-COMB-REPORT-2026-11-14.md`）：
+**已确认的结构债**（详细清单见 `docs/FEATURES.md` §四，整改计划见本机台账 `PROJECT-STATE/COSTGATE-UI-COMB-REPORT-2026-11-14.md`，不入仓）：
 
 | # | 债 | 现状 | 判据 |
 |---|---|---|---|
@@ -161,7 +161,7 @@ costgate 是**本地 AI 编码工具的网关 + 中台**：把 Codex / Claude / 
 | `docs/ARCHITECTURE.md`（本文件） | 东西在哪一层、归属谁 | 新增目录 / 新增层 / 端口变更 |
 | `docs/FEATURES.md` | 有哪些功能、归哪个域、哪些是孤儿 | 增删功能 / 功能换归属 |
 | `docs/DECISIONS.md` | 为什么这么定、哪些还待定 | 做架构决策 / 推翻旧决策 |
-| `AGENTS.md` | 硬边界与禁止项（宪法） | 新增红线 |
+| `AGENTS.md` | 硬边界与禁止项（宪法）。**本机私有，不入仓**（`.gitignore:88`） | 新增红线 |
 
 ---
 

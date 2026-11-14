@@ -4,6 +4,14 @@
 # 只减少误报，不会掩盖仓内真实漂移（仓内 A 类不在此列）。改本文件 = 低风险可回滚。
 # 本守卫只负责「本仓文档 ↔ 本仓代码」存在性；下列家族指向兄弟仓/纯占位，属视野外。
 #
+# —— 本地私有件（.gitignore 排除：公开仓 clone 后不存在属预期，不是漂移）——
+# 2026-11-14：SSOT 三件套引用它们时被干净 checkout 抓红（本地绿、CI 红）。
+# 处理方式不是删引用（本机 agent 需要这些指针），而是显式声明它们不在本仓视野内；
+# 文档里已同步标注「不入仓」，对外读者不会去找。
+docs/INDEX.md
+AGENTS.md
+PROJECT-STATE/*
+#
 # —— openshell / hive（Rust + TS 兄弟仓；multi-proxy 顶层无 data/src/services/crates）——
 crates/*
 src/lb/*

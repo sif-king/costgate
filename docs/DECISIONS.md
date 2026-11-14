@@ -24,7 +24,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 
 ## D-002 · 桌面形态 = 原生 Swift，Electron 退场
 
-- **状态**：已定（2026-10-31 老板拍板，`docs/INDEX.md` #98；#99 补齐 watchdog 与首启清理）
+- **状态**：已定（2026-10-31 老板拍板，本机台账 `docs/INDEX.md` #98；#99 补齐 watchdog 与首启清理）
 - **背景**：曾有两套壳并存（Electron `desktop/` + 原生 `client/`），用户不知道该用哪个，团队也不知道该修哪个。
 - **决策**：走原生 Swift（AppKit + WKWebView，无 Electron、无第三方依赖）；`desktop/` 已 `git rm` 退场。
 - **后果**：打包链是 `client/build.sh`（swiftc + icns + adhoc 签名，版本号运行时读 `VERSION` + git SHA）。**不要重新引入 Electron**。
