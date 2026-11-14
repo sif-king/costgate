@@ -548,6 +548,12 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
      }
    }
 
+   // 页面里有静态 onclick="checkGate()"（门控/加载失败块的「重新检测」按钮）。
+   // 内联 handler 在**全局作用域**解析函数名，IIFE 里的局部声明它看不见：不挂到
+   // window 时按钮渲染得齐全、点下去却是 ReferenceError（控件齐全、点击无声）。
+   // 与 logs.html 的 window.setTimeRange / window.applyFilters 同一形状。
+   window.checkGate = checkGate;
+
    // ===== Init =====
    initDarkMode();
    // 轮询直到 states.js 就绪再跑 checkGate()（与 context.html 同款守卫）：
