@@ -82,7 +82,7 @@ for (const [route, sel, label] of [
 // 的依据，写死等于永远告诉用户「已是最新」。这两条断言分别锁住：
 //   ① 正常路径：显示值必须等于 /api/version 的返回值（写死就必然对不上）；
 //   ② 读失败：必须明说读失败，不许回退成任何像样的版本号。
-test('侧栏版本号取自 /api/version，不是写死的字面量', { tag: ['@tier1'] }, async ({ page }) => {
+test('侧栏版本号取自 /api/version，不是写死的字面量', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
   await seedAuth(page);
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
   await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
@@ -93,7 +93,7 @@ test('侧栏版本号取自 /api/version，不是写死的字面量', { tag: ['@
   await expect(page.locator('#sidebarVersion')).toHaveText(new RegExp('Manager\\s+' + api.version.replace(/\./g, '\\.')), { timeout: 15000 });
 });
 
-test('侧栏版本号读失败时明说读失败，不回退成假版本', { tag: ['@tier1'] }, async ({ page }) => {
+test('侧栏版本号读失败时明说读失败，不回退成假版本', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
   await seedAuth(page);
   await page.route('**/api/version', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' }));
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -105,7 +105,7 @@ test('侧栏版本号读失败时明说读失败，不回退成假版本', { tag
   await expect(el).not.toHaveText(/\d+\.\d+\.\d+/);
 });
 
-test('设置页「关于」版本行取自 /api/version', { tag: ['@tier1'] }, async ({ page }) => {
+test('设置页「关于」版本行取自 /api/version', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
   await seedAuth(page);
   await page.goto('/settings', { waitUntil: 'domcontentloaded' });
   await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });

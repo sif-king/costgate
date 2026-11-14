@@ -23,7 +23,7 @@ async function boxOf(locator) {
   return b;
 }
 
-test('settings 触发 toast：右上角 + 带图标 + 类名契约', { tag: ['@tier1'] }, async ({ page }) => {
+test('settings 触发 toast：右上角 + 带图标 + 类名契约', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
   await seedAuth(page);
   await page.goto('/settings', { waitUntil: 'domcontentloaded' });
   await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
@@ -51,7 +51,7 @@ test('settings 触发 toast：右上角 + 带图标 + 类名契约', { tag: ['@t
   expect(isLight, `背景应为浅色（A 家族白底），实际 ${bg}——纯色块说明还在用 B 家族的样式`).toBe(true);
 });
 
-test('knowledge 页也用同一套 toast（B 家族样式已删）', { tag: ['@tier1'] }, async ({ page }) => {
+test('knowledge 页也用同一套 toast（B 家族样式已删）', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
   await seedAuth(page);
   await page.goto('/knowledge', { waitUntil: 'domcontentloaded' });
   await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
