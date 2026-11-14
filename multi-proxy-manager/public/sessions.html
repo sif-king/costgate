@@ -129,14 +129,8 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
   var allSessions = [];
 
   // ===== Helpers =====
-  function esc(str) {
-    if (str === null || str === undefined) return '';
-    var div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  // 转义助手来自 mp-kernel.js（全站一份）；这里只留别名，不写第二份实现。
+  var esc = MPKernel.esc;
 
   function showToast(msg, type, duration) {
     duration = duration || 3000;
@@ -412,6 +406,7 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
 })();
 </script>
     <script src="./icons.js"></script>
+<script src="./mp-kernel.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>

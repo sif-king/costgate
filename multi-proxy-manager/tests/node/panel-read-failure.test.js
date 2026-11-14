@@ -154,6 +154,11 @@ function runPanel(file, fetchStub, exportList) {
   sandbox.window = sandbox;
   sandbox.location = { href: '' };
   vm.createContext(sandbox);
+  // 2026-11-14：esc / fetchJSON / showReadError 收到 public/mp-kernel.js（8 页共用一份）。
+  // 浏览器里它是 <script src> 先于页面脚本执行，这里必须同序先跑——不然页面 IIFE 顶上
+  // 那句 `var esc = MPKernel.esc` 直接 ReferenceError。
+  // 有意 load 真文件而不是塞桩：桩测的是桩，真 kernel 才测得到「转义/读失败提示」本身。
+  vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'mp-kernel.js'), 'utf8'), sandbox, { filename: 'mp-kernel.js' });
   vm.runInContext(code, sandbox, { filename: file });
   // 注入兜底：logs.html 把函数挂在 window 上（window.loadLogs = function(){}），
   // 且它的 IIFE 收尾形态与 dashboard 不同，上面两条正则都匹配不到 →

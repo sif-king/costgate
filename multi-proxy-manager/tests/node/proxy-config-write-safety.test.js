@@ -155,6 +155,10 @@ function runProxyConfig(fetchStub) {
   if (patched === code) patched = code.replace(/\n[ \t]*init\(\);[ \t]*\n/, '\n    /* init() 由测试基座禁用 */\n');
   if (patched === code) throw new Error('没能禁掉 init()——基座与页面结构脱节了，请更新');
   const { sandbox, getEl, toasts } = makeEnv(fetchStub);
+  // 2026-11-14：esc 收到 public/mp-kernel.js（全站一份）。浏览器里它作为
+  // <script src> 先于页面脚本执行，这里必须同序先跑真文件——不然页面里
+  // `var esc = MPKernel.esc` 直接 ReferenceError，八个用例集体假红。
+  vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'mp-kernel.js'), 'utf8'), sandbox, { filename: 'mp-kernel.js' });
   vm.runInContext(patched + '\n;window.__panel = {' + EXPORTS + '};', sandbox, { filename: 'proxy-config.html' });
   return { api: sandbox.__panel, getEl };
 }

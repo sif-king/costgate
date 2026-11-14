@@ -85,11 +85,8 @@
   var note = document.getElementById('note');
   var chipHook = document.getElementById('chip-hook');
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  // 转义助手来自 mp-kernel.js（全站一份）；这里只留别名，不写第二份实现。
+  var esc = MPKernel.esc;
   // null → 「—」（无数据源，绝不画 0）
   function show(v, fmt) {
     if (v === null || v === undefined) { return '<span class="v na">—</span>'; }
@@ -229,6 +226,7 @@
 })();
 </script>
     <script src="./icons.js"></script>
+<script src="./mp-kernel.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>

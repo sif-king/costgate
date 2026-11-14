@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="./tokens.css">
   <link rel="stylesheet" href="./components.css">
     <script src="./icons.js"></script>
+<script src="./mp-kernel.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>
@@ -1341,7 +1342,15 @@
 
   // ===== State =====
   var proxyStatus = {};
-  var authToken = sessionStorage.getItem('auth_token');
+  var authToken = MPKernel.getToken();
+
+  // ===== 共享助手（mp-kernel.js，全站一份）=====
+  // esc / fetchJSON / showReadError 原本写在本页，另有 7 个页面各抄了一份。抄本会
+  // 分叉（同一个转义、同一种读失败提示在不同页面有不同答案），所以收到 kernel 里。
+  // 这里只做别名，不给本页留第二份实现——留一份就等于留一条分叉路。
+  var esc = MPKernel.esc;
+  var fetchJSON = MPKernel.fetchJSON;
+  var showReadError = MPKernel.showReadError;
   var versionCache = {};
   var alertEvents = [];
   var registryAgents = [];
@@ -1381,59 +1390,8 @@
   //   ② 兜底成空数组（events:[] / agents:[]）：「暂无」和「读不到」长得一模一样。
   // 两者都违反 multi-proxy 自己的 unknown 态对账纪律。读失败就明说读失败。
   // 三种空必须分开：真的空 / 没开功能 / 读失败。
-  function fetchJSON(url, opts) {
-    return fetch(url, opts).then(function(res) {
-      if (!res.ok) {
-        return res.json().then(function(body) {
-          var msg = (body && body.error) ? body.error : ('HTTP ' + res.status);
-          var e = new Error(msg); e.httpStatus = res.status;
-          // 后端常在 body.hint 里给「怎么修」（如 alert-gate-closed 的
-          // 「PROXY_HEALTH_ALERT 未开启，开灰度：PROXY_HEALTH_ALERT=1 node server.js」）。
-          // 丢掉 hint 只显示机器码，等于把后端已经写好的解决方案扔了。
-          if (body && body.hint) e.hint = body.hint;
-          throw e;
-        }, function() {
-          var e = new Error('HTTP ' + res.status); e.httpStatus = res.status; throw e;
-        });
-      }
-      return res.json();
-    });
-  }
-
-  // 读失败块：视觉与 empty-state 同族（不引入新样式体系），但语义是「读不到」而非「没有」。
-  // 四参分工：title 主文案（读取失败 / 告警功能未开启）／detail 后端给的错误原因（优先显示）
-  // ／hint 排查提示。后端常在 body.hint 里写「怎么修」，丢掉它只显示机器码等于把
-  // 已经写好的解决方案扔了（见 fetchJSON 里 e.hint 的注释）。
-  // 第五参 retryFn：点击「重试」时重跑对应的读取函数。
-  // 2026-10-24：此前这里只派发 retry-read CustomEvent 却全文件无监听者 → 死按钮。
-  // 改为直接用 addEventListener 绑定 retryFn，点击即重跑，不再依赖虚无的事件链路。
-  function showReadError(containerId, title, detail, hint, retryFn) {
-    var el = document.getElementById(containerId);
-    if (!el) return;
-    var body = [detail, hint].filter(Boolean).join('<br>') || '未知错误';
-    el.innerHTML =
-      '<div class="empty-state" role="alert" style="grid-column:1/-1;">' +
-        '<div class="empty-icon" style="color:#d97706;">' +
-          '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
-        '</div>' +
-        '<div class="empty-text" style="color:#d97706;">' + esc(title || '读取失败') + '</div>' +
-        '<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:6px;max-width:460px;line-height:1.6;">' +
-          body +
-        '</div>' +
-        (typeof retryFn === 'function'
-          ? '<button class="btn btn-outline btn-sm mp-retry-btn" type="button" style="margin-top:10px;">重试</button>'
-          : '') +
-      '</div>';
-    if (typeof retryFn === 'function') {
-      var btn = el.querySelector('.mp-retry-btn');
-      if (btn) {
-        btn.addEventListener('click', function () {
-          el.innerHTML = '';
-          retryFn();
-        });
-      }
-    }
-  }
+  // 实现已收到 mp-kernel.js（fetchJSON / showReadError），本页用别名调用；
+  // 上面 State 段有别名声明，这里不再留第二份实现。
 
   // ===== Navigation =====
   // ===== 「今天」这本账（2026-11-13） =====
@@ -1799,14 +1757,7 @@
   }
 
   // ===== Escaping Utility =====
-  function esc(str) {
-    if (str === null || str === undefined) return '';
-    var d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  // 已收到 mp-kernel.js（esc）；本页只留别名，见上方 State 段。
 
   // ===== Loading Bar =====
   function showLoading() {

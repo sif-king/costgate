@@ -114,7 +114,7 @@ costgate 是**本地 AI 编码工具的网关 + 中台**：把 Codex / Claude / 
 | 环节 | 落点 |
 |---|---|
 | 代理启停 | `manage.sh` + `lib/process-manager.js` |
-| 配置页 | `proxy-config.html`（2504 行单体，见 §六 债 2） |
+| 配置页 | `proxy-config.html`（≈2.5k 行单体，见 §六 债 1） |
 | 首启引导 | `consent.html`（同意门）→ `dashboard.html` |
 
 ---
@@ -142,14 +142,19 @@ costgate 是**本地 AI 编码工具的网关 + 中台**：把 Codex / Claude / 
 - 导航：`public/nav.js` 的 `GROUPS`（侧栏）+ `SPA_VIEWS`（dashboard 页内 tab）。改导航只改这里。
 - 图标：`public/icons.js` 的 `nav` 集。`nav.js` 有一份同形回退副本，改图标两边都要改。
 - 门控条：`public/gatebar.js`。三态写 `data-loaded`，**读失败绝不 fallback 成「全部未开启」**。
+- 共享助手：`public/mp-kernel.js` 的 `MPKernel` = `esc` / `fetchJSON` / `showReadError` / `getToken`。
+  8 个页面原先各抄一份 `esc`（已分叉成两族写法），现收敛为「1 份实现 + 8 个别名」。
+  边界：只放跨页**机制**，不放任何一页的业务；`showToast` / `showReadError` 因存在两套视觉
+  **有意不收**；`nav.js` / `states.js` / `gatebar.js` 的私有 `esc` **不动**（要能被单独加载，
+  见 D-013）。
 
 **已确认的结构债**（详细清单见 `docs/FEATURES.md` §四，整改计划见本机台账 `PROJECT-STATE/COSTGATE-UI-COMB-REPORT-2026-11-14.md`，不入仓）：
 
 | # | 债 | 现状 | 判据 |
 |---|---|---|---|
-| 1 | 单体页 | `dashboard.html` 3535 行内联 6 子视图；`proxy-config.html` 2504 行混 6 类关注点 | 改一个子视图要读整文件 |
+| 1 | 单体页 | `dashboard.html` ≈3.4k 行内联 6 子视图；`proxy-config.html` ≈2.5k 行混 6 类关注点（2026-11-14 观测，不是规则） | 改一个子视图要读整文件 |
 | 2 | 零子目录 | `public/` 完全平铺：12 个 HTML + 13 个 JS/CSS，没有任何子目录 | 三条旅程的代码被切碎在 25 个平级文件里 |
-| 3 | 重复看账面 | today / cost / floor / context 四处都在答"用了多少" | 用户问"哪个是真的" |
+| 3 | 重复看账面 | 已收口 3 处（2026-11-14）：概览 vs 成本页同一份 watchtower、概览 vs 死容器 sessions、概览卡 vs 健康页逐字相同的 Provider 渲染。余 today / floor / context 三处**数据面本就不同**（`/api/today` / `/api/floor` / `/api/context/*`），不合并 | 用户分不清哪个是真的 |
 | 4 | 孤儿后端 | 7 条 `/api/*` 面板零引用 | 已用 `BACKEND-ONLY` 标注，见 §八 |
 
 ---

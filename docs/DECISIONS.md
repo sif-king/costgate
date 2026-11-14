@@ -149,3 +149,22 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - ③ 合并重复渲染时，若两处行为不一致，**取更严的那一侧**（这里是健康页的 `showReadError` + 清副标题），不是取更省事的那一侧。
 - **后果**：`page-sessions` 已删（原位留注释说明依据）；`renderProviderIsolation` / `showProviderReadError` 由概览卡与健康页共用；`loadSessions` / `loadProviderHealth` 读失败均指向可见容器。
 - **推翻条件**：若将来恢复页内 sessions 视图，须同时补 `SPA_VIEWS` 登记 + tab 入口 + 守卫通过。
+
+---
+
+## D-013 · 跨页共享助手收进 `mp-kernel.js`；去重前先分族，同语义才合并
+
+- **状态**：已执行（2026-11-14，阶段 2.3a）
+- **背景**：`esc` 在 `public/` 下被抄了 **8 份**（dashboard / context / floor / knowledge / logs / proxy-config / sessions / skills），`showToast` 抄了 6 份，`showReadError` 抄了 2 份，`auth_token` 这个存储键散布在 10 个文件 26 处。抄本本身不致命，致命的是**会分叉**：`esc` 已经分成两族（`textContent+innerHTML` 与正则五替换），输出等价纯属巧合；一旦有人只改其中一份，同一套面板就会对同一段字符串给出两种转义。
+- **决策**：
+  - ① 抽 `public/mp-kernel.js`，公开面**只放机制**：`esc` / `fetchJSON` / `showReadError` / `getToken`。不放任何一页的业务（不碰 `PROXY_CONFIGS`、不碰页面状态、不碰 `/api` 语义）。
+  - ② **去重前先分族**：只有「同一件事的不同写法」可以合并；「不同的事长得像」不许合并。本轮据此**拒绝**了两处看似重复的东西——
+     - `showToast`：dashboard / logs / proxy-config 是「右上角 + 图标 + `.toast.<type>`」，knowledge / sessions / skills 是「右下角 + 纯色底 + `.toast-<type>`」，各有本地 CSS 撑着。合并＝改三个页面的观感，属于视觉决定，不混进去重。
+     - `showReadError`：dashboard 那份是 empty-state 族（带图标、含重试按钮），proxy-config 那份是内联 padding 块（无图标）。合并同上。
+  - ③ **模块自足优先于去重**：`nav.js` / `states.js` / `gatebar.js` 里的私有 `esc` **保持不动**。它们能被单独加载（`login.html` / `consent.html` / `legal.html` 只引 `nav.js`），依赖 kernel 就多一条隐形前置。
+  - ④ `getToken()` **每次现读** `sessionStorage`，不缓存——页内登录/登出会改这个值，缓存一份就是拿过期令牌去请求，然后把 401 显示成「读取失败」。
+- **后果**：
+  - 8 份 `esc` → 1 份实现 + 8 个别名；`fetchJSON` / `showReadError` 同理（dashboard）。
+  - `tests/unit/esc.test.js` 的契约从「每个页面源码里必须含转义策略」改为「页面要么自带实现、要么引用 `MPKernel.esc`，引用者不得再留本地副本」，并新增**真跑 kernel** 的行为用例（`vm` 里加载真文件，断实体逐项正确 + XSS 语料中性化 + `getToken` 不缓存）。
+  - 三个 `tests/node/` 沙箱改为**先加载真 `mp-kernel.js`** 再跑页面脚本，而不是塞桩——桩测的是桩。
+- **推翻条件**：若要把 `showToast` / `showReadError` 也收进来，必须先做一次显式的视觉统一（同一个 toast 只有一种长相），并同步改三页的本地 CSS 与 E2E 断言。

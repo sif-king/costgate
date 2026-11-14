@@ -125,32 +125,135 @@ describe('esc() — XSS 载荷语料', () => {
   });
 });
 
-describe('esc() — 前端 7 页面源码契约', () => {
+describe('esc() — 前端页面源码契约', () => {
+  // 2026-11-14：转义助手从「每页抄一份」收到 public/mp-kernel.js（8 页共用）。
+  // 契约随之改口径：页面**要么**自带完整实现，**要么**引用 MPKernel.esc；
+  // 引用者不得再留第二份本地实现（留一份就留了一条分叉路）。
+  // 光看源码文本已经不成立——真正的保证改成下面那组「真跑 kernel」的行为用例。
   const htmlFiles = [
     'dashboard.html', 'floor.html', 'sessions.html', 'logs.html',
     'knowledge.html', 'proxy-config.html', 'skills.html',
   ];
 
-  test.each(htmlFiles)('%s 的 esc() 仍含完整转义策略', (file) => {
+  test.each(htmlFiles)('%s 有可用的 esc（自带实现或引用 MPKernel）', (file) => {
     const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', file), 'utf8');
-    // 抽取 function esc(...) { ... } 函数体（非贪婪到配平的第一个右括号不太可靠，
-    // 这里取函数头之后 600 字符窗口，覆盖两种已知实现的全部特征行）
     const m = src.match(/function\s+esc\s*\([^)]*\)\s*\{/);
-    expect(m).not.toBeNull();
-    const body = src.slice(m.index, m.index + 600);
-    const isDomStrategy = body.includes('textContent') && body.includes('innerHTML');
-    const isRegexStrategy = /&amp;/.test(body) && /&lt;/.test(body) && /&gt;/.test(body);
-    expect(isDomStrategy || isRegexStrategy).toBe(true);
-    // 两种策略都必须覆盖引号（DOM 式靠后续 replace 补；正则式靠字符类含 " '）
-    if (isDomStrategy) {
-      expect(body).toMatch(/replace\(\/["']\/g/);
-    } else {
-      expect(body).toMatch(/\[&<>"']/);
+    if (m) {
+      // 自带实现：必须仍然完整（两条已知策略之一）
+      const body = src.slice(m.index, m.index + 600);
+      const isDomStrategy = body.includes('textContent') && body.includes('innerHTML');
+      const isRegexStrategy = /&amp;/.test(body) && /&lt;/.test(body) && /&gt;/.test(body);
+      expect(isDomStrategy || isRegexStrategy).toBe(true);
+      if (isDomStrategy) {
+        expect(body).toMatch(/replace\(\/["']\/g/);
+      } else {
+        expect(body).toMatch(/\[&<>"']/);
+      }
+      return;
     }
+    // 走到这里就必须是「引用 kernel」，而且必须是 var/let/const esc = MPKernel.esc 这种真赋值
+    expect(src).toMatch(/(var|let|const)\s+esc\s*=\s*(window\.)?MPKernel\.esc\s*;/);
+  });
+
+  test.each(htmlFiles)('%s 的 <script> 引了 mp-kernel.js（引用者必备）', (file) => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', file), 'utf8');
+    const ownImpl = /function\s+esc\s*\([^)]*\)\s*\{/.test(src);
+    if (ownImpl) return; // 自己带实现的不要求引 kernel
+    expect(src).toMatch(/<script\s+src="\.\/mp-kernel\.js"><\/script>/);
   });
 
   // 审计备注（2026-10-14）：public/ 下其余页面已逐个人工审计——
   //   index.html 无 innerHTML；login.html 两处 innerHTML 一处为静态 SVG 切换、
   //   一处只插服务端下发的数字分钟数，均不注入用户可控字符串，故不强制要求 esc。
   //   新增页面若出现 innerHTML 注入动态内容，必须同步补 esc 并加入上方清单。
+});
+
+describe('esc() — mp-kernel.js 真跑（行为契约，不看源码文本）', () => {
+  // 为什么真跑：上一条只能证明「函数还在」，证明不了「转义还管用」。
+  // 曾出现过「实现被改成只替换 < >，引号漏了」而文本断言仍绿的情形。
+  const vm = require('vm');
+  const KERNEL = path.join(__dirname, '..', '..', 'public', 'mp-kernel.js');
+
+  function loadKernel() {
+    const sandbox = { console };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(KERNEL, 'utf8'), sandbox, { filename: 'mp-kernel.js' });
+    return sandbox.MPKernel;
+  }
+
+  const K = loadKernel();
+
+  test('公开面齐全（esc / fetchJSON / showReadError / getToken）', () => {
+    expect(typeof K.esc).toBe('function');
+    expect(typeof K.fetchJSON).toBe('function');
+    expect(typeof K.showReadError).toBe('function');
+    expect(typeof K.getToken).toBe('function');
+  });
+
+  test('五个元字符全部转义且 & 优先（与 helpers/esc.js 同口径）', () => {
+    const normalize = (s) => s.replace(/&#0?39;/g, '&#39;'); // 两个合法实体归一
+    const corpus = ['&', '<', '>', '"', "'", 'a<b>&c"d\'e', '&lt;', '你好✅', ''];
+    for (const s of corpus) {
+      expect(normalize(K.esc(s))).toBe(normalize(esc(s)));
+    }
+  });
+
+  test('逐项映射精确正确（缺一项不许退化成 undefined）', () => {
+    // 为什么要有这条：只断言「输出里没有裸引号」漏得掉一种坏法——映射表少了一项时
+    // String.replace 的回调返回 undefined，于是那个字符被替换成字符串 "undefined"。
+    // 它既没有尖括号也没有引号，中性化断言照样绿，可页面上会凭空多出 "undefined"。
+    expect(K.esc('<')).toBe('&lt;');
+    expect(K.esc('>')).toBe('&gt;');
+    expect(K.esc('&')).toBe('&amp;');
+    expect(K.esc('"')).toBe('&quot;');
+    expect(K.esc("'")).toBe('&#39;');
+    expect(K.esc('<&>"\'')).toBe('&lt;&amp;&gt;&quot;&#39;');
+    expect(K.esc('a"b')).not.toContain('undefined');
+  });
+
+  test('XSS 载荷全部中性化（无裸尖括号 / 裸引号）', () => {
+    const payloads = [
+      '<script>alert(1)</script>',
+      '<img src=x onerror=alert(1)>',
+      '"><svg onload=alert(1)>',
+      "'-alert(1)-'",
+      '</script><script>alert(1)</script>',
+      '<form><button formaction=javascript:alert(1)>x',
+    ];
+    for (const p of payloads) {
+      const out = K.esc(p);
+      expect(out).not.toMatch(/[<>]/);
+      expect(out).not.toContain('"');
+      expect(out).not.toContain("'");
+    }
+  });
+
+  test('null / undefined 返回空串，数字按文本处理（不再一律丢弃）', () => {
+    // 口径变化（2026-11-14）：旧 helpers/esc.js 对非字符串一律返回空串，
+    // 面板里 esc(0) / esc(12345) 其实需要显示数字——静默吞掉比显示错更难查。
+    expect(K.esc(null)).toBe('');
+    expect(K.esc(undefined)).toBe('');
+    expect(K.esc(0)).toBe('0');
+    expect(K.esc(12345)).toBe('12345');
+  });
+
+  test('getToken 每次现读 sessionStorage（不缓存）', () => {
+    const store = new Map([['auth_token', 't1']]);
+    const sandbox = {
+      console,
+      sessionStorage: {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+      },
+    };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(KERNEL, 'utf8'), sandbox, { filename: 'mp-kernel.js' });
+    expect(sandbox.MPKernel.getToken()).toBe('t1');
+    store.set('auth_token', 't2'); // 模拟页内登录后换令牌
+    expect(sandbox.MPKernel.getToken()).toBe('t2');
+    store.delete('auth_token');
+    expect(sandbox.MPKernel.getToken()).toBe(null);
+  });
 });

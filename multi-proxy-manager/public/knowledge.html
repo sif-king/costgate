@@ -191,15 +191,9 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
 
    var authToken = sessionStorage.getItem('auth_token');
 
-   // ===== 转义（防御性渲染，仿 logs.html esc） =====
-   function esc(str) {
-     if (str === null || str === undefined) return '';
-     var d = document.createElement('div');
-     d.textContent = str;
-     return d.innerHTML
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-   }
+   // ===== 转义（防御性渲染）=====
+   // 实现已收到 mp-kernel.js（原为各页各抄一份，会分叉）；这里只留别名。
+   var esc = MPKernel.esc;
 
    // ===== fetch 拦截器：注入 x-auth-token + 全局 401 跳转（仿 logs.html，写操作鉴权用） =====
    // 注：token 由拦截器统一注入，下方业务代码不必重复带头
@@ -579,6 +573,7 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
 })();
 </script>
     <script src="./icons.js"></script>
+<script src="./mp-kernel.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>

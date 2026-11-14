@@ -72,7 +72,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 | 登录 | `login.html` | `/api/auth/*`、`lib/auth.js` | ✅ |
 | 法务 | `legal.html` | `/api/legal` | ✅ |
 
-> `proxy-config.html` 2504 行把上面 5 件事 + 余额 + 路由模式全塞一页，是"杂"最集中的地方。
+> `proxy-config.html`（≈2.5k 行，2026-11-14 观测）把上面 5 件事 + 余额 + 路由模式全塞一页，是"杂"最集中的地方。
 
 ### 通用 / 运维
 
@@ -119,7 +119,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 
 | # | 债 | 证据 | 影响 |
 |---|---|---|---|
-| 1 | 单体页 | `dashboard.html` 3504 行（7 个 `.page` 容器内联）；`proxy-config.html` 2504 行（6 类关注点） | 改一个子视图要读整文件 |
+| 1 | 单体页 | `dashboard.html` ≈3.4k 行（7 个 `.page` 容器内联）；`proxy-config.html` ≈2.5k 行（6 类关注点）（2026-11-14 观测） | 改一个子视图要读整文件 |
 | 2 | 零子目录 | `public/` 是**完全平铺**的：12 个 HTML + 13 个 JS/CSS（`nav.js`/`icons.js`/`gatebar.js`/`states.js`/`theme.js`/`floor-view.js`/`skill-ledger-diff.js` + 6 个 css），无任何子目录 | 三条旅程的代码被切碎在 25 个平级文件里，没有"域"可挂 |
 | 3 | 重复看账面 | 三处已收口（2026-11-14）：① 总览「账本主权」与成本页曾各渲染一遍同一个 `/api/cost/watchtower`（解释块都抄两份）→ 总览只报一个数 + 入口；② 概览「运行中任务」与已死的 `page-sessions` 用同一函数渲染两个容器 → 死容器已删；③ Provider 隔离状态在概览卡与健康页各写一遍**逐字相同**的 HTML 生成代码 → 合并为 `renderProviderIsolation`。剩余：today / floor / context 三处数据面本就不同（`/api/today`、`/api/floor`、`/api/context/*`），无需合并 | 用户分不清哪个是真的 |
 | 4 | ~~归属可疑：路由模式~~ **已撤销该指控** | 曾判"路由模式藏 `proxy-config.html`，该搬到全局"——**实查不成立**：`changeRoutingMode` 走 `fetchAdminApi('/settings')` → `/api/{proxy}/settings`，写的是**该代理自己**的设置；`cursor-proxy/src/server/handlers/chatHandler.ts:61` 从自己的 settings 表读 `routing_mode`（`priority`/`round-robin`/`failover`），hermes 另有一套（`codex`/`config`/`both`）。per-proxy 参数放在 per-proxy 页是**正确归属**，搬到全局页反而制造新混乱 | —（避免下一个人照旧清单去搬） |
