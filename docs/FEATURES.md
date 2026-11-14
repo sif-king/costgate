@@ -122,7 +122,8 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 | 1 | 单体页 | `dashboard.html` 3504 行（7 个 `.page` 容器内联）；`proxy-config.html` 2504 行（6 类关注点） | 改一个子视图要读整文件 |
 | 2 | 零子目录 | `public/` 是**完全平铺**的：12 个 HTML + 13 个 JS/CSS（`nav.js`/`icons.js`/`gatebar.js`/`states.js`/`theme.js`/`floor-view.js`/`skill-ledger-diff.js` + 6 个 css），无任何子目录 | 三条旅程的代码被切碎在 25 个平级文件里，没有"域"可挂 |
 | 3 | 重复看账面 | 三处已收口（2026-11-14）：① 总览「账本主权」与成本页曾各渲染一遍同一个 `/api/cost/watchtower`（解释块都抄两份）→ 总览只报一个数 + 入口；② 概览「运行中任务」与已死的 `page-sessions` 用同一函数渲染两个容器 → 死容器已删；③ Provider 隔离状态在概览卡与健康页各写一遍**逐字相同**的 HTML 生成代码 → 合并为 `renderProviderIsolation`。剩余：today / floor / context 三处数据面本就不同（`/api/today`、`/api/floor`、`/api/context/*`），无需合并 | 用户分不清哪个是真的 |
-| 4 | 归属可疑 | 路由模式藏 `proxy-config.html`；设置页混撤销授权 + 插件 | 用户找不到 |
+| 4 | ~~归属可疑：路由模式~~ **已撤销该指控** | 曾判"路由模式藏 `proxy-config.html`，该搬到全局"——**实查不成立**：`changeRoutingMode` 走 `fetchAdminApi('/settings')` → `/api/{proxy}/settings`，写的是**该代理自己**的设置；`cursor-proxy/src/server/handlers/chatHandler.ts:61` 从自己的 settings 表读 `routing_mode`（`priority`/`round-robin`/`failover`），hermes 另有一套（`codex`/`config`/`both`）。per-proxy 参数放在 per-proxy 页是**正确归属**，搬到全局页反而制造新混乱 | —（避免下一个人照旧清单去搬） |
+| 4b | 设置页待查 | 设置页「撤销授权」「插件」入口是否该拆出去，**尚未核实**，未列入本轮范围 | 未知 |
 | 5 | 孤儿页 | `context.html` 有路由无导航（**2026-11-14 已补回**） | 只能手敲 URL |
 | 6 | 孤儿后端 | 7 条 `/api/*` 面板零引用（已标 `BACKEND-ONLY`） | 以为没做 |
 | 7 | 门控未登记 | `PROXY_CONTEXT_TRACK` 曾未进 `gates.js`（**2026-11-14 已登记**，§五） | 门控条看不见、界面开不了 |
