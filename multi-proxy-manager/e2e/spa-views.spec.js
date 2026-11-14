@@ -98,3 +98,53 @@ test('dashboard 子视图「路由预演」必须真出能力卡片，不允许�
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// alerts 视图的专属断言：搜索过滤必须真生效（2026-11-14，2.3b 第二片）
+// 为什么单独加：filterAlerts 曾是「从未挂到 window」的 13 个函数之一——搜索框
+// oninput 抛 ReferenceError、列表纹丝不动，E2E 只点 tab 没人发现。这条把
+// 「输入 → 过滤 → 输出变化」整条链钉死：搜一个必然无匹配的词，列表必须真的变。
+test('dashboard 子视图「告警中心」搜索框过滤真生效（filterAlerts 链路）', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  // stub 告警接口：过滤链路要验证「有条目 → 搜出子集 → 清空恢复」，本机告警
+  // 功能默认门控关（alertEvents 恒空），没法产生可见的过滤差异。给确定性的
+  // 两条假数据（一条含探针词、一条不含），链路验证就与环境无关。
+  await page.route('**/api/alert', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ events: [
+      { severity: 'critical', rule: 'probe-hit 规则', message: '含探针词 probe-hit 的告警', timestamp: '2026-11-14T10:00:00Z' },
+      { severity: 'info', rule: '另一条', message: '不含探针词的普通告警', timestamp: '2026-11-14T09:00:00Z' },
+    ], count: 2 }),
+  }));
+  await page.route('**/api/alert/config', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ gateOpen: true }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  await page.click('#viewTabs .section-tab[data-page="alerts"]');
+  const panel = page.locator('#page-alerts');
+  await expect(panel).toHaveClass(/active/, { timeout: 15000 });
+
+  // 等 load() 真收敛：stub 下应渲染出 2 个 .alert-item。
+  // 必须等收敛——否则竞态：fill 先触发 filter 渲染空列表、load 结果后到覆盖回去，
+  // 断言取到的是被覆盖后的文本（这个竞态在真跑里实际发生过）。
+  const items = page.locator('#alertList .alert-item');
+  await expect(items, 'stub 的两条告警都应渲染出来').toHaveCount(2, { timeout: 15000 });
+
+  // 输入探针词：oninput → window.filterAlerts → 过滤渲染。
+  // filterAlerts 曾从未挂到 window，这条链断了没有任何测试会红。
+  await page.fill('#alertSearch', 'probe-hit');
+  await page.waitForTimeout(300);
+  await expect(items, '搜索探针词后应只剩含词的 1 条').toHaveCount(1);
+
+  // 清空搜索词 → 恢复 2 条
+  await page.fill('#alertSearch', '');
+  await page.waitForTimeout(300);
+  await expect(items, '清空搜索词后应恢复 2 条').toHaveCount(2);
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});

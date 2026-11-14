@@ -175,6 +175,12 @@ function runPanel(file, fetchStub, exportList) {
   // 那句 `var esc = MPKernel.esc` 直接 ReferenceError。
   // 有意 load 真文件而不是塞桩：桩测的是桩，真 kernel 才测得到「转义/读失败提示」本身。
   vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'mp-kernel.js'), 'utf8'), sandbox, { filename: 'mp-kernel.js' });
+  // 2.3b 第二片（2026-11-14）：告警页实现抽到 views/alerts.js。浏览器加载顺序是
+  // mp-kernel → views/* → 页面内联脚本，这里同序——页面 IIFE 的 switchPage 走
+  // loadAlertsPage 薄包装（调 MPViews.alerts.load），模块不在就 console.error。
+  // dashboard.html 还定义了 MPShell（页面壳：加载条/离线横幅），模块 load 时要用；
+  // 它在 IIFE 末尾挂载，页面脚本跑完就有了——不必 stub。
+  vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'views', 'alerts.js'), 'utf8'), sandbox, { filename: 'views/alerts.js' });
   vm.runInContext(code, sandbox, { filename: file });
   // 注入兜底：logs.html 把函数挂在 window 上（window.loadLogs = function(){}），
   // 且它的 IIFE 收尾形态与 dashboard 不同，上面两条正则都匹配不到 →

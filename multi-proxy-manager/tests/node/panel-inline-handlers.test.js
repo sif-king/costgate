@@ -67,7 +67,9 @@ function extractHandlerRefs(html) {
 //   window.foo = foo.bind(x)        → 右侧 'foo'
 function extractWindowMounts(script) {
   const map = new Map();
-  const re = /window\.([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)/g;
+  // views/*.js 用 global.filterAlerts = ...（模块以 globalThis 收口），页面 IIFE 用
+  // window.xxx = ...——两种宿主写法都算挂载。
+  const re = /(?:window|global)\.([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)/g;
   let m;
   while ((m = re.exec(script)) !== null) map.set(m[1], m[2]);
   return map;
@@ -88,7 +90,18 @@ test('dashboard 内联 handler 引用的每个标识符都挂到了 window，且
 
   const script = (html.match(/<script>[\s\S]*?<\/script>/g) || [])
     .map((s) => s.replace(/^<script>/, '').replace(/<\/script>$/, '')).join('\n');
-  const mounts = extractWindowMounts(script);
+  // views/*.js 是页面的合法挂载点之一（2.3b 起 handler 函数可以由视图模块挂到
+  // window，如 views/alerts.js 挂 filterAlerts/loadAlertsPage/collectAlerts），
+  // 挂载核查必须把它们算进来，否则守卫会逼着把挂载写回页面 IIFE。
+  const viewsDir = path.join(PUBLIC, 'views');
+  let viewsScript = '';
+  if (fs.existsSync(viewsDir)) {
+    for (const f of fs.readdirSync(viewsDir).filter((n) => n.endsWith('.js')).sort()) {
+      viewsScript += '\n' + fs.readFileSync(path.join(viewsDir, f), 'utf8');
+    }
+  }
+  const allScript = script + '\n' + viewsScript;
+  const mounts = extractWindowMounts(allScript);
   assert.ok(mounts.size >= 15, `window 挂载应至少 15 个（实际 ${mounts.size}，挂载段被删了会假绿）`);
 
   // ① 每个 handler 引用都必须有挂载
@@ -100,7 +113,7 @@ test('dashboard 内联 handler 引用的每个标识符都挂到了 window，且
   //    本身有声明（防「window.foo = fo」拼错名字挂了 undefined）。
   //    只检查 refs ∩ mounts：window 上还有非 handler 的挂载（__statusInterval 这类
   //    状态变量），不在本守卫的判定范围。
-  const declared = extractDeclaredFunctions(script);
+  const declared = extractDeclaredFunctions(allScript);
   const ghostMounts = refs.filter((n) => {
     if (!mounts.has(n)) return false;
     const rhs = mounts.get(n);

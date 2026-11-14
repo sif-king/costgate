@@ -16,6 +16,7 @@
      放 head 而不是文档末尾：内联 IIFE 在 1.3k 行处就调这些入口，晚加载即
      「MPViews is not defined」全线崩（这是 2.3a 踩过的坑）。 -->
 <script src="./views/shadow.js"></script>
+<script src="./views/alerts.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>
@@ -1356,7 +1357,6 @@
   var fetchJSON = MPKernel.fetchJSON;
   var showReadError = MPKernel.showReadError;
   var versionCache = {};
-  var alertEvents = [];
   var registryAgents = [];
   var editingAgentId = null;
 
@@ -1745,7 +1745,11 @@
     if (statusEl) statusEl.textContent = total > 0 ? running + '/' + total : '0/0';
     if (installedEl) installedEl.textContent = total;
     if (sessionEl) sessionEl.textContent = document.querySelectorAll('.session-item').length;
-    if (alertEl) alertEl.textContent = alertEvents.filter(function(a) { return a.severity === 'critical' || a.severity === 'warning'; }).length;
+    if (alertEl) {
+      // alertEvents 已随告警页抽进 views/alerts.js（2.3b 第二片），概览从这里读副本。
+      var alertEvts = (window.MPViews && window.MPViews.alerts) ? window.MPViews.alerts.events() : [];
+      alertEl.textContent = alertEvts.filter(function(a) { return a.severity === 'critical' || a.severity === 'warning'; }).length;
+    }
 
     renderProxyCards(proxies, versionData);
     renderProxyNavItems(proxies);
@@ -2094,143 +2098,15 @@
   }
 
   // ===== Alerts Page =====
+  // 实现已抽到 views/alerts.js（阶段 2.3b 第二片）：load / filter / collect / render
+  // 全在模块里，本页只留薄包装——switchPage 的分支表与 panel-read-failure 测试的
+  // 导出口都继续指 loadAlertsPage 这个名字，抽离对页面壳零影响。
+  // 为什么抽：告警页只围绕 /api/alert 一个接口簇 + 私有状态 alertEvents，唯一的
+  // 跨视图耦合（概览徽章读告警数）已用 MPViews.alerts.events() 收口。
   function loadAlertsPage() {
-    showLoading();
-
-    // 读失败分别标记：告警页最忌「API 挂了 → 显示暂无告警」，
-    // 那等于在真出事的时候告诉用户「没事」。两个请求各自判定，不互相顶包。
-    Promise.all([
-      fetchJSON('/api/alert').catch(function(e) { return { __readError: e }; }),
-      fetchJSON('/api/alert/config').catch(function(e) { return { __readError: e }; })
-    ]).then(function(results) {
-      var alertResult = results[0] || {};
-      var configResult = results[1] || {};
-      var alertData = alertResult.__readError ? { events: [], count: 0 } : alertResult;
-      var configData = configResult.__readError ? { gateOpen: false } : configResult;
-
-      alertEvents = alertData.events || [];
-
-      // Update gate status
-      var gateEl = document.getElementById('alertGateStatus');
-      if (gateEl) {
-        if (configResult.__readError) {
-          // 读不到门控配置时不显示「门控关闭」——那是把一个未知状态说成已知。
-          gateEl.innerHTML = '<span class="status-badge offline"><span class="dot"></span>读取失败</span>';
-        } else {
-          var gateClass = configData.gateOpen ? 'status-badge online' : 'status-badge offline';
-          var gateText = configData.gateOpen ? '门控开启' : '门控关闭';
-          gateEl.innerHTML = '<span class="' + gateClass + '"><span class="dot"></span>' + gateText + '</span>';
-        }
-      }
-
-      // Update stats
-      var critical = alertEvents.filter(function(a) { return a.severity === 'critical'; }).length;
-      var warning = alertEvents.filter(function(a) { return a.severity === 'warning'; }).length;
-      var info = alertEvents.filter(function(a) { return a.severity === 'info'; }).length;
-
-      var el = function(id) { return document.getElementById(id); };
-      if (el('alertCriticalCount')) el('alertCriticalCount').textContent = critical;
-      if (el('alertWarningCount')) el('alertWarningCount').textContent = warning;
-      if (el('alertInfoCount')) el('alertInfoCount').textContent = info;
-      if (el('alertCountSubtitle')) el('alertCountSubtitle').textContent = '共 ' + alertEvents.length + ' 条告警';
-
-      // Render alert list
-      if (alertResult.__readError) {
-        // 「暂无告警事件」只有在真读到空列表时才配说。
-        // API 挂掉时显示它，等于在真出事的时候告诉用户「没事」。
-        // 403 alert-gate-closed 是默认态（PROXY_HEALTH_ALERT 默认 off），
-        // 这时后端的 hint 就是「怎么开」——必须显示出来，否则用户只会看到机器码。
-        var err = alertResult.__readError;
-        var isGate = (err.httpStatus === 403 || (err.message || '').indexOf('alert-gate') !== -1);
-        showReadError('alertList',
-          isGate ? '告警功能未开启' : '读取失败',
-          err.hint || err.message || '未知错误',
-          isGate ? null : '告警数据读不到。管理端恢复后点「采集告警」或刷新本页。', loadAlertsPage);
-        if (el('alertCountSubtitle')) {
-          el('alertCountSubtitle').textContent = isGate ? '告警功能未开启' : '读取失败';
-        }
-      } else {
-        renderAlertList(alertEvents);
-      }
-      hideOfflineBanner();
-      hideLoading();
-    }).catch(function(err) {
-      showReadError('alertList', '读取失败', err && err.message || '未知错误', 'manager 不可达。', loadAlertsPage);
-      hideLoading();
-    });
+    if (window.MPViews && window.MPViews.alerts) window.MPViews.alerts.load();
+    else console.error('[dashboard] views/alerts.js 未加载，告警页无法取数');
   }
-
-  function renderAlertList(events) {
-    var container = document.getElementById('alertList');
-    if (!container) return;
-
-    if (!events || events.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="empty-text">暂无告警事件</div></div>';
-      return;
-    }
-
-    var sorted = events.slice().sort(function(a, b) {
-      return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
-    });
-
-    container.innerHTML = sorted.map(function(a) {
-      var iconClass = a.severity === 'critical' ? 'critical' : a.severity === 'warning' ? 'warning' : 'info';
-      // 严重度原来用 🔴/🟡/🔵 emoji：跨平台渲染不一致，读屏器只会读出一串颜色名。
-      // 换成统一 SVG；等级同时由「形状 + 颜色 + 可读标签」三个通道传达，不靠颜色单通道。
-      var sevLabel = { critical: '严重告警', warning: '警告', info: '提示' }[iconClass] || '提示';
-      var icon = (window.MPIcons && MPIcons.severity)
-        ? MPIcons.severity(a.severity)
-        : '<svg class="icon-svg sev sev-' + iconClass + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/></svg>';
-      var time = a.timestamp ? new Date(a.timestamp).toLocaleString('zh-CN') : '-';
-      var title = a.rule || a.message || '告警';
-      var message = a.message || a.detail || '';
-
-      return '<div class="alert-item">' +
-        '<div class="alert-icon ' + iconClass + '" role="img" aria-label="' + sevLabel + '">' + icon + '</div>' +
-        '<div class="alert-content">' +
-          '<div class="alert-title">' + esc(title) + '</div>' +
-          '<div class="alert-message">' + esc(message) + '</div>' +
-        '</div>' +
-        '<div class="alert-time">' + esc(time) + '</div>' +
-      '</div>';
-    }).join('');
-  }
-
-  function filterAlerts() {
-    var search = (document.getElementById('alertSearch') || {}).value || '';
-    var severity = (document.getElementById('alertSeverity') || {}).value || '';
-    var source = (document.getElementById('alertSource') || {}).value || '';
-
-    var filtered = alertEvents.filter(function(a) {
-      if (severity && a.severity !== severity) return false;
-      if (source && a.source !== source) return false;
-      if (search) {
-        var hay = (a.message + ' ' + a.rule + ' ' + a.providerId).toLowerCase();
-        if (hay.indexOf(search.toLowerCase()) === -1) return false;
-      }
-      return true;
-    });
-
-    renderAlertList(filtered);
-  }
-
-  window.collectAlerts = function() {
-    showToast('正在采集告警信号...', 'info');
-    fetchJSON('/api/alert/collect', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': authToken || '' } })
-      .then(function(data) {
-        if (data.ok) {
-          showToast('采集完成，新产生 ' + data.collected + ' 条告警', 'success');
-          loadAlertsPage();
-        } else {
-          // 无 else 时：后端返回 200 但 ok:false，用户点了按钮什么都不发生，
-          // 只会反复点。采集类操作必须给出「采了但没结果」的原因。
-          showToast(data.error || '采集未执行', 'error');
-        }
-      })
-      .catch(function(err) {
-        showToast('采集失败：' + ((err && err.message) || '未知错误'), 'error');
-      });
-  };
 
   // ===== Registry Page =====
   function loadRegistryPage() {
@@ -3431,13 +3307,21 @@
   // 健康历史条数下拉的原引用 loadHealthHistory 从未定义过（换了条数只会
   // ReferenceError、列表不动）。语义就是「按当前下拉值重拉健康页」，别名即可。
   window.loadHealthHistory = loadHealthPage;
-  window.filterAlerts = filterAlerts;
-  window.loadAlertsPage = loadAlertsPage;
+  // filterAlerts / loadAlertsPage / collectAlerts 已由 views/alerts.js 挂载，本段不再重复。
   window.filterRegistry = filterRegistry;
   window.loadRegistryPage = loadRegistryPage;
   window.loadCostPage = loadCostPage;
   window.loadWatchtower = loadWatchtower;
   window.switchPage = switchPage;
+  // 页面壳机制（加载条 / 离线横幅）收在这里给 views/*.js 用：单一定义，视图模块
+  // 只调用不复制。加载条逻辑现在是 3 行纯 DOM，真复杂化（计数器/并发请求）时
+  // 先收口这里再扩散。
+  window.MPShell = {
+    showLoading: showLoading,
+    hideLoading: hideLoading,
+    showOfflineBanner: showOfflineBanner,
+    hideOfflineBanner: hideOfflineBanner,
+  };
 
   init();
 })();
