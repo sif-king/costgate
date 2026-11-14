@@ -244,3 +244,25 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - ④ **提取边界的坑**：动态生成的 onclick 在 JS 字符串里（`onclick=\"...\"` 形态），先剥 `<script>` 块再提取是干净边界；用 lookbehind 拦 `\"` 已被证明不可靠（JS 转义会造出绕过 lookbehind 的形态）。
 - **后果**：真浏览器复测三处链路（告警搜索、今天日期下拉、who 查询）零 pageerror；13 个控件从「点击无声」恢复可用。
 - **推翻条件**：若未来把内联 handler 全部改为 addEventListener 委托，守卫的提取对象应随之改为「委托选择器清单」；在那之前新增内联 handler 必须同步进挂载段或模块挂载。
+
+## D-018 · 「真浏览器点控件」进 CI，且守卫自己也要被守卫
+
+- **状态**：已执行（2026-11-15，老板批「按建议来」）
+- **背景**：`PANEL-HEALTH-CHECK-2026-11-15.md` 发现 A——工作区回退把 D-017 的 13 个 window 挂载一起退掉，真点 4 个控件全抛 `ReferenceError`，而 node 37/37、coherence 六项、E2E 50/50 **三套全绿**。追下去是两层缺口，不是一处：
+  - ① **运行态缺口**：`spa-views.spec.js` 只点 tab、smoke 只验加载不崩；内联 handler 的异常只在**交互那一刻**发生，加载阶段永远看不见。
+  - ② **闸门缺口**：`tests/node/panel-inline-handlers.test.js` 既**从来没进 CI**（`p0-security-gate.yml` 的 panel behavior tests 步骤手写 4 个文件名，不含它），本身还能被随手删掉；删了以后没有任何一道闸会喊。
+  - 附带查出一个真洞：D-017 的 ghost 判据写成 `!declared.has(rhs) && !declared.has(n)`，末项让「左侧函数本身有 IIFE 内声明」短路 ⇒ `window.filterRegistry = filterRegistr`（右侧拼错名）静态守卫恒绿。注入实测 E2E 3 条全红而它 `pass 1 / fail 0`。
+- **决策**：
+  - ① **基线归位**：会话 A 的 7 个前端 WIP 用 `git stash push -m … -- <7 paths>` 留档（`stash@{0}`，可回看），工作区恢复 `HEAD` 已验证的面板前端状态；会话 B 的 18 个后端文件原样不动、零丢失。继续基于「已推送、有守卫」的基线工作，不把更坏且无守卫的回退态当新起点。
+  - ② **运行态守卫** `e2e/inline-handlers.spec.js`（3 条 `@tier0 @pr-gate`），控件清单**从静态 HTML 自动派生**（剥 `<script>` 后提 `on*` 属性），不手写，新增控件自动被覆盖：
+    - 契约层：每个被引用的名字在真浏览器里 `typeof window[n] === 'function'`；
+    - 运行层：逐个真派发对应 DOM 事件（`click` 用 `el.click()`、`change/input` 用 `Event`、`keydown` 用带 `Enter` 的 `KeyboardEvent`），页面内 `addInitScript` 自收 `error` + Playwright `pageerror` 双保险，并断言「清单里每种组合都真的派发过」（防元素没渲染导致静默跳过）；写请求用 route stub 拦掉，避免点一遍控件真写脏数据；
+    - 功能层：真手势点健康页刷新 / 历史条数下拉，断言对应 `/api/health-history` 请求真发出且 `limit=20` 生效——抓「函数存在但什么都没干」。
+  - ③ **守卫登记表** `tests/node/panel-guard-registry.test.js`：钉住 3 个关键守卫文件存在且仍带判据关键字，并钉住 CI 两个闸门真的会跑到它们（`e2e-tier0.yml` 保留 `--grep "@tier0"` + 新增登记表自检步骤；`p0-security-gate.yml` 必须是 `node --test tests/node/*.test.js` 全量，不许退回手写名单）。**守卫被删 / 被放宽 / 闸被关，都会红**。
+  - ④ **CI 拉闸**：p0 的 panel behavior tests 从「手写 4 个文件名」改成全量通配（以后新增 `tests/node/*.test.js` 自动进闸）；tier0 job 在跑 E2E 前先跑一次登记表自检（零依赖，只用 node 内置）。
+  - ⑤ **修 D-017 的 ghost 判据**：只看右侧——`rhs !== 'function' && !declared.has(rhs)`；左侧有没有声明与「右边那个名字存不存在」无关。同时抽出 `findGhostMounts()` 并加一条**构造数据自证**（拼错名必红、合法别名必绿），不让「我在真树上跑了一下是绿的」冒充判据有效。
+- **后果**：
+  - 数字：node **41/41**、coherence 六项、全量 E2E **56/56**、tier0 闸门 **42/42**。
+  - 四种注入全部**真红且恢复干净**：A 删 `window.filterRegistry` 挂载 → E2E 契约层 + 运行层 2 红（运行层拿到真的 `Uncaught ReferenceError: filterRegistry is not defined`）；B 挂载名拼错 → 修复前静态守卫假绿、修复后 `not ok 2 / # fail 1` 精确点名；C 删掉 E2E 守卫文件 → 登记表 `rc=1` 点名「守卫被删，回归将无人喊」；D CI 退回手写名单 → 登记表 `rc=1`。
+  - 坑：**注释式注入会让静态守卫假绿**（正则仍匹配注释里的 `window.X = X` 文本），注入验证必须用「改值 / 删文件 / 改 CI 步骤」这类让功能真不跑的形态。
+- **推翻条件**：若将来把内联 handler 全改为 addEventListener 委托，运行态守卫的「静态 HTML 属性清单」要换成「委托选择器清单」，登记表条目同步更名；若 `tests/node/` 出现必须单独跑（不能并发）的用例，全量通配要改为分组执行，但仍不许退回手写白名单。

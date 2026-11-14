@@ -83,6 +83,37 @@ function extractDeclaredFunctions(script) {
   return found;
 }
 
+// 2026-11-15 修复：原判据是 `rhs !== 'function' && !declared.has(rhs) && !declared.has(n)`，
+// 末项会让「左侧函数本身有 IIFE 内声明」的情况短路 —— 于是
+// `window.filterRegistry = filterRegistr`（右侧拼错名）虽然挂了个 undefined / 直接抛
+// ReferenceError，静态守卫却恒绿。注入验证实测：E2E 3 条全红而本守卫 pass 1 / fail 0。
+// 正解只看右侧：左侧有没有声明，跟「右边那个名字存不存在」毫无关系。
+function findGhostMounts(refs, mounts, declared) {
+  return refs.filter((n) => {
+    if (!mounts.has(n)) return false;
+    const rhs = mounts.get(n);
+    return rhs !== 'function' && !declared.has(rhs);
+  });
+}
+
+// 判据自证：不能只靠「我在真实代码上跑了一下是绿的」——那只能说明当前树没问题，
+// 说明不了判据能抓到坏形态。这里直接喂构造数据，正反两例都要成立。
+test('ghost 判据：左侧有声明但右侧拼错名必须红，合法别名必须绿', () => {
+  const refs = ['filterRegistry', 'loadHealthHistory'];
+  const bad = new Map([
+    ['filterRegistry', 'filterRegistr'],   // 拼错：右侧无声明
+    ['loadHealthHistory', 'loadHealthPage'], // 合法别名：右侧有声明
+  ]);
+  const declared = new Set(['filterRegistry', 'loadHealthPage']);
+  assert.deepStrictEqual(findGhostMounts(refs, bad, declared), ['filterRegistry']);
+
+  const good = new Map([
+    ['filterRegistry', 'filterRegistry'],
+    ['loadHealthHistory', 'loadHealthPage'],
+  ]);
+  assert.deepStrictEqual(findGhostMounts(refs, good, declared), []);
+});
+
 test('dashboard 内联 handler 引用的每个标识符都挂到了 window，且挂载有真身', () => {
   const html = fs.readFileSync(path.join(PUBLIC, FILE), 'utf8');
   const refs = extractHandlerRefs(html);
@@ -114,11 +145,7 @@ test('dashboard 内联 handler 引用的每个标识符都挂到了 window，且
   //    只检查 refs ∩ mounts：window 上还有非 handler 的挂载（__statusInterval 这类
   //    状态变量），不在本守卫的判定范围。
   const declared = extractDeclaredFunctions(allScript);
-  const ghostMounts = refs.filter((n) => {
-    if (!mounts.has(n)) return false;
-    const rhs = mounts.get(n);
-    return rhs !== 'function' && !declared.has(rhs) && !declared.has(n);
-  });
+  const ghostMounts = findGhostMounts(refs, mounts, declared);
   assert.deepStrictEqual(ghostMounts, [],
     `以下 window 挂载找不到真身（挂了个 undefined）：${ghostMounts.join(', ')}`);
 });

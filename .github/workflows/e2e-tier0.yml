@@ -1,6 +1,8 @@
 # E2E Tier0 PR 门禁（真实验证后写）
 #
-# 接住「声明态≠运行态」类回退：tier0 覆盖 7 个壳页真渲染 + 门控条语义/不挤塌/未开启≠缺失。
+# 接住「声明态≠运行态」类回退：tier0 覆盖 7 个壳页真渲染 + 门控条语义/不挤塌/未开启≠缺失
+# + 内联控件真点（2026-11-15）。后者是补 PANEL-HEALTH-CHECK §二 发现 A 的洞：
+# 只点 tab 时「控件齐全、点击无声」能连续躲过全套绿灯。
 # 这些是用户（DeepSeek 评审）最在意的「页面到底能不能用」级断言，必须进 PR 阻断。
 #
 # 设计要点：
@@ -53,6 +55,10 @@ jobs:
           done
           echo "giving up after 3 attempts"
           exit 1
+      - name: Guard self-check (critical panel specs must exist)
+        # 零依赖，只用 node 内置。防的是「把守卫文件删了，tier0 job 少跑几条仍然全绿」——
+        # 2026-11-15 的工作区就是这么把 D-017 守卫删掉而全套绿灯的。
+        run: node multi-proxy-manager/tests/node/panel-guard-registry.test.js
       - name: Run tier0 E2E (PR gate)
         run: |
           cd multi-proxy-manager
