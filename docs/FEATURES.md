@@ -125,21 +125,21 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 | 4 | 归属可疑 | 路由模式藏 `proxy-config.html`；设置页混撤销授权 + 插件 | 用户找不到 |
 | 5 | 孤儿页 | `context.html` 有路由无导航（**2026-11-14 已补回**） | 只能手敲 URL |
 | 6 | 孤儿后端 | 7 条 `/api/*` 面板零引用（已标 `BACKEND-ONLY`） | 以为没做 |
-| 7 | 门控未登记 | `PROXY_CONTEXT_TRACK` 未进 `gates.js`（§五） | 门控条看不见，界面开不了 |
+| 7 | 门控未登记 | `PROXY_CONTEXT_TRACK` 曾未进 `gates.js`（**2026-11-14 已登记**，§五） | 门控条看不见、界面开不了 |
 | 8 | 文档过时 | `docs/01-feature-matrix.md` 写"前端 4 页"（实为 12 页）；本机索引 `docs/INDEX.md` 项目一句话仍写"管理三个代理"（`manage.sh` 的 `SERVICES` 实为 9 项） | 误导后续 agent 在错的目录/范围里找功能 |
 
 ---
 
-## 五、门控登记缺口
+## 五、门控登记缺口（已修，2026-11-14）
 
-`gates.js` 是门控唯一真源，但 `PROXY_CONTEXT_TRACK` **只被直接读 env，没登记进注册表**：
+`PROXY_CONTEXT_TRACK` 原本只被直接读 env，没登记进注册表：
 
-- 读取处：`l2/context-report.js:35`、`generic-openai-proxy/proxy.js:1149`
-- 注册表：`multi-proxy-manager/lib/gates.js`（`grep -i context` 零命中）
+- 读取处：`l2/context-report.js:35`（唯一判定点；`generic-openai-proxy/proxy.js:1149` 只是调 `observe()`，不自己判）
+- 注册表：`multi-proxy-manager/lib/gates.js` —— 已新增 `context-track`（group 账本主权 / kind opt-in / `scope: 'repo'`）
 
-后果：面板门控条（`gatebar.js` 消费 `GET /api/gates`）看不到这一项，用户无法从界面开启，只能手改 env。属于"门控漂移"，与 `tests/unit/gates.test.js` 的 crossCheck 覆盖面有关（该测试只对拍导出了 `enabled()` 的模块）。
+登记后加了对拍测试，当场抓到第二个问题：`context-report` 裸比 env（大小写/空白敏感），`'ON'` 判关而注册表判开。该文件注释本就自称「与 `cost-track.enabled()` 同构」，已按注释改为 `trim().toLowerCase()`（只放宽被接受的字面值，默认态仍为关）。
 
-**待办**：把 `PROXY_CONTEXT_TRACK` 登记进 `gates.js`（`kind` 按 `opt-in`，`source` 指 `l2/context-report.js:35`，`scope` 视跨进程情况定）。这是独立小切片，不与 UI 重构混做。
+**判据（写进上面的 D-008）**：凡登记进门控表且导出 `enabled()` 的模块，必须配一条 crossCheck 测试，否则"状态条说谎"会再次无声发生。
 
 ---
 

@@ -92,10 +92,10 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 
 ## D-008 · 门控必须登记进 `gates.js`，不许只读 env
 
-- **状态**：**部分违反，待修**
-- **背景**：`gates.js` 是门控唯一真源，面板门控条靠它决定显示什么。但 `PROXY_CONTEXT_TRACK` 只被 `l2/context-report.js:35` 和 `generic-openai-proxy/proxy.js:1149` 直接读，**没登记**——于是门控条看不见它，用户界面上开不了。
+- **状态**：已定 + 已修（2026-11-14）
+- **背景**：`gates.js` 是门控唯一真源，面板门控条靠它决定显示什么。但 `PROXY_CONTEXT_TRACK` 只被 `l2/context-report.js:35` 直接读，**没登记**——于是门控条看不见它，用户界面上开不了，属"隐形门控"。
 - **决策**：任何新门控必须同时做两件事：① 在 `gates.js` 登记（`kind` / `source` / 默认值）；② 判定逻辑留在原处不改（注册表只管登记，不接管判定）。
-- **后果**：现有缺口是 `PROXY_CONTEXT_TRACK`，登记为独立小切片（不与 UI 重构混做）。
+- **后果**：`context-track` 已登记（group 账本主权，kind opt-in，`scope: 'repo'` 因判定落在仓根的 `l2/`）。并加 crossCheck 测试对拍模块自身 `enabled()`——该测试当场抓到第二个 bug：`context-report` 裸比 env（大小写敏感），`'ON'` 判关而注册表判开；已按该文件注释自称的「与 cost-track 同构」改为 `trim().toLowerCase()`。
 - **推翻条件**：无。
 
 ---
