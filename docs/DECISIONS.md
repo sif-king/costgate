@@ -136,3 +136,16 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - ④ 沙箱要 stub 页面真实依赖（`MPStates`/`addEventListener`），而不是让页面为测试让步。
 - **后果**：三个文件 29 条断言全绿；`preflight` 3c 与 CI 同步。
 - **推翻条件**：无。
+
+---
+
+## D-012 · 容器无入口即为死码；读失败提示必须写进用户看得见的容器
+
+- **状态**：已执行（2026-11-14，阶段 2.1b+2.1c）
+- **背景**：`dashboard.html` 里的 `page-sessions` 容器有内容、被 `loadSessions()` 持续渲染，但**用户永远看不到它**——`SPA_VIEWS` 里没有 `sessions`、侧栏「任务管理」走 `/sessions`（`server.js:229` 发独立页 `sessions.html`）、全仓无 `switchPage('sessions')`。更糟的是读失败提示也写进它（`sessionsListFull`），于是**可见**的那张卡只剩「暂无运行中任务」：读失败被渲染成「没有任务」。当时的测试断言目标正是那个看不见的容器，所以一直绿着——**测试在为假绿背书**。
+- **决策**：
+  - ① 页面内每个 `.page` 容器必须有四类入口之一：`SPA_VIEWS` 登记 / 硬编码 `data-page` / `switchPage('x')` 跳转 / 默认 `active`。否则视为死码，删掉或补入口。此判据已进 `scripts/check-panel-coherence.sh` 第 4 项，机器判。
+  - ② 读失败的提示只能写进**用户当前看得见**的容器；不许写进隐藏/死容器，也不许先渲染空态再改副标题（那会同时出现「所有 Provider 健康」+「读取失败」）。
+  - ③ 合并重复渲染时，若两处行为不一致，**取更严的那一侧**（这里是健康页的 `showReadError` + 清副标题），不是取更省事的那一侧。
+- **后果**：`page-sessions` 已删（原位留注释说明依据）；`renderProviderIsolation` / `showProviderReadError` 由概览卡与健康页共用；`loadSessions` / `loadProviderHealth` 读失败均指向可见容器。
+- **推翻条件**：若将来恢复页内 sessions 视图，须同时补 `SPA_VIEWS` 登记 + tab 入口 + 守卫通过。
