@@ -557,3 +557,60 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - **后果**：node 守卫 **82/82**、coherence 七项、`drift-check` 无漂移、jest 前端 **320/320**、E2E tier0 **58/58**。
   `dashboard.html` 1990 → 2022 行（**+32**）：代码本体从「7 条分支」变成「表 7 行 + 一次查表」，
   变长的是把「为什么这么写」的注释补全了——净代码量是减的，这一点如实记下，不拿「行数下降」当成绩。
+
+## D-030 · 面板凭空多出一道登录门：E2E 的测试密码被写成了用户的真密码
+
+- **日期**：2026-11-15（老板报障：「应用的登录密码咋又给我搞出来了？删掉」）
+- **现象**：本机打开 18792 面板被要求登录。数据目录里躺着 `password`（0644→0600，60 字节 bcrypt），
+  于是 `needsPasswordSetup()` 为假 ⇒ 回环免鉴权失效 ⇒ `requireAuth` 对 127.0.0.1 也要 token。
+- **铁证（不是推测）**：把该文件备份后用 `bcrypt.compare` 逐个比对候选常量，命中
+  `tests/e2e/helpers.ts` 里的 `TEST_PASSWORD`。⇒ 这个密码不是老板设的，是测试写的。
+- **根因三层，缺一层都不会发生**：
+  1. **测试服没隔离数据目录**：`playwright.config.js` 的 webServer 只写 `PORT=18801 node server.js`，
+     没设 `MP_DATA_DIR` ⇒ 继承真实 HOME，账本/密码/密钥全落在用户目录。
+  2. **旧矩阵直指生产端口**：`tests/e2e/playwright.config.js` 的 baseURL 写死 `localhost:18792`（真实面板），
+     且没有 webServer，等于对着正在服务的面板跑测试。
+  3. **服务端语义自相矛盾**：`GET /api/auth/status` 对回环已如实返回 `needsSetup:false`（面板不显示设置表单），
+     但 `POST /api/auth/login` 仍按 `needsPasswordSetup()` 进 **setup 分支**并 `setPassword()` 落盘。
+     于是任何一次「以为在登录、实际在设密码」的提交都会把提交值固化。`login.html` 也没看
+     `loopbackBypass`，回环下照样渲染登录表单 —— 用户手输一次也一样中招。
+- **决策（三处一起改，少一处就还会复发）**：
+  - **服务端**：`routes/auth.js` 的 setup 分支内加回环守卫——回环 + 未配置密码 ⇒ 400 + `loopback:true`，
+    并明确告知出口是 `MANAGER_PASSWORD`。守卫**只在 setup 分支内**：放到函数开头会把「已有密码的用户登录」一起禁掉。
+    非回环（LAN / Docker）的首次设密码引导原样保留。
+  - **前端**：`login.html` 拿到 status 后，`loopbackBypass && !hasPassword` ⇒ 直接 `location.replace('/dashboard.html')`，
+    不渲染任何表单。登录页对本机用户本来就没有存在意义。
+  - **测试**：两份 playwright 配置的 webServer 都带 `MP_DATA_DIR` + `JWT_SECRET_FILE`（临时目录，先 `mkdir -p`）；
+    `e2e/helpers/auth.js` 取 config 导出的同一常量，`tests/e2e/helpers.ts` 复制同一表达式；
+    旧矩阵的 `login()` 改成**直接签 token 注入**，不再走登录页、不写任何密码文件；
+    `01-auth-flow` 按新契约重写（5 条：直跳 / 端点 400 且不落盘 / 已设密码要登录 / 正确密码可进 / 首屏可加载）。
+- **为什么 `JWT_SECRET_FILE` 也得隔离**：`MP_DATA_DIR` 只管数据目录，密钥走 `resolveJwtSecretFile()` 的另一条路。
+  只隔离一半 ⇒ 测试进程与测试服密钥不同源，表现为 401，而且会被 `seedAuth` 掩盖成「页面空但没报错」的假绿。
+- **守卫**：`tests/node/panel-no-home-pollution.test.js`（5 条），已登记进 `panel-guard-registry.test.js`。
+  ① **子进程真跑** `routes/auth` 路由：回环 + 无密码提交 ⇒ 必须 400、`loopback:true`、且临时目录里**没有** password 文件；
+  ② login.html 必须存在「回环且无密码 → 直跳面板」的可执行分支（认 `location.replace`，注释满足不了）；
+  ③ 两份 config 的 webServer 必须含两个环境变量，且去掉注释后不许出现 18792；
+  ④ helper 与 config 的目录表达式必须同形；⑤ 回环守卫必须在 `needsPasswordSetup()` 分支**内部**。
+- **注入验证（四式全真红，各自红在对应判据）**：① 把回环守卫改成 `false && …` ⇒ 真跑那条红在「必须 400」；
+  ② login.html 直跳条件前加 `false &&` ⇒ 静态那条红在「少了分支」；③ 从根 config 删 `MP_DATA_DIR=` ⇒ 红在「必须设」；
+  ④ 把旧矩阵 `PORT` 改回 18792 ⇒ 红在「不许指向生产端口」。还原后 sha256 逐字节一致、守卫回绿。
+- **现场处置**：`password` 文件已删（备份在 `/tmp/costgate-backup/`），`/api/auth/status` 现在返回
+  `loopbackBypass:true, hasPassword:false`，dashboard 与受保护 API 直接 200，无需重启（密码是每次读文件判的）。
+- **口径**：「本机不要密码」不等于「删掉鉴权能力」。要账号体系 = 设 `MANAGER_PASSWORD` 后重启；
+  非回环部署仍受 fail-closed 约束。这条边界写进守卫注释，避免下次有人把服务端守卫当成「鉴权没用」删掉。
+
+## D-031 · 切一次页内 tab，侧栏高亮整片消失：`.nav-item` 的 active 摘了没人补
+
+- **日期**：2026-11-15（壳第六片，老板「能做都做」授权修 D-029 记录的那处既有 UI 瑕疵）
+- **现象**：在概览里点任一页内 tab（今日/健康/告警/注册表/成本/影子），左侧导航立刻失去高亮，且回不来。
+  页内内容正常切换，所以看起来像「导航栏坏了」而不是「切页逻辑坏了」。
+- **机制**：`switchPage` 里对**所有** `.nav-item` 摘 `active`，而侧栏项是 `nav.js` 渲染的 `<a href>`
+  （指向独立页面），它的 `active` 只在 `renderNav(current)` 那一刻按入参加上——摘掉之后没有任何代码补回来。
+  旧代码那句按 `data-page` 找侧栏项的查询永远不命中（侧栏项从不带 `data-page`），所以「补高亮」从来没生效过。
+- **决策**：`switchPage` **一律不碰** `.nav-item`。页内高亮归 `#viewTabs .section-tab` 循环，
+  侧栏高亮归 `nav.js` 的渲染入参，两边不越界。理由不是「少写一行」，是**归属**：
+  侧栏表达的是「你在哪个页面」，页内 tab 表达的是「这个页面里选了哪个视图」，两类状态不该由同一段代码擦写。
+- **可见变化**：切页内 tab 时侧栏保持高亮（此前会消失）。这是修 bug，不是改设计——侧栏本来就该一直亮着当前页。
+- **守卫**：`panel-route-table.test.js` 第 ⑧ 条：`switchPage` 体内不许出现 `'.nav-item'` 查询，
+  且必须显式维护 `#viewTabs .section-tab`。注入「把 navItems 查询加回来」⇒ 真红在「又去查 .nav-item 了」。
+- **后果**：node 守卫 **88/88**、coherence 七项、`drift-check` 无漂移。

@@ -3,65 +3,82 @@
 // This file is part of the costgate project.
 
 /**
- * Shared helpers for E2E tests — P1 regen (10-16).
+ * Shared helpers for the legacy tests/e2e matrix (2026-10-16, 手工考古用).
  *
- * 根因(查实 07:xx 10-16): login.html 加载即 `fetch('/api/auth/status')` → 按 `needsSetup`
- * 选双态: needsSetup=true(无密码/fresh)→ #setupMode(默认显)。false → #loginMode;
- * 设置密码成功即 `store token` 并 `auto-redirect` 到 dashboard(无中间 login 态)。
- * 矩阵旧版没等这段渲染 + 误假设「设置→显 login 态」, 直接点 `#setupPassword` 落在 hidden
- * 容器 → `not visible` = 测试脆, 非 v1.0 回归。本 P1 用「读 status JSON 选态 + 等 mode 渲染」根治。
+ * 🔴 2026-11-15 重写：原 login() 通过登录页提交密码，而服务端在「回环 + 无密码」时
+ * 会把提交值当成首启密码落盘 —— 这套矩阵直连真实 HOME 时，就把 TEST_PASSWORD
+ * 写成了用户真密码（实测哈希可对上）。现在两层都堵了：
+ *   ① 服务端拒绝回环 setup（routes/auth.js）；
+ *   ② 本 helper 改为**直接签 token 注入**，不再走登录页、不写任何密码文件；
+ * 数据目录由 playwright.config.js 隔离到临时目录（MP_DATA_DIR / JWT_SECRET_FILE）。
  *
- * P0 安全(10-16)保留: 仅 throwaway HOME(MP_TEST_HOME 设)才 reset 密码; real HOME 下 no-op。
- * 真凭据在 ~/.multi-proxy-manager/password(+ jwt ~/.multi-proxy-jwt-secret), 绝不删。
+ * 真凭据在用户的 ~ 下，测试永远不该碰。
  */
 
-import { Page, expect } from '@playwright/test';
+import { Page } from '@playwright/test';
+import * as path from 'path';
+import * as os from 'os';
 
-// P0 安全(10-16): 永不默认生产 18792; 矩阵须参数化隔离端口(18801), 绝不撞真实 manager。
+// 永不默认生产 18792；测试服固定 18801（config 里的 webServer 会用同一端口）。
 export const BASE_URL = process.env.BASE_URL || 'http://127.0.0.1:18801';
-// 12 字符, 满足 setupForm 的「≥8 字符」约束(login.html:1040)。
+// 仅供「显式设置密码后再验登录」的用例使用；不再被 login() 隐式写入。
 export const TEST_PASSWORD = 'TestPass123!';
 
-// P0 安全(10-16): 仅 throwaway HOME 清密码; real HOME no-op, 绝不清真凭据。
-function resetThrowawayPassword() {
+// 与 playwright.config.js 同一份隔离数据目录（config 里导出 E2E_DATA_DIR 会引入
+// @playwright/test 的 defineConfig，这里只复制同一表达式并由守卫断言两处一致）。
+export const E2E_DATA_DIR = process.env.MP_E2E_DATA_DIR || path.join(os.tmpdir(), 'costgate-e2e-data');
+process.env.MP_DATA_DIR = process.env.MP_DATA_DIR || E2E_DATA_DIR;
+process.env.JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || path.join(E2E_DATA_DIR, 'jwt-secret');
+
+export const PASSWORD_FILE = path.join(E2E_DATA_DIR, 'password');
+
+/** 清掉隔离目录里的密码文件（只动临时目录，绝不碰真实 HOME）。 */
+export function clearPasswordFile(): void {
   try {
-     // 真凭据在 ~/.multi-proxy-manager/password(+ jwt ~/.multi-proxy-jwt-secret)。
-    if (process.env.MP_TEST_HOME) {
-      const { execSync } = require('child_process');
-      execSync(`rm -f "${process.env.MP_TEST_HOME}/.multi-proxy-manager/password"`, { stdio: 'ignore' });
-    }
-   } catch { /* no throwaway → no-op */ }
+    const { execSync } = require('child_process');
+    execSync(`rm -f "${PASSWORD_FILE}"`, { stdio: 'ignore' });
+  } catch { /* 不存在即目的达成 */ }
 }
 
-// fresh(无密码)→ 设置密码一步到位(设置即 store token 并 auto-redirect 到 dashboard)。
-// race-free: 注册 status 响应监听后再 goto, 按 needsSetup 选态, 不靠 mode 渲染时序。
-export async function login(page: Page, password: string = TEST_PASSWORD): Promise<string> {
-  resetThrowawayPassword();
-  const statusResp = page.waitForResponse(r => r.url().includes('/api/auth/status'));
-  await page.goto(`${BASE_URL}/login.html`);
-  const status = await (await statusResp).json();
-  const loginResp = page.waitForResponse(r => r.url().includes('/api/auth/login'));
-
-  if (status.needsSetup) {
-     // P1: 等 #setupMode 渲染(默认显, 但 fresh 下也保险等一拍)。
-    await expect(page.locator('#setupMode')).toBeVisible();
-    await page.locator('#setupPassword').fill(password);
-    await page.locator('#setupConfirm').fill(password);
-    await page.locator('#setupSubmit').click();
-   } else {
-      // P1: 等 #loginMode 渲染(有密码 → login 态, toBeVisible 自带 auto-wait 覆盖 mode 切换)。
-     await expect(page.locator('#loginMode')).toBeVisible();
-     await page.locator('#loginPassword').fill(password);
-     await page.locator('#loginForm button[type="submit"]').click();
-   }
-
-  await loginResp;
-  await page.waitForURL(/.*dashboard\.html/);
-  const token = await page.evaluate(() => sessionStorage.getItem('auth_token'));
-  return token || '';
+/** 往隔离目录写一个 bcrypt 密码哈希（模拟「用户已设密码」的部署形态）。 */
+export function setPasswordFile(password: string = TEST_PASSWORD): void {
+  const bcrypt = require('bcryptjs');
+  const fs = require('fs');
+  fs.mkdirSync(E2E_DATA_DIR, { recursive: true });
+  fs.writeFileSync(PASSWORD_FILE, bcrypt.hashSync(password, 10), { mode: 0o600 });
 }
 
-// 01 T3 用: 清 token 回「需登录」, 配合已存在的密码 → on-load 会进 login 态。
+function managerToken(): string {
+  const jwt = require('jsonwebtoken');
+  const fs = require('fs');
+  const secretFile = process.env.JWT_SECRET_FILE as string;
+  let secret = '';
+  try {
+    secret = fs.readFileSync(secretFile, 'utf8').trim();
+  } catch (e) {
+    throw new Error(
+      `E2E 读不到 JWT 密钥：${secretFile}\n`
+      + '测试服必须用同一个 JWT_SECRET_FILE 启动（webServer 会建目录并生成），否则签出的 token 必然 401。'
+    );
+  }
+  return jwt.sign({ authenticated: true, ts: Date.now() }, secret, { expiresIn: '2h' });
+}
+
+/**
+ * 进面板：直接注入 token（不经过登录页）。
+ * 回环部署本来就不需要登录，旧版「走登录页」既慢又会污染密码文件。
+ */
+export async function login(page: Page, _password: string = TEST_PASSWORD): Promise<string> {
+  const token = managerToken();
+  await page.addInitScript((t: string) => {
+    try { sessionStorage.setItem('auth_token', t); } catch (e) {}
+    try { localStorage.setItem('auth_token', t); } catch (e) {}
+  }, token);
+  await page.goto(`${BASE_URL}/dashboard.html`);
+  return token;
+}
+
+/** 清 token（配合「已设密码」形态验证登录态）。 */
 export async function logout(page: Page): Promise<void> {
   await page.evaluate(() => sessionStorage.removeItem('auth_token'));
 }

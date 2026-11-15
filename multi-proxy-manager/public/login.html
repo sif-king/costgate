@@ -1144,6 +1144,14 @@ body::after {
   fetch('/api/auth/status')
     .then(function(res) { return res.json(); })
     .then(function(data) {
+      // 回环 + 完全没配置密码 = 本机免鉴权（服务端 requireAuth 直接放行）。
+      // 此时登录页没有存在意义：不渲染任何表单，直接进面板。
+      // 以前这里照旧显示「登录」态，用户随手输的密码会被服务端当成「首启设密码」落盘，
+      // 于是本机下次开面板就凭空多出一道登录门（2026-11-15 实测：密码文件里躺着 E2E 的测试密码）。
+      if (data.loopbackBypass && !data.hasPassword) {
+        window.location.replace('/dashboard.html');
+        return;
+      }
       if (data.needsSetup) {
         switchMode('setup');
       } else {

@@ -121,6 +121,13 @@ const GUARDS = [
     must: ['PAGE_LOADERS', 'pageContainers', 'spaViewIds', 'var PAGE_LOADERS = {'],
     why: '页路由表完备性（表键与 .page 容器双向一致、tab 有落点、值必须可调用、switchPage 不许长回 if-else）',
   },
+  {
+    // 「测试别往真实 HOME 写密码」的守门人（2026-11-15 事故：E2E 的 TEST_PASSWORD 成了用户密码）。
+    // 关键字同样取判据的源码形态：锚点字符串、env 变量名，散文满足不了。
+    file: 'tests/node/panel-no-home-pollution.test.js',
+    must: ["'if (isLoopbackRequest(req))'", 'E2E_DATA_DIR', 'loopbackBypass', 'MP_DATA_DIR='],
+    why: '测试不许污染真实数据目录（回环 setup 被拒 + 登录页直跳 + 两份 playwright 配置隔离数据目录/不打 18792）',
+  },
 ];
 
 test('关键面板守卫都在树里，且没有被放宽成空壳', () => {

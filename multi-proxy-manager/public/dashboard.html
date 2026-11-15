@@ -1467,18 +1467,15 @@
     for (var i = 0; i < pages.length; i++) {
       pages[i].classList.remove('active');
     }
-    var navItems = document.querySelectorAll('.nav-item');
-    for (var j = 0; j < navItems.length; j++) {
-      navItems[j].classList.remove('active');
-    }
     // 页内 tab 要跟着内容一起换。「当前在哪」在这里有 tab 高亮和 .page 显隐两处表示，
     // 漏掉这一步的症状是：切过去内容变了，高亮还停在上一个视图上——比没有高亮更误导。
     //
-    // ⚠️ 侧栏不在上面那段里，而且**摘了不补**：侧栏项由 nav.js 渲染成指向独立页面的
-    // <a href>（nav.js 的 nav-item 模板），从不带 data-page，所以「摘掉所有 .nav-item
-    // 的 active」之后没有任何地方会把它加回来，净效果是切一次 tab 侧栏就没高亮了。
-    // 这是既有行为（旧代码里那句按 data-page 查侧栏的语句永远匹配不到，等于没写），
-    // 本次只删掉那句永远不会命中的查询、不改可见效果；要修属可见 UI 变化，单独拍板。
+    // ⚠️ 侧栏（#sidebarNav 下的 .nav-item）**这里一律不碰**（2026-11-15 修）。
+    // 侧栏项是 nav.js 渲染的、指向独立页面的 <a href>，从不带 data-page；
+    // 它的 active 只在 renderNav(current) 那一刻决定，代表「你在哪个页面」，
+    // 不是「页内 tabs 选了哪一个」。旧代码在这里对所有 .nav-item 摘 active（摘了没人补），
+    // 于是随便点一次页内 tab，侧栏就整片失去高亮、再也回不来 —— 用户以为导航坏了。
+    // 现在：页内高亮归下面的 tab 循环，侧栏高亮归 nav.js 的渲染入参，两边不越界。
     var tabs = document.querySelectorAll('#viewTabs .section-tab');
     for (var t = 0; t < tabs.length; t++) {
       var tabOn = tabs[t].getAttribute('data-page') === pageId;

@@ -10,10 +10,20 @@
 // 避免 CI 环境再装一份系统 Chrome 的复杂度——靠 process.env.CI 切换，本地行为不变。
 // 用法：npx playwright test    （测试服 18801 由 webServer 复用；系统 Chrome 在 /Applications/Google Chrome.app）
 const { defineConfig, devices } = require('@playwright/test');
+const path = require('path');
+const os = require('os');
 
 // CI 环境用 bundled chromium；本地用系统 Chrome（channel: chrome）。
 const CI = !!process.env.CI;
 const browserChannel = CI ? undefined : 'chrome';
+
+// 🔴 E2E 数据目录必须是隔离的（2026-11-15）。
+// 事故：测试服原来只写 `PORT=18801 node server.js`，没有 MP_DATA_DIR ⇒ 继承真实 HOME 的
+// ~/.multi-proxy-manager。又因为 /api/auth/login 曾在回环下走 setup 分支，
+// 一次「以为在登录」的提交就把 E2E 的测试密码写成了真密码 —— 用户下次开面板凭空多出一道登录门。
+// 现在服务端已拒绝回环 setup（routes/auth.js），这里再加一道：测试数据只落临时目录。
+// e2e/helpers/auth.js 用同一个常量解析 JWT 密钥，两边必须一致，否则 401 假绿。
+const E2E_DATA_DIR = process.env.MP_E2E_DATA_DIR || path.join(os.tmpdir(), 'costgate-e2e-data');
 
 module.exports = defineConfig({
   testDir: './e2e',
@@ -31,7 +41,14 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: 'MP_CONSENT_BYPASS=1 PORT=18801 node server.js',
+    // MP_DATA_DIR / JWT_SECRET_FILE 不是可选装饰：没有它们，测试就会读写真实用户数据目录
+    // （密码文件、账本、JWT 密钥全在 ~ 下）。mkdir -p 先建目录，否则 auth 生成密钥时会 ENOENT。
+    // providers.json 用仓库里的公开示例垫底：数据目录一隔离，配置就是空的，
+    // 「代理卡片 ≥1 / proxyConfigNames 非空」这类断言会红在「没数据」而不是「代码坏了」。
+    command: `D="${E2E_DATA_DIR}" && mkdir -p "$D" && { [ -f "$D/providers.json" ] || cp providers.sample.json "$D/providers.json"; } && `
+      + `MP_CONSENT_BYPASS=1 PORT=18801 `
+      + `MP_DATA_DIR="$D" JWT_SECRET_FILE="$D/jwt-secret" `
+      + `AUTH_RATE_MAX=100 AUTH_LOCKOUT_MAX=100 node server.js`,
     url: 'http://localhost:18801/login',
     reuseExistingServer: !CI,
     timeout: 60000,
@@ -42,3 +59,5 @@ module.exports = defineConfig({
     headless: true,
   },
 });
+
+module.exports.E2E_DATA_DIR = E2E_DATA_DIR;

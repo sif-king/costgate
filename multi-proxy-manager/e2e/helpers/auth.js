@@ -12,15 +12,31 @@
 // 所以：任何断言业务 DOM 的 E2E，都必须先 seedAuth，并断言「没有被踢到 /login」。
 // 缺这两步的 E2E 一律视为无效。
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const jwt = require('jsonwebtoken');
 
+// 🔴 与 playwright.config.js 共用同一个 E2E 数据目录（2026-11-15）。
+// 测试进程与 webServer 是两个进程，密钥必须落在同一处：
+// 若这里回退去读真实 HOME，签出的 token 与测试服校验用的密钥就不是一把，表现为 401 假绿；
+// 更糟的是测试服的密码文件也会写进真实 HOME（历史事故，见 playwright.config.js 注释）。
+// 直接取 config 导出的常量，避免两处各写一份路径后悄悄漂移。
+const E2E_DATA_DIR = require('../../playwright.config').E2E_DATA_DIR;
+process.env.MP_DATA_DIR = process.env.MP_DATA_DIR || E2E_DATA_DIR;
+process.env.JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || require('path').join(E2E_DATA_DIR, 'jwt-secret');
+
 // 与 lib/auth.js 同源：密钥文件走 lib/data-dir.js 单一真源（含「新不存在回退读旧」），
-// 测试服继承同一 HOME；不在这里另写一份路径，否则切目录后会出现 401 假绿。
+// 测试服继承同一 JWT_SECRET_FILE；不在这里另写一份路径，否则切目录后会出现 401 假绿。
 function managerToken() {
   const secretFile = require('../../lib/data-dir').resolveJwtSecretFile();
-  const secret = fs.readFileSync(secretFile, 'utf8').trim();
+  let secret;
+  try {
+    secret = fs.readFileSync(secretFile, 'utf8').trim();
+  } catch (e) {
+    // 读不到就直说，别让 addInitScript 用空串签出一个必然 401 的 token（那是假绿）。
+    throw new Error(
+      'E2E 读不到 JWT 密钥：' + secretFile
+      + '\n测试服的 JWT_SECRET_FILE 必须与本进程一致，且测试服已启动（webServer 会建目录）。'
+    );
+  }
   return jwt.sign({ authenticated: true, ts: Date.now() }, secret, { expiresIn: '2h' });
 }
 

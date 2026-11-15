@@ -230,3 +230,16 @@ test('⑦ 侧栏项是指向独立页面的链接，不存在 .nav-item[data-pag
   assert.ok(!/\.nav-item\[data-page=/.test(DASH),
     'dashboard.html 又出现 .nav-item[data-page=...] 查询：侧栏项从不带 data-page，这句永远不命中');
 });
+
+test('⑧ switchPage 不许碰侧栏 .nav-item（摘了没人补 = 切一次 tab 高亮消失）', () => {
+  // 2026-11-15 修复的正是这条：旧代码在 switchPage 里 querySelectorAll('.nav-item')
+  // 把 active 全摘掉，而侧栏 active 只在 renderNav(current) 渲染时加 —— 摘了不补，
+  // 用户点一个页内 tab，左边整片导航就永久失去高亮。
+  // 页内高亮归 #viewTabs 的 tab 循环，侧栏高亮归 nav.js 的渲染入参，两边不越界。
+  const body = readBraced(DASH, 'function switchPage(pageId) {');
+  assert.ok(!/['"]\.nav-item['"]/.test(body),
+    'switchPage 又去查 .nav-item 了：侧栏高亮只在 nav.js renderNav 时决定，'
+    + '在这里摘掉没人会加回来（切一次 tab 侧栏就失去高亮）');
+  assert.ok(/#viewTabs\s+\.section-tab/.test(body),
+    'switchPage 必须显式维护页内 tab 的高亮（#viewTabs .section-tab）');
+});

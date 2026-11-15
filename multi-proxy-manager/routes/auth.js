@@ -63,6 +63,19 @@ router.post('/login', lockoutLimiter, authLimiter, async function(req, res) {
 
   // Setup mode or verify
   if (needsPasswordSetup()) {
+    // 🔴 回环不允许「首启设密码」（2026-11-15）。这条修复的是**判据与实现不一致**：
+    // GET /api/auth/status 对回环已如实返回 needsSetup:false（回环免鉴权，面板不显示设置表单），
+    // 但 login 端点这里仍按 needsPasswordSetup() 进 setup 分支 —— 于是一次「以为在登录、
+    // 实际在设密码」的请求就把提交值固化成真密码。实测后果：true 的 E2E（tests/e2e 直连 18792、
+    // e2e 测试服未隔离 MP_DATA_DIR）把测试常量写进真实 HOME，用户下次开面板被要求登录。
+    // 需要账号体系 = 设 MANAGER_PASSWORD（见 lib/auth.js 顶部说明），不靠首启落盘。
+    if (isLoopbackRequest(req)) {
+      return res.status(400).json({
+        success: false,
+        error: '本机回环访问无需设置密码；如需鉴权请设置 MANAGER_PASSWORD 后重启服务。',
+        loopback: true,
+      });
+    }
     try {
       const hash = bcrypt.hashSync(password, 10);
       setPassword(hash);
