@@ -198,6 +198,11 @@ function runPanel(file, fetchStub, exportList) {
     // views/onboarding.js。下面三条 onboarding 用例走页面薄包装 loadOnboarding，
     // 不加载它测到的只是 console.error 分支（旧版会「读失败但 body 空」假绿）。
     'views/onboarding.js',
+    // 2.3b 第九片（2026-11-15）：运行中任务卡 / Provider 隔离卡也各自成模块。
+    // 下面「sessions 读失败」「loadProviderHealth 不说所有 Provider 健康」
+    // 两条用例走页面薄包装，不加载这两个文件就只测到 console.error 分支。
+    'views/sessions.js',
+    'views/provider-health.js',
   ];
   for (const rel of headScripts) {
     vm.runInContext(fs.readFileSync(path.join(PUBLIC, rel), 'utf8'), sandbox, { filename: rel });

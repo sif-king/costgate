@@ -71,12 +71,19 @@ const GUARDS = [
     why: '强制剪贴板被拒后真点复制按钮（把 CI 那个失败模式本身钉死，不依赖环境是否放行）',
   },
   {
+    file: 'tests/node/panel-sessions-ownership.test.js',
+    // 关键字同样是判据正则里的形态（转义反斜杠 / 正则前缀），散文满足不了。
+    must: ['function\\s+renderSessionsList', 'MPViews\\.providerHealth\\.load', 'global\\.abortSessionFromDashboard'],
+    why: '概览次级卡归属（运行中任务 + Provider 隔离：取数只在模块里，动态 onclick 只挂一处，隔离卡不许长第二真源）',
+  },
+  {
+    // 第九片两条 E2E 的锚点也在这里。关键字必须是**测试里真有的断言**：
+    // 第一版写 'abortSessionFromDashboard' / mp-shared 的提示原文，均不在 spec 里，
+    // 于是登记表自己红（这次是登记表救了它自己 —— 别用「应该有」的词当锚点）。
     file: 'e2e/spa-views.spec.js',
-    // 只认真实代码里的锚点：`window.MPShared.proxyConfigNames().length > 0` 是
-    // waitForFunction 的实参，写注释满足不了它（D-018 的教训：注释式注入会骗过
-    // 只查文本的判据）。
-    must: ['@tier0', 'healthProxyList', 'window.MPShared.proxyConfigNames().length > 0'],
-    why: '健康视图经共享层取数并真渲染（首个非自治视图：加载顺序/MPShared 通路/window 挂载三层都靠它守）',
+    must: ['@tier0', 'healthProxyList', 'window.MPShared.proxyConfigNames().length > 0',
+           '/api/sessions/running', 'sess-probe-1/abort', 'Provider 隔离状态读不到'],
+    why: '健康视图经共享层取数并真渲染 + 概览次级卡（运行中任务 / Provider 隔离）的运行态守门人',
   },
 ];
 

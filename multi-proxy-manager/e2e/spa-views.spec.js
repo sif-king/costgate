@@ -784,3 +784,229 @@ test('首屏 onboarding：readyz 读失败 → 明说「读不到」+ 可重试�
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// 概览次级卡（2026-11-15，2.3b 第九片：运行中任务 + Provider 隔离）
+// 这两张卡此前**零运行态断言**，而它们的坏法都不报错、都长得像「没事」：
+//   ① 会话列表读失败 → 卡上仍是「暂无运行中任务」＝把读不到说成没有任务；
+//   ② 「中止」按钮点了没反应 → 任务继续在后台跑，用户以为已中止；
+//   ③ Provider 隔离读失败 → 卡上写着「所有 Provider 健康」＝替没查过的系统开健康证明。
+// 三条都不是视觉 bug，靠截图和 code review 都很难发现，只能真点、真断言。
+
+test('总览「运行中任务」卡：真按 /api/sessions/running 出数，点「中止」真 POST 并重渲染为空态', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  // 中止前有 confirm：不接这个 dialog，Playwright 会挂住直到超时。
+  page.on('dialog', (d) => d.accept());
+
+  const abortCalls = [];
+  page.on('request', (r) => {
+    // 只记「方法 + 路径」：端口由 playwright.config 的 baseURL 决定，写死端口等于
+    // 让这条断言依赖运行环境（换端口就红，原因与被测行为无关）。
+    if (/\/api\/sessions\/[^/]+\/abort$/.test(r.url())) abortCalls.push(r.method() + ' ' + new URL(r.url()).pathname);
+  });
+
+  // 第一次返回一条运行中会话，之后返回空——用来证明「中止成功后会重新取数」，
+  // 而不是只弹一句 toast 就完事（那正是最坏的「假成功」）。
+  let sessionCalls = 0;
+  await page.route('**/api/sessions/running', (route) => {
+    sessionCalls += 1;
+    if (sessionCalls === 1) {
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true, count: 1,
+          sessions: [{
+            sessionId: 'sess-probe-1', proxy: 'codex', status: 'running',
+            createdAt: new Date(Date.now() - 125000).toISOString(),
+            task: { title: 'Probe 编排任务' },
+            steps: [{ step: 1 }, { step: 2 }],
+          }],
+        }),
+      });
+    }
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, count: 0, sessions: [] }),
+    });
+  });
+  await page.route('**/api/sessions/sess-probe-1/abort', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, session: {} }),
+  }));
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { name: 'Probe Sessions Proxy', port: 18790, defaultVersion: '9.9.9' } }),
+  }));
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { running: true, port: 18790, fault: false } }),
+  }));
+  await page.route('**/api/version', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ version: '9.9.9', proxies: {} }),
+  }));
+  await page.route('**/api/conflicts', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ conflicts: {} }),
+  }));
+  await page.route('**/api/provider-health', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, isolateEnabled: false, isolated: [] }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+
+  const list = page.locator('#sessionsList');
+  await expect(list.locator('.session-item'), '应渲染 1 条运行中会话').toHaveCount(1, { timeout: 15000 });
+  await expect(list, '应显示任务标题').toContainText('Probe 编排任务');
+  await expect(list, '应显示代理徽章').toContainText('codex');
+  await expect(list, '运行中状态文案').toContainText('运行中');
+  await expect(list, '步数应来自 steps').toContainText('2 步');
+  await expect(list, '年龄应来自 createdAt').toContainText(/⏱ \d+m\d+s/);
+  await expect(list, 'createdAt 有效时不许出现 NaN').not.toContainText('NaN');
+
+  // 点「中止」：必须先真 POST（按钮 onclick 是动态拼的，模块没挂 window 就点不动）。
+  await page.locator('#sessionsList .session-item button').click();
+  await expect.poll(() => abortCalls, '点「中止」必须真 POST /api/sessions/sess-probe-1/abort')
+    .toContain('POST /api/sessions/sess-probe-1/abort');
+  await expect(page.locator('.toast.success').first(), '中止成功要有回执').toContainText('任务已中止', { timeout: 15000 });
+  // 成功后重新取数 → 第二次返回空列表 ⇒ 卡片回到空态（只弹 toast 不刷新 = 假成功）。
+  await expect(list, '中止成功后必须重渲染（第二次取数为空 → 空态）').toContainText('暂无运行中任务', { timeout: 15000 });
+  await expect(list.locator('.session-item'), '已中止的会话应从列表消失').toHaveCount(0);
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});
+
+test('总览：会话列表读失败不许装成「暂无任务」，另一张卡的读不吃它影响', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  let sessionCalls = 0;
+  page.on('request', (r) => { if (r.url().includes('/api/sessions/running')) sessionCalls += 1; });
+
+  await page.route('**/api/sessions/running', (route) => route.fulfill({
+    status: 500, contentType: 'application/json',
+    body: JSON.stringify({ ok: false, error: 'session store 锁冲突' }),
+  }));
+  // 另一路（Provider 隔离）故意正常：证明「一路挂掉不会把别的卡也变成空白/报错」。
+  await page.route('**/api/provider-health', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, isolateEnabled: false, isolated: [] }),
+  }));
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { name: 'Probe Sessions Proxy', port: 18790, defaultVersion: '9.9.9' } }),
+  }));
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { running: true, port: 18790, fault: false } }),
+  }));
+  await page.route('**/api/version', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ version: '9.9.9', proxies: {} }),
+  }));
+  await page.route('**/api/conflicts', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ conflicts: {} }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+
+  const list = page.locator('#sessionsList');
+  await expect(list, '读失败必须明说').toContainText('读取失败', { timeout: 15000 });
+  await expect(list, '要带出后端原因').toContainText('session store 锁冲突');
+  await expect(list, '要说明「读不到 ≠ 没有任务」').toContainText('不代表没有任务在跑');
+  // 这条是核心：读失败时**不许**留着空态文案。
+  await expect(list, '读失败不许说成「暂无运行中任务」').not.toContainText('暂无运行中任务');
+
+  // 另一张卡不受影响（一路挂 ≠ 全页空白）。
+  await expect(page.locator('#phList'), '另一路正常时隔离卡照常出结果').toContainText('所有 Provider 健康', { timeout: 15000 });
+
+  // 重试是真重跑，不是死按钮。
+  const before = sessionCalls;
+  await page.locator('#sessionsList .mp-retry-btn').click();
+  await expect.poll(() => sessionCalls, '点「重试」必须再请求一次 /api/sessions/running').toBeGreaterThan(before);
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});
+
+test('总览 Provider 隔离卡：有条目按判定文案渲染；读失败时副标题必须清成「—」且不开健康证明', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const now = Date.now();
+  await page.route('**/api/provider-health', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      ok: true, isolateEnabled: false, count: 2,
+      isolated: [
+        { providerId: 'probe-prov-a', consecutiveFailures: 3, unhealthyUntil: now + 600000,
+          correlation: { verdict: 'network-wide', sources: ['alert', 'error-patterns'] } },
+        { providerId: 'probe-prov-b', consecutiveFailures: 1, unhealthyUntil: now + 120000,
+          correlation: { verdict: 'single-proxy', sources: ['provider-health'] } },
+      ],
+    }),
+  }));
+  await page.route('**/api/sessions/running', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, count: 0, sessions: [] }),
+  }));
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { name: 'Probe Sessions Proxy', port: 18790, defaultVersion: '9.9.9' } }),
+  }));
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { running: true, port: 18790, fault: false } }),
+  }));
+  await page.route('**/api/version', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', proxies: {} }),
+  }));
+  await page.route('**/api/conflicts', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ conflicts: {} }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+
+  const card = page.locator('#phList');
+  await expect(card.locator('.session-item'), '应渲染 2 条隔离记录').toHaveCount(2, { timeout: 15000 });
+  await expect(card, 'network-wide 应写「全网故障」').toContainText('全网故障');
+  await expect(card, 'single-proxy 应写「单 Proxy 抖动」').toContainText('单 Proxy 抖动');
+  await expect(card, '失败次数要真显示').toContainText('连续失败 3 次');
+  await expect(card, '来源要带出来').toContainText('alert, error-patterns');
+  await expect(page.locator('#phSubtitle'), 'observe 模式的副标题来自接口').toContainText('observe 模式');
+
+  // 换一份「已开启隔离」的数据：副标题必须跟着变（写死的 observe 会在这里露馅）。
+  await page.unroute('**/api/provider-health');
+  await page.route('**/api/provider-health', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, isolateEnabled: true, count: 0, isolated: [] }),
+  }));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#phList'), '无隔离记录时的空态').toContainText('所有 Provider 健康', { timeout: 15000 });
+  await expect(page.locator('#phSubtitle'), 'isolateEnabled=true 时副标题应写 live').toContainText('自动隔离已开启');
+
+  // 读失败：卡体不许说「健康」，副标题必须清成「—」（两条铁律一起验）。
+  await page.unroute('**/api/provider-health');
+  await page.route('**/api/provider-health', (route) => route.fulfill({
+    status: 500, contentType: 'application/json',
+    body: JSON.stringify({ ok: false, error: 'provider 探测超时' }),
+  }));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#phList'), '读失败必须明说').toContainText('Provider 隔离状态读不到', { timeout: 15000 });
+  await expect(page.locator('#phList'), '要带出后端原因').toContainText('provider 探测超时');
+  await expect(page.locator('#phList'), '读失败不许开健康证明').not.toContainText('所有 Provider 健康');
+  await expect(page.locator('#phSubtitle'), '读失败时副标题必须清成「—」，不能还写着 observe').toHaveText('—');
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});

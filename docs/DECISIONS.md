@@ -385,3 +385,27 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - E 页面回流一份 `var url = 'http://127.0.0.1:18880/v1'` → 归属守卫红（字面量计数）。
 - **后果**：真跑 node **54/54**、coherence **七项**、jest 前端 **320/320**、全量 E2E **65/65**、tier0 闸门 **51/51**；`dashboard.html` **2075 行**（2.3b 起点 3121）。
 - **推翻条件 / 剩余**：最后一块自治片是「会话列表 + `loadProviderHealth`」。页面壳本身（鉴权 / 横幅 / 自动刷新调度 / 暗色 / 侧栏动态导航）不是视图，抽了只多一层跳转 —— 要动先改 `switchPage` 分支表与刷新调度，属于行为改动，应单独一片并单独拍板。
+
+## D-024 · 第九片抽概览次级卡（运行中任务 + Provider 隔离）；顺手删掉两个转发死码
+
+- **状态**：已执行（2026-11-15，2.3b 第九片，2.3b 视图抽离到此收口）
+- **背景**：D-023 末尾把「会话列表 + `loadProviderHealth`」登记为最后一块自治片。清点后确认：两张卡各只读一个接口（`/api/sessions/running`、`/api/provider-health`）、各只写一个容器（`#sessionsList`、`#phList`）、不读 `proxyStatus`、不被别的视图调用 —— 与 registry / onboarding 同形。区别在于会话卡多一个**写操作**（中止），而 Provider 隔离卡的渲染与读失败写法本来就在 `mp-shared.js`（2026-11-14 合并两处逐字重复的 HTML 后归位）。
+- **决策**：
+  - ① **新建 `public/views/sessions.js`**（`MPViews.sessions.{ load, abort, render }`）：取数 / 渲染 / 中止整块迁入。三条口径随实现一起搬（读失败 ≠ 没有任务、提示必须写进可见容器、中止必须有回执），页面不再留任何副本。
+  - ② **新建 `public/views/provider-health.js`**（`MPViews.providerHealth.load`）：本模块只有 20 行有效代码，存在的意义是**不许绕过 mp-shared**。渲染与读失败的唯一真源仍在 mp-shared.js，模块只负责「别自己拼一份 HTML」。
+  - ③ **删掉页面两个纯转发别名**（`renderProviderIsolation` / `showProviderReadError`）：它们是 `return MPShared.X(...)` 的一行壳，`loadProviderHealth` 搬走后没有任何调用者。死码的坏处不是占地方，是下一个人误以为「文案还能在这里改」——全仓现在只剩「模块 → MPShared」一条路径。
+  - ④ **两个不编数的细节**（同族：uptime 把 epoch 秒渲染成 `20772d`）：
+    - `createdAt` 缺失或不是日期 ⇒ 年龄渲染 `—`，不再出 `NaNs`；
+    - 状态文案只认后端真有的四种（`running/done/failed/aborted`，见 `lib/session-store.js` 的 `SESSION_STATUSES`），其余**原样出状态串**，删掉旧代码给非 running 编的「待处理」（后端没这个状态；照旧写法，一个 `failed` 会被显示成「待处理」）。
+  - ⑤ **`window.abortSessionFromDashboard` 由模块挂**：卡片的 `onclick="abortSessionFromDashboard('id')"` 是动态拼进 `innerHTML` 的，静态 HTML 里搜不到（`panel-inline-handlers` 只看静态属性）⇒ 生成处必须自己挂（D-017）。页面**不许**再挂第二次（同名两处挂载 = 又一份「谁是活的」，D-021④）。
+  - ⑥ **页面只留两个同名薄包装**（`loadSessions` / `loadProviderHealth`）：`init()`、`applyRefreshInterval`、`BroadcastChannel` 跨页同步、中止后的刷新都还按名字调用它们。
+  - ⑦ **新增 `tests/node/panel-sessions-ownership.test.js`（6 条）**：页面内联脚本不许再出现两个接口字面量（取数回流 = 两个请求点，谁后返回谁赢）；页面不许再声明 `renderSessionsList` / 两个转发别名，不许给 `window.abortSessionFromDashboard` 赋值；两个薄包装必须还在且真转发；模块必须挂 `window.abortSessionFromDashboard` 且不许出现「待处理」；provider-health 模块必须走 `MPShared` 两个函数且不许出现隔离卡的 HTML 文案。已登记进守卫登记表。
+  - ⑧ **新增 E2E `@tier0` 三条**（这两张卡此前**零运行态断言**）：
+    - 运行中任务：真按 `/api/sessions/running` 出数（标题 / 代理 / 运行中 / `2 步` / `⏱ \d+m\d+s` / 不出 `NaN`）→ 点「中止」必须真 `POST /api/sessions/sess-probe-1/abort`（断言只取 pathname，不写死端口）→ 成功后**重新取数**（第二次返回空 ⇒ 回到空态）。只弹 toast 不刷新就是「假成功」，这条专门钉它。
+    - 会话读失败：明说「读取失败」+ 带后端原因 + 「不代表没有任务在跑」+ **不许**留「暂无运行中任务」；同时另一路（隔离卡）照常出结果，证明「一路挂 ≠ 全页空白」；点重试真再请求一次。
+    - 隔离卡：两条隔离记录按 `verdict` 给「全网故障 / 单 Proxy 抖动」+ 失败次数 + 来源；`isolateEnabled` 两种取值副标题跟着变（写死 observe 会露馅）；读失败时**副标题必须被清成「—」**且卡体不许出现「所有 Provider 健康」（两条铁律一起验）。
+- **注入验证（六式全真红 + sha256 逐字节恢复）**：A 摘 `views/sessions.js` 接线 → coherence 点名 + 会话读失败 E2E 红；B 摘 `views/provider-health.js` 接线 → coherence + 隔离卡 E2E 红；C 摘 `global.abortSessionFromDashboard` → 归属守卫 + 中止 E2E 红（点按钮无请求）；D 页面重新长出 `renderSessionsList` 并直接 `fetchJSON('/api/sessions/running')` → 归属守卫红（2 条）；E 页面重新长出 `/api/provider-health` 取数 → 归属守卫红；F 隔离卡模块自己拼一份 HTML（第二真源复活）→ 归属守卫红。
+- 🔴 **本轮踩到自己身上的一类假绿：判定器取错退出码**。第一版注入脚本用 `cmd 2>&1 | tail` 判红绿，没有 `set -o pipefail` ⇒ 退出码永远是 `tail` 的 0，六式全部打印 `GREEN!!`，而同一行输出里明明写着 `1 failed`。这与 D-018（注释满足守卫）、D-022（注释吞掉守卫）同族但**方向不同**：前两种坏在被测物，这一种坏在**判据的执行方式**。修法是 `set -o pipefail;` + 只以被测命令自己的退出码为准。凡「跑个命令看它红不红」的验证，都得先问一句：这个退出码是谁的。
+- 🔴 **另一个反方向的细节**：「不许出现 `待处理`」这条判据第一版用 `includes`，结果被**文件头部的说明文字**触发（那段话用「」提到了这个词，而模块注释的续行没有 `*` 前缀，按行剥注释剥不掉）⇒ 守卫把散文当代码。改成只认带引号的 JS 字符串形态（`/['"]待处理['"]/`）。D-018 是「散文满足判据」，这次是「散文弄红判据」，两边都得防。
+- **后果**：真跑 node **59/59**、coherence **七项**、jest 前端 **320/320**、全量 E2E **68/68**、tier0 闸门 **54/54**；`dashboard.html` **2076 → 2007 行**（2.3b 起点 3121，累计 −1114），`views/` 下 10 个模块。
+- **2.3b 到此收口**：页内所有「数据视图」都已是独立模块，页面只剩**壳**——鉴权 / 横幅 / 自动刷新调度 / 暗色 / 侧栏动态导航 / SPA 分支表。壳不是视图：抽它只多一层跳转，且要动 `switchPage` 分支表与刷新调度，属行为改动，须单独一片并单独拍板。
