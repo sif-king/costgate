@@ -463,7 +463,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - ③ `dashboard.html` 的 `checkAuth` / `showLoginRequired` 变同名薄包装；删掉整段 fetch 改写与 `authToken` 快照；`init()` 里 `checkAuth()` 调用点零改动。
   - ④ 新增 `tests/node/panel-shell-auth.test.js`（5 条静态判据），登记进 `panel-guard-registry.test.js`。
 - **守卫的四个判据坑（都真踩了）**：
-  - 🔴 **登记表 `must` 是 `src.includes(kw)` 字面量比对**，不是正则。我按前一条的写法填了 `'mp-shell\\.js'`（源码里是 `mp-shell\.js`），字面量匹配不上 → 登记表红。关键字必须取「判据正则的**源码形态**」（`window\.fetch\s*=`），散文和普通文件名都不行。
+  - 🔴 **登记表 `must` 是 `src.includes(kw)` 字面量比对**，不是正则。我按前一条的写法把关键字写成「转义点 + 文件名」的形态（反斜杠加 `.js`），而登记表比的是**字面量**——文件里没有那个反斜杠，于是匹配不上、登记表红。关键字必须取「判据正则的**源码形态**」（见本条 `window` 后接转义点、点号后接 `fetch` 的那个写法），散文和普通文件名都不行。
   - 🔴 **别拿 `removeItem('auth_token')` 判「页面还在处理 401」**：页面的 `handleLogout` 本来就要清 token（主动退出 ≠ 会话过期），照这条写会误红。判据改成 `/status\s*===\s*401/`。
   - 🔴 **加载顺序判据不能拿裸 `indexOf('views/')`**：head 的注释里也会写 `views/*.js`，注释会抢到 script 标签前面，于是「顺序错」红在注释上而不是代码上。只认 `<script src="...">` 形态再取位置。
   - 🔴 **剥注释要引号感知、且只按行**：本守卫要断言字符串常量（`'/api/auth/status'`、`'x-auth-token'`）在不在，整段剥字符串会把判据一起剥掉；整段跨行剥又会像 D-022 那样被不平衡引号吞页。行级 + 引号感知两头避开。
