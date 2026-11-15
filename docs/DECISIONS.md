@@ -449,3 +449,26 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - **注入验证（四式全真红 + sha256 逐字节恢复）**：A 壳里 `localStorage.getItem` 换成 `void 0` → ①红；B 页面薄包装改回真实现 → ②红；C overview.js 注入 `hideDemoBanner` → ③红；D theme.js 的 `data-theme` 改 `data-theme-X` → ④红。全量还原后 sha 一致、守卫回绿。
 - **后果**：真跑 node 守卫 **67/67**、coherence **七项**、jest 前端 **320/320**、相关 E2E tier0 **20/20**；`dashboard.html` 2077 → **2030** 行（−47：删 demo 三函数 + initDarkMode + apiKey 四函数由实现变薄包装）。E2E 的「failed」状态只是 Playwright 退出时清理系统 Chrome 临时克隆目录被沙箱拒，测试本身 20 passed。
 - **推翻条件 / 剩余**：`switchPage` 分支表仍未动（同 D-025 剩余项）；B 组 service-provider WIP 全程未碰、未入库；暗色的 `.dark` class 兼容路径保留在 CSS 里（未删，避免影响仍带 `#darkModeToggle` 的 login.html 等旧页）。
+
+## D-027 · 壳第三片：鉴权三件套收口进 mp-shell.js；页面不再改写 window.fetch
+
+- **背景 / 触发**：老板「继续」。壳第二片收口后，壳内剩余职责只剩三块：鉴权、侧栏动态导航、`switchPage` 分支表。选鉴权，因为它是三者里唯一「所有接口请求的必经之路」——侧栏导航只影响一个 DOM 容器，分支表只影响可读性。
+- **为什么必须搬（三条都指向同一个病：没有单一定义）**：
+  - ① 全局 `fetch` 改写在页面 IIFE 里。谁照抄 dashboard 就会漏，而漏了**不报错**：页面照常出数据，只是 401 不再自动跳登录页、受保护接口不再自动带 token。属于「看着接好了、其实没接」。
+  - ② 同仓 9 个页面各写各的凭证：logs/knowledge/skills 各抄一份拦截器，settings 曾漏带 token（被 `x-auth-token` 缺失坑过一次），proxy-config/sessions 各处手拼 header。「请求怎么带上凭证」有 N 个答案，就等于没有答案。
+  - ③ 页面持 `var authToken = MPKernel.getToken()` 快照——这是「页面持一份状态」的最后一个样本。今天等价（全文只读不写），但一旦有人给 token 加刷新，快照立刻变过期值。
+- **做法**：
+  - ① `mp-shell.js` 新增 `currentToken` / `showLoginRequired` / `checkAuth` / `installFetchAuth`，token 一律**现读** `MPKernel.getToken()`；拦截器打 `__mpAuthInstalled` 标记防重入（重复引入不叠两层）；模块加载时即安装——比原来（内联 IIFE）更早，覆盖 head 里所有取数脚本，是严格超集，不是等价替换。
+  - ② 401 跳转**保留** `/api/auth/*` 豁免。这一条是硬约束：不豁免的话，登录页输错密码会被自己的拦截器当成会话过期，跳回自己。
+  - ③ `dashboard.html` 的 `checkAuth` / `showLoginRequired` 变同名薄包装；删掉整段 fetch 改写与 `authToken` 快照；`init()` 里 `checkAuth()` 调用点零改动。
+  - ④ 新增 `tests/node/panel-shell-auth.test.js`（5 条静态判据），登记进 `panel-guard-registry.test.js`。
+- **守卫的四个判据坑（都真踩了）**：
+  - 🔴 **登记表 `must` 是 `src.includes(kw)` 字面量比对**，不是正则。我按前一条的写法填了 `'mp-shell\\.js'`（源码里是 `mp-shell\.js`），字面量匹配不上 → 登记表红。关键字必须取「判据正则的**源码形态**」（`window\.fetch\s*=`），散文和普通文件名都不行。
+  - 🔴 **别拿 `removeItem('auth_token')` 判「页面还在处理 401」**：页面的 `handleLogout` 本来就要清 token（主动退出 ≠ 会话过期），照这条写会误红。判据改成 `/status\s*===\s*401/`。
+  - 🔴 **加载顺序判据不能拿裸 `indexOf('views/')`**：head 的注释里也会写 `views/*.js`，注释会抢到 script 标签前面，于是「顺序错」红在注释上而不是代码上。只认 `<script src="...">` 形态再取位置。
+  - 🔴 **剥注释要引号感知、且只按行**：本守卫要断言字符串常量（`'/api/auth/status'`、`'x-auth-token'`）在不在，整段剥字符串会把判据一起剥掉；整段跨行剥又会像 D-022 那样被不平衡引号吞页。行级 + 引号感知两头避开。
+- **注入验证（五式全真红，且红在对应判据上）**：① 壳里 `res.status === 401` → `402` ⇒ 判据①红；② 页面薄包装改回真实现 ⇒ ②红；③ 页面重新 `window.fetch = ...` ⇒ ③红；④ head 里把 mp-shell 提到 mp-kernel 之前 ⇒ ④红；⑤ settings.html 也引入 mp-shell ⇒ ⑤红。还原后 sha256 逐字节一致、守卫回绿。
+- **运行态验证（静态守卫证不了的那半）**：临时 Playwright spec 种一个假 token 开 dashboard，实测两件事——带 `x-auth-token` 头的请求真的发出去了（拦截器生效），且假 token 的 401 真把浏览器踢到登录页（跳转生效）。验完即删，不入库。
+- **E2E 归因（不只报数字）**：全量 tier0 本机 **56 passed / 2 failed**（`auto-refresh` 两条 + `copy-feedback` 一条），单跑时失败的那条又会换人——同配置连跑两遍，第 1 遍 4/4 绿、第 2 遍只红第 64 行。于是把 `mp-shell.js`/`dashboard.html` 退回 HEAD 版本用同一条命令跑两遍作对照：**HEAD 同样两遍都 1 failed**。⇒ 这条抖动与本次改动无关，是本机沙箱的既有噪声（Chrome 临时克隆目录被沙箱拒删也是同一类噪声）。改动件已按 sha256 逐字节还原。
+- **后果**：真跑 node 守卫 **72/72**（新增 5 条）、coherence **七项**、jest 前端 **320/320**、运行态鉴权自检 **1/1**；`dashboard.html` 2030 → **1987** 行（−43：删 fetch 改写整段 + 登录墙 DOM + `authToken` 快照，两函数变薄包装）。
+- **推翻条件 / 剩余**：`switchPage` 分支表与侧栏动态导航仍未搬（前者的收益是可读性、属行为改动，需单独拍板）；同仓其余 8 个页面的拦截器副本**未动**——它们各自自治、且 dashboard 之外的页面不引 mp-shell（引了就会多一份 401 跳转语义），要收口得先把 mp-shell 拆成「可复用鉴权层 + dashboard 专属壳」，属独立一片。

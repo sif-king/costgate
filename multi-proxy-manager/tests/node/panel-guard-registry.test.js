@@ -105,6 +105,14 @@ const GUARDS = [
     must: ['API_KEY_DISMISS_TTL_MS\\s*=', 'stripLineComments', 'function\\s+initDarkMode\\b'],
     why: '壳横幅归属（apiKey 四函数真实现唯一在壳、页面只留薄包装、demo 与 initDarkMode 死码不复活）',
   },
+  {
+    // 壳第三片（鉴权收口）的守门人。登记表用 src.includes(kw) 逐个比字面量，
+    // 所以关键字要取「判据正则的**源码形态**」（如 window\.fetch\s*=），
+    // 散文写「我们检查了 window.fetch」骗不过这一项。
+    file: 'tests/node/panel-shell-auth.test.js',
+    must: ['__mpAuthInstalled', 'res\\.status\\s*===\\s*401', 'window\\.fetch\\s*=', 'mp-shell.js'],
+    why: '壳鉴权归属（探测/登录墙/fetch 注入唯一在壳、页面只留薄包装、不许再改写 window.fetch、加载顺序与引用面）',
+  },
 ];
 
 test('关键面板守卫都在树里，且没有被放宽成空壳', () => {

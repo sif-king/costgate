@@ -1372,7 +1372,7 @@
   // 状态的持有者是概览视图，页面只经 MPViews.overview.status() 读侧栏勋章。
   // 不在本页留第二份，是因为两份快照会让「卡片显示的状态」和「按钮判断的状态」
   // 来自不同时刻 —— 文案和动作可能相反。
-  var authToken = MPKernel.getToken();
+  // token 同理（壳第三片）：本页不再持 `var authToken` 快照，一律 MPKernel.getToken() 现读。
 
   // ===== 共享助手（mp-kernel.js，全站一份）=====
   // esc / fetchJSON / showReadError 原本写在本页，另有 7 个页面各抄了一份。抄本会
@@ -1600,8 +1600,8 @@
   // 实现（余额 / 预算 / 周报 / 账本 Hero 的取数与渲染）已抽到 views/cost.js。
   // 为什么这一片可以抽：三者只依赖 token + MPStates + 若干固定容器 id，不读
   // proxyStatus、不写共享状态、不被别的视图调用 —— 与 registry 同形（自治片）。
-  // token 来源：模块内改用 MPKernel.getToken()，不再跨 IIFE 读 authToken
-  // （authToken 本就是它的快照，全文只读不写，二者等价）。
+  // token 来源：模块内改用 MPKernel.getToken()，不再跨 IIFE 读页面变量
+  // （页面那份 `var authToken` 快照已在壳第三片删除，读入口只有 kernel 一处）。
   // 三个静态内联 handler 由模块自己挂 window.*；这里保留同名薄包装，
   // switchPage 分支表与 init() 的调用点零改动。
   function loadCostPage() {
@@ -1670,57 +1670,14 @@
   function isApiKeyBannerDismissed() { return window.MPShell.isApiKeyBannerDismissed(); }
   function dismissApiKeyBanner() { return window.MPShell.dismissApiKeyBanner(); }
 
-  // ===== Auth Check =====
-  function checkAuth() {
-    return fetch('/api/auth/status')
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        if (data.needsSetup && !authToken) {
-          showLoginRequired();
-          return false;
-        }
-        return true;
-      })
-      .catch(function() {
-        showOfflineBanner();
-        return true;
-      });
-  }
-
-  function showLoginRequired() {
-    var main = document.getElementById('mainContent');
-    main.innerHTML =
-      '<div class="login-required-container">' +
-        '<div class="login-required-card">' +
-          '<div class="login-required-icon"><svg class="icon-svg" style="width:36px;height:36px;" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>' +
-          '<h2 class="login-required-title">需要登录</h2>' +
-          '<p class="login-required-desc">请先配置认证密码后访问管理面板</p>' +
-          '<a href="login.html" class="btn btn-primary" style="text-decoration:none;display:inline-block;">去设置密码</a>' +
-        '</div>' +
-      '</div>';
-  }
-
-  // ===== Intercept fetch for auth token =====
-  var _origFetch = window.fetch;
-  window.fetch = function(url, options) {
-    if (options === undefined) options = {};
-    if (typeof url === 'string' && url.indexOf('/api/') === 0 && authToken) {
-      if (!options.headers) options.headers = {};
-      if (typeof options.headers === 'object') {
-        options.headers['x-auth-token'] = authToken;
-      }
-    }
-    var p = _origFetch(url, options);
-    if (typeof url === 'string' && url.indexOf('/api/') === 0 && url.indexOf('/api/auth/') !== 0) {
-      p.then(function(res) {
-        if (res.status === 401) {
-          sessionStorage.removeItem('auth_token');
-          window.location.href = 'login.html';
-        }
-      }).catch(function() {});
-    }
-    return p;
-  };
+  // ===== Auth =====
+  // 2026-11-15 壳第三片：真实现（探登录态 / 登录墙 DOM / 全局 fetch 改写）整段搬入
+  // mp-shell.js，本页只留同名薄包装。为什么搬：改写 window.fetch 是「所有接口请求的
+  // 必经之路」，却原来由本页私下改——别的页面照抄这段就会漏，而漏了不报错，只是
+  // 401 不再自动跳登录页。壳里装一次，全站一个答案。
+  // 拦截器由 mp-shell.js 在 <head> 里自装（早于本页与所有 views），此处不再安装。
+  function checkAuth() { return window.MPShell.checkAuth(); }
+  function showLoginRequired() { return window.MPShell.showLoginRequired(); }
 
   // ===== Auto-refresh Control =====
   // 单一真源（2026-11-15，2.3b 收口后第一片「壳」）：
