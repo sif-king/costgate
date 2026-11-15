@@ -447,5 +447,5 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - ④ 新增 `tests/node/panel-shell-banners.test.js`（4 条静态判据），登记进 `panel-guard-registry.test.js`；`panel-view-isolation.test.js` 的 `PAGE_LOCALS` 注释同步（名字保留防复活）。
 - **守卫注释里的一个坑**：判据②最初对 dashboard.html 整页「剥字符串」，被页面里含引号的正则/字符串跨行吞掉函数定义，导致薄包装误判不存在（D-022「整段剥注释吞半页」同族）。改为**按行剥 `//` 注释**——薄包装/死码都看行首形态，行级处理既避注释误判又不跨行吞页。
 - **注入验证（四式全真红 + sha256 逐字节恢复）**：A 壳里 `localStorage.getItem` 换成 `void 0` → ①红；B 页面薄包装改回真实现 → ②红；C overview.js 注入 `hideDemoBanner` → ③红；D theme.js 的 `data-theme` 改 `data-theme-X` → ④红。全量还原后 sha 一致、守卫回绿。
-- **后果**：真跑 node 守卫 **67/67**、coherence **七项**、jest 前端 **320/320**、相关 E2E tier0 **20/20**；`dashboard.html` 2077 → 约 2051 行（净删 26 行死码，apiKey 四函数变薄包装）。E2E 的「failed」状态只是 Playwright 退出时清理系统 Chrome 临时克隆目录被沙箱拒，测试本身 20 passed。
+- **后果**：真跑 node 守卫 **67/67**、coherence **七项**、jest 前端 **320/320**、相关 E2E tier0 **20/20**；`dashboard.html` 2077 → **2030** 行（−47：删 demo 三函数 + initDarkMode + apiKey 四函数由实现变薄包装）。E2E 的「failed」状态只是 Playwright 退出时清理系统 Chrome 临时克隆目录被沙箱拒，测试本身 20 passed。
 - **推翻条件 / 剩余**：`switchPage` 分支表仍未动（同 D-025 剩余项）；B 组 service-provider WIP 全程未碰、未入库；暗色的 `.dark` class 兼容路径保留在 CSS 里（未删，避免影响仍带 `#darkModeToggle` 的 login.html 等旧页）。
