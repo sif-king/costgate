@@ -517,4 +517,43 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - **后果**：node 守卫 **75/75**、coherence 七项、jest 前端 **320/320**、E2E tier0 **58/58**；
   另用临时 spec 逐页（7 页）验「无 pageerror + `window.fetch.__mpAuthInstalled` 为真」，验完即删。
 - **剩余**：`switchPage` 分支表与侧栏动态导航（后者判定不该进壳：它读 `MPViews.overview.status`，
-  搬进壳会造成「壳依赖视图」的反向依赖）。
+  搬进壳会造成「壳依赖视图」的反向依赖）。`switchPage` 部分已由 **D-029** 收口。
+
+## D-029 · `switchPage` 的 if/else 链改成页路由表：把「切过去没数据」从沉默故障变成构建期红灯
+
+- **日期**：2026-11-15（壳第五片，老板「继续」）
+- **背景**：`switchPage` 里七个 `if / else if` 承担「切到哪页要拉什么」。这条链的失败模式是沉默的：
+  漏一行、或把 id 写错一个字母，症状都是**页面切过去了、数据永远不出现**——不白屏、不报错、控制台无声。
+  这不是假想：链中间还夹着一条「'sessions' 不再有分支」的注释，加页的人很容易顺手插在注释下面。
+- **开工时纠正了自己一处**：上一片结尾我说「七个分支的行为要逐条对齐（页面显隐、hash、历史、返回按钮）」。
+  实测 `switchPage` 里**没有 hash / history / popstate 任何一行**（dashboard.html + nav.js 全文 grep 为空），
+  它只做三件事：`.page` 显隐、页内 tab 高亮、该页首屏取数。所以「对齐 hash/历史/返回」是个不存在的任务，不做；
+  行为对齐面就是这三件。
+- **决策**：链改成 `PAGE_LOADERS` 表（today / health / alerts / registry / cost / dashboard / shadow 七行），
+  `switchPage` 只做 `var load = PAGE_LOADERS[pageId]`。值一律写**裸函数名**（本页 loader 全是 function 声明、有提升），
+  不写字符串——名字拼错会当场 ReferenceError，而不是静默变成 undefined。
+- **顺带修的潜伏缺陷（当前路径不可达，零可见变化）**：老写法是「先把所有 `.page` 的 active 摘光，再按 id 找分支」，
+  未知 id 会留下一片空白屏、控制台还一句话都没有。改成**先验 id、再动 DOM**：未知 id 一个 DOM 都不碰，
+  `console.error` 后返回，当前这页留着。今天没有未知 id 的调用方，所以这是修「将来会有人踩」，不是修「现在坏了」。
+- **删掉的死代码（附证据）**：`switchPage` 里那句 `document.querySelector('.nav-item[data-page="…"]')` 永远不命中——
+  `nav.js` 的 nav-item 模板是 `<a class="nav-item" href="…">`（`renderNav` 产出，侧栏项全是指向独立页面的链接），
+  `data-page` 只出现在 `.section-tab` 上。注释里「页内 tab 和侧栏是同一件事，必须一起更新」因此是错的，一并改掉。
+- **一处既有 UI 瑕疵，本轮只记录不修**：上面那段「摘掉所有 `.nav-item` 的 active」仍在、且摘完没有任何地方补回来，
+  净效果是**切一次 tab 侧栏就没高亮了**（旧代码同样如此，因为补高亮那句从没命中）。修它属可见 UI 变化，单独拍板。
+- **没合并的东西**：`refreshTick` 里还有一处按 `pageId` 的两分支（dashboard / today），**故意不并进路由表**——
+  它回答的是「定时器该刷哪一屏」（子集，且不带首屏取数语义），与「进页要拉什么」不是同一件事。
+  合表会让「刷新」和「进页」互相绑死，改一个动两个。
+- **守卫**：`tests/node/panel-route-table.test.js`（7 条），登记进 `panel-guard-registry.test.js`。
+  ① 表键 ↔ `.page` 容器**双向**比对（缺/多都报）；② `SPA_VIEWS` 每个 id 都有容器+加载函数；
+  ③ 手写 tab 的 `data-page` 也得是表里的键；④ 每个值必须解析到真实的 function 声明（挡「写成字符串」「拼错名字」两种静默）；
+  ⑤ `switchPage` 体内不许再出现 `pageId === '…'`；⑥ 未知 id 必须先验后改、且要 `console.error`；
+  ⑦ 侧栏项是链接（锁定「切页不需要更新侧栏高亮」这个判断，改了会红）。
+- **判定器坑（本轮真踩，又一次假绿）**：取块工具写死找第一个 `{`，而 `SPA_VIEWS` 是**数组**，第一个 `{` 是首个条目的
+  对象体 ⇒ 只解析出 `today` 一个 id，判据 ② 退化成「只验 1/6」却全绿。修法：认「第一个出现的 `{` 或 `[`」并配同种括号；
+  另加一条**内部一致性**断言（解析出的 id 数 == `label:` 数），让「圈错范围」这类失败自己暴露，不必等下一轮人眼发现。
+- **注入验证（十式全真红，且各自红在对应判据）**：删 health 加载行 / 多一行指向不存在的容器 / SPA_VIEWS 加一个无容器的 tab /
+  手写 tab 改 `data-page` / 值写成字符串 / 值拼错函数名 / 体内长回 if-else / 把 DOM 改动提到验 id 之前 /
+  页面重新出现 `.nav-item[data-page=` / nav.js 的 nav-item 改成 div。还原后 sha256 逐字节一致、守卫回绿。
+- **后果**：node 守卫 **82/82**、coherence 七项、`drift-check` 无漂移、jest 前端 **320/320**、E2E tier0 **58/58**。
+  `dashboard.html` 1990 → 2022 行（**+32**）：代码本体从「7 条分支」变成「表 7 行 + 一次查表」，
+  变长的是把「为什么这么写」的注释补全了——净代码量是减的，这一点如实记下，不拿「行数下降」当成绩。

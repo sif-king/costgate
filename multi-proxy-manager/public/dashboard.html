@@ -1416,6 +1416,36 @@
     else console.error('[dashboard] views/today.js 未加载，今天页无法取数');
   }
 
+  // ===== 页路由表（2026-11-15，D-029）=====
+  // 「切到哪一页要拉什么」集中在这一张表里。原先是一串 if / else if：加一页等于在
+  // 链子中间插一行，而漏一行、或把 id 写错一个字母，症状都是「页面切过去了、数据
+  // 永远不出现」——不白屏、不报错、控制台也没声音，只能靠人眼发现。
+  //
+  // 改成表之后这件事变成机器可判：表里的键必须和页面上真实存在的 .page 容器一一对上
+  // （tests/node/panel-route-table.test.js 双向比对），漏页从沉默故障变成构建期红灯。
+  //
+  // 值必须是「建表这一刻已经就绪」的函数。本页所有 loader 都是 function 声明（有提升），
+  // 所以直接写函数名是安全的；名字拼错会当场 ReferenceError，而不是静默变成 undefined
+  // ——这也是宁可写裸名字、不写成字符串的原因。
+  var PAGE_LOADERS = {
+    // 「今天」要读日期下拉的当前值，所以必须在点击时读，不能建表时读死。
+    today: function () {
+      var picker = document.getElementById('todayDayPicker');
+      loadTodayPage(picker ? picker.value : '');
+    },
+    health: loadHealthPage,
+    alerts: loadAlertsPage,
+    registry: loadRegistryPage,
+    // 成本页一次拉两块：账本本体 + 瞭望塔卡。
+    cost: function () { loadCostPage(); loadWatchtower(); },
+    // 概览（页内 tab 上叫「概览」，容器 id 是 page-dashboard）。它只补成本主权卡，
+    // 首屏其余数据由 init() 统一取，切页时不重复拉。
+    dashboard: loadCostSovereignty,
+    shadow: loadShadowPage,
+    // 'sessions' 故意不在这张表里：侧栏「任务管理」走 /sessions（独立页 sessions.html），
+    // 页内 session 容器已于 2026-11-14 删除。往表里加它 = 指向一个不存在的容器。
+  };
+
   function switchPage(pageId) {
     // 这里**不许**再动定时器（2026-11-15）。
     // 旧代码是「离开概览就 clearInterval」，但没有任何地方在回来时重建它 ——
@@ -1423,6 +1453,15 @@
     // 屏幕上的数字只是停住不动。那是这个功能最坏的失败形态：界面对、行为不对。
     // 现在定时器的生命周期只归 applyRefreshInterval 一处；刷哪一屏由 refreshTick 看
     // 当前活动页决定。壳这里只管「切页 + 该页首屏取数」，不再兼职调度。
+
+    // 先验 id、再动 DOM。老写法是「先把所有 .page 的 active 摘光，再按 id 找分支」，
+    // 碰上未知 id 就留下一片空白屏，控制台还一句话都没有 —— 分不清是路由漏了一行
+    // 还是后端挂了。现在未知 id 一个 DOM 都不碰：当前这页留着，比切过去变空白有用。
+    var load = PAGE_LOADERS[pageId];
+    if (!load) {
+      console.error('[dashboard] 未知页面 id：' + pageId + '（PAGE_LOADERS 里没有这一行）');
+      return;
+    }
 
     var pages = document.querySelectorAll('.page');
     for (var i = 0; i < pages.length; i++) {
@@ -1432,9 +1471,14 @@
     for (var j = 0; j < navItems.length; j++) {
       navItems[j].classList.remove('active');
     }
-    // 页内 tab 和侧栏是同一件「当前在哪」的两种表示，必须一起更新。
-    // 漏了这一步的症状：从侧栏点进来，tab 高亮还停在上一次点的那个视图上，
-    // 屏幕内容和高亮对不上（比没有高亮更误导）。
+    // 页内 tab 要跟着内容一起换。「当前在哪」在这里有 tab 高亮和 .page 显隐两处表示，
+    // 漏掉这一步的症状是：切过去内容变了，高亮还停在上一个视图上——比没有高亮更误导。
+    //
+    // ⚠️ 侧栏不在上面那段里，而且**摘了不补**：侧栏项由 nav.js 渲染成指向独立页面的
+    // <a href>（nav.js 的 nav-item 模板），从不带 data-page，所以「摘掉所有 .nav-item
+    // 的 active」之后没有任何地方会把它加回来，净效果是切一次 tab 侧栏就没高亮了。
+    // 这是既有行为（旧代码里那句按 data-page 查侧栏的语句永远匹配不到，等于没写），
+    // 本次只删掉那句永远不会命中的查询、不改可见效果；要修属可见 UI 变化，单独拍板。
     var tabs = document.querySelectorAll('#viewTabs .section-tab');
     for (var t = 0; t < tabs.length; t++) {
       var tabOn = tabs[t].getAttribute('data-page') === pageId;
@@ -1445,21 +1489,9 @@
     var page = document.getElementById('page-' + pageId);
     if (page) page.classList.add('active');
 
-    var nav = document.querySelector('.nav-item[data-page="' + pageId + '"]');
-    if (nav) nav.classList.add('active');
-
     closeMobileSidebar();
 
-    // Load page-specific data
-    if (pageId === 'today') loadTodayPage(document.getElementById('todayDayPicker') ? document.getElementById('todayDayPicker').value : '');
-    else if (pageId === 'health') loadHealthPage();
-    else if (pageId === 'alerts') loadAlertsPage();
-    else if (pageId === 'registry') loadRegistryPage();
-    // 'sessions' 不再有分支：侧栏「任务管理」走 /sessions（独立页 sessions.html），
-    // 页内 session 容器已于 2026-11-14 删除，留着这个分支只会指向不存在的容器。
-    else if (pageId === 'cost') { loadCostPage(); loadWatchtower(); }
-    else if (pageId === 'dashboard') loadCostSovereignty();
-    else if (pageId === 'shadow') loadShadowPage();
+    load();
   }
 
   // ===== 影子模式页：实现已抽到 views/shadow.js（阶段 2.3b 第一片）=====

@@ -114,6 +114,13 @@ const GUARDS = [
     must: ['__mpAuthInstalled', 'res\\.status\\s*===\\s*401', 'window\\.fetch\\s*=', "'/api/auth/'"],
     why: '跨页鉴权归属（真实现唯一在 mp-auth.js、全站不许再改写 window.fetch、打 /api 的页面必须引它、加载顺序与无鉴权页反例）',
   },
+  {
+    // 页路由表的守门人。关键字取判据的「源码形态」：登记表用 src.includes 字面量比对，
+    // 散文里写「我们检查了 PAGE_LOADERS」骗不过这一项。
+    file: 'tests/node/panel-route-table.test.js',
+    must: ['PAGE_LOADERS', 'pageContainers', 'spaViewIds', 'var PAGE_LOADERS = {'],
+    why: '页路由表完备性（表键与 .page 容器双向一致、tab 有落点、值必须可调用、switchPage 不许长回 if-else）',
+  },
 ];
 
 test('关键面板守卫都在树里，且没有被放宽成空壳', () => {
