@@ -98,6 +98,13 @@ const GUARDS = [
     must: ['@tier0', '@pr-gate', '__statusInterval', 'autoRefreshEnabled', '请求风暴'],
     why: '自动刷新的运行态守门人（跨 tab 存活 / 关掉要记住 / 非法档位不许变请求风暴 / 两条关闭路径同一条状态）',
   },
+  {
+    // 壳第二片（横幅收口）的守门人。关键字只用判据正则里的形态（带转义反斜杠）
+    // 与辅助函数名，散文注释满足不了 —— 否则改写判据为「打印式」就能骗过登记表。
+    file: 'tests/node/panel-shell-banners.test.js',
+    must: ['API_KEY_DISMISS_TTL_MS\\s*=', 'stripLineComments', 'function\\s+initDarkMode\\b'],
+    why: '壳横幅归属（apiKey 四函数真实现唯一在壳、页面只留薄包装、demo 与 initDarkMode 死码不复活）',
+  },
 ];
 
 test('关键面板守卫都在树里，且没有被放宽成空壳', () => {

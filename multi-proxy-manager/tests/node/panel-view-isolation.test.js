@@ -32,6 +32,9 @@ const VIEWS = path.join(PUBLIC, 'views');
 // 2026-11-15 第七片补 showDemoBanner / hideDemoBanner：概览抽离时模块里写了裸调
 // `hideDemoBanner()`（页面有同名函数），运行时就是 ReferenceError——而它在
 // `/api/status` 成功的分支里，页面照常出数据，只是演示横幅不收。同类拼接靠名单挡。
+// 壳第二片（同日）：demo 横幅三函数与 overview.js 的副本已整体删除（#demoBanner
+// 元素早不在 DOM）；名字留在名单里是防复活——日后谁再把「裸调页面局部名」写回模块，
+// 判据照红。apiKey 四函数已收进 MPShell，模块要用的是 S.xxx()，不在此名单。
 const PAGE_LOCALS = [
   'fetchJSON', 'showReadError', 'showToast', 'esc',
   'authToken', 'proxyStatus', 'PROXY_CONFIGS', 'versionCache',

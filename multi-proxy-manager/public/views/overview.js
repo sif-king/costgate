@@ -64,13 +64,9 @@
   // 返回，早到那次若直接 return，9 个代理就时有时无。改为暂存 + 等容器就绪事件补画。
   var pendingProxyNavEntries = null;
 
-  // 读成功 = manager 活着，演示横幅（如果有）该收了。页面壳里另有同名函数，
-  // 那是给别的路径用的；模块里必须自带一份，裸调页面局部名就是 ReferenceError
-  // （D-020 的教训，本条同名风险已登记进 panel-view-isolation 的 PAGE_LOCALS）。
-  function hideDemoBanner() {
-    var banner = document.getElementById('demoBanner');
-    if (banner) banner.classList.add('hidden');
-  }
+  // 2026-11-15 壳第二片：原 hideDemoBanner() 局部副本整体删除——#demoBanner
+  // 元素早就不在 DOM（全仓 grep 仅三处对不存在的元素空打），两处调用点一并去掉。
+  // 真正读成功时要收的是 offlineBanner，由 S.hideOfflineBanner() 负责，就在这两处调用里。
 
   // ===== 概览首屏 =====
   function render(versionData) {
@@ -260,7 +256,6 @@
         highlightStatusChanges(prevStatusSnapshot, proxyStatus);
         prevStatusSnapshot = null;
         S.hideOfflineBanner();
-        hideDemoBanner();
       })
       .catch(function(err) {
         // 过去这里在 proxyStatus 为空时喂 getMockStatus()——三个假代理，
@@ -318,7 +313,6 @@
         versionCache = data;
         renderVersion(data);
         S.hideOfflineBanner();
-        hideDemoBanner();
       })
       .catch(function(err) {
         // 过去这里兜底 getMockVersion()——假的 '1.0.3' + 三个假子版本号。

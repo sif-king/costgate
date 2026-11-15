@@ -433,3 +433,19 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - 🔴 **本轮踩到的新一类问题：假红**。前几片防的是「假绿」（D-018 注释满足判据、D-022 注释吞掉判据、D-024 判定器取错退出码）；这次是反向：测试在**首屏自己那次取数还没回来**时就开始计数，于是把正常首屏请求算成「关掉之后偷跑」，看着像产品 bug，其实是测试没等被测物就绪。修法是判「统计卡是否还在转圈」（`waitFirstPaint`），不是加 `sleep`。同族：加压跑时 30 秒默认超时把被测物掐死再报失败，也是假红 —— 本文件显式抬到 90 秒。
 - **后果**：真跑 node **63/63**、coherence **七项**、jest 前端 **320/320**、全量 E2E **72/72**（连跑两遍）、tier0 闸门 **58/58**；`dashboard.html` 2007 → 2077 行（**+70，是修 bug 的净增，不是抽离**）。
 - **推翻条件 / 剩余**：`switchPage` 分支表本身没动（仍是 if-else 长链，七页）。它不是 bug，只是不好看；要改成路由表属行为改动，且收益是「可读」不是「不出错」，不与本片混做。另外 `init()` 里 `Promise.all([loadStatus(), loadVersion()])` 之后才取 `loadSessions`、`loadProviderHealth` 这些次级卡的数据，首屏取数仍是串行两段 —— 要不要并发属性能优化，应单独量过再改。
+
+## D-026 · 壳第二片：apiKey 横幅真实现收口进 mp-shell.js；顺手清掉 demo 横幅与 initDarkMode 两处死码
+
+- **背景 / 触发**：老板「按你的推荐，能做都做，继续」。上一轮给的三个方向里推荐的是「壳第二片：把 demo/apiKey 横幅 + 暗色模式收口进 mp-shell.js」。开工侦察后**校正了推荐里不成立的一半**（老板要的就是及时纠正 + 给正确解法，不是照单全搬）：
+  - apiKey 横幅是**真机制**（`#apiKeyBanner` 在 DOM、有内联 onclick、`init()` 里 env-check 触发），值得收口；
+  - demo 横幅是**纯遗迹**（`#demoBanner` 元素早不在 DOM，全仓只剩 dashboard 两处 + overview 一处对不存在的元素空打）——搬进壳等于把死码扶正，正确做法是删；
+  - `initDarkMode()` 是**半死码**：它找的 `#darkModeToggle` 按钮早不在 dashboard DOM（主题入口已收口到 nav.js 三态切换 `mp-theme-switch`），click 绑定永远不跑，只剩「读旧 `darkMode` 键设 `.dark` class」半句在跑，而 CSS 已双选择器兼容 `html[data-theme=dark]`。暗色真源 = `theme.js`（head 就位设 data-theme）+ `nav.js`（切换器），页面自建的第二套应删，不是收进壳。
+- **做法**：
+  - ① `showApiKeyBanner`/`hideApiKeyBanner`/`isApiKeyBannerDismissed`/`dismissApiKeyBanner` 四函数真实现搬进 `mp-shell.js` 的 `MPShell`（含 `API_KEY_DISMISSED_KEY` + 24h TTL + 读写 localStorage），dashboard.html 留四个同名薄包装（`return window.MPShell.xxx()`）。
+  - ② 删 dashboard.html 的 `showDemoBanner`/`hideDemoBanner`/`dismissDemoBanner` 三函数、overview.js 的 `hideDemoBanner` 局部副本与两处调用。
+  - ③ 删 dashboard.html 的整个 `initDarkMode()` 函数与 `init()` 里的调用；暗色完全交给 theme.js + nav.js。
+  - ④ 新增 `tests/node/panel-shell-banners.test.js`（4 条静态判据），登记进 `panel-guard-registry.test.js`；`panel-view-isolation.test.js` 的 `PAGE_LOCALS` 注释同步（名字保留防复活）。
+- **守卫注释里的一个坑**：判据②最初对 dashboard.html 整页「剥字符串」，被页面里含引号的正则/字符串跨行吞掉函数定义，导致薄包装误判不存在（D-022「整段剥注释吞半页」同族）。改为**按行剥 `//` 注释**——薄包装/死码都看行首形态，行级处理既避注释误判又不跨行吞页。
+- **注入验证（四式全真红 + sha256 逐字节恢复）**：A 壳里 `localStorage.getItem` 换成 `void 0` → ①红；B 页面薄包装改回真实现 → ②红；C overview.js 注入 `hideDemoBanner` → ③红；D theme.js 的 `data-theme` 改 `data-theme-X` → ④红。全量还原后 sha 一致、守卫回绿。
+- **后果**：真跑 node 守卫 **67/67**、coherence **七项**、jest 前端 **320/320**、相关 E2E tier0 **20/20**；`dashboard.html` 2077 → 约 2051 行（净删 26 行死码，apiKey 四函数变薄包装）。E2E 的「failed」状态只是 Playwright 退出时清理系统 Chrome 临时克隆目录被沙箱拒，测试本身 20 passed。
+- **推翻条件 / 剩余**：`switchPage` 分支表仍未动（同 D-025 剩余项）；B 组 service-provider WIP 全程未碰、未入库；暗色的 `.dark` class 兼容路径保留在 CSS 里（未删，避免影响仍带 `#darkModeToggle` 的 login.html 等旧页）。

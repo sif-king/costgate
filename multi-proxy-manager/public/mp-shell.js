@@ -35,10 +35,36 @@
     if (el) el.classList.remove(cls);
   }
 
+  // ── API Key 横幅（2026-11-15 壳第二片收口）────────────────────────
+  // 真实现搬进壳，dashboard.html 只留同名薄包装。为什么值得收：这批函数是
+  // 「横幅该不该出现」的唯一判据（24 小时内的关闭记忆），页面 init() 要读它、
+  // 内联 onclick 要调它。留在页面 IIFE 里，等于壳的横幅机制被切成两半——
+  // 一半（offline）在 mp-shell.js、一半（apiKey）在页面，早晚对不上。
+  var API_KEY_DISMISSED_KEY = 'apiKeyBannerDismissed';
+  var API_KEY_DISMISS_TTL_MS = 24 * 60 * 60 * 1000; // 关闭后 24h 内不再弹
+
+  function showApiKeyBanner() { removeClass('apiKeyBanner', 'hidden'); }
+  function hideApiKeyBanner() { addClass('apiKeyBanner', 'hidden'); }
+  function isApiKeyBannerDismissed() {
+    try {
+      var ts = localStorage.getItem(API_KEY_DISMISSED_KEY);
+      if (ts === null) return false;
+      return (Date.now() - parseInt(ts, 10)) < API_KEY_DISMISS_TTL_MS;
+    } catch (e) { return false; }
+  }
+  function dismissApiKeyBanner() {
+    hideApiKeyBanner();
+    try { localStorage.setItem(API_KEY_DISMISSED_KEY, String(Date.now())); } catch (e) {}
+  }
+
   global.MPShell = {
     showLoading: function () { addClass('loadingBar', 'active'); },
     hideLoading: function () { removeClass('loadingBar', 'active'); },
     showOfflineBanner: function () { removeClass('offlineBanner', 'hidden'); },
     hideOfflineBanner: function () { addClass('offlineBanner', 'hidden'); },
+    showApiKeyBanner: showApiKeyBanner,
+    hideApiKeyBanner: hideApiKeyBanner,
+    isApiKeyBannerDismissed: isApiKeyBannerDismissed,
+    dismissApiKeyBanner: dismissApiKeyBanner,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
