@@ -85,6 +85,19 @@ const GUARDS = [
            '/api/sessions/running', 'sess-probe-1/abort', 'Provider 隔离状态读不到'],
     why: '健康视图经共享层取数并真渲染 + 概览次级卡（运行中任务 / Provider 隔离）的运行态守门人',
   },
+  {
+    // 第十片（壳·自动刷新调度）的两个守门人。关键字同样只用**代码里的形态**：
+    // `functionBody` 是取函数体的辅助函数名、`\.options/` 只可能来自判据正则
+    // （`/\.options/`），散文里写「从 select.options 读」满足不了带转义的那一版。
+    file: 'tests/node/panel-refresh-schedule.test.js',
+    must: ['functionBody', '\\.options/', "'autoRefreshEnabled'", 'setInterval\\('],
+    why: '自动刷新调度归属（定时器只在 applyRefreshInterval 一处建与清、switchPage 不许碰、关/开必须落盘、档位来自 DOM 选项）',
+  },
+  {
+    file: 'e2e/auto-refresh.spec.js',
+    must: ['@tier0', '@pr-gate', '__statusInterval', 'autoRefreshEnabled', '请求风暴'],
+    why: '自动刷新的运行态守门人（跨 tab 存活 / 关掉要记住 / 非法档位不许变请求风暴 / 两条关闭路径同一条状态）',
+  },
 ];
 
 test('关键面板守卫都在树里，且没有被放宽成空壳', () => {

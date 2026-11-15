@@ -1414,11 +1414,12 @@
   }
 
   function switchPage(pageId) {
-    // Stop status polling when leaving dashboard
-    if (pageId !== 'dashboard' && window.__statusInterval) {
-      clearInterval(window.__statusInterval);
-      window.__statusInterval = null;
-    }
+    // 这里**不许**再动定时器（2026-11-15）。
+    // 旧代码是「离开概览就 clearInterval」，但没有任何地方在回来时重建它 ——
+    // 于是点一次别的 tab 再回来，自动刷新就永久死掉，而开关还画着 ON，
+    // 屏幕上的数字只是停住不动。那是这个功能最坏的失败形态：界面对、行为不对。
+    // 现在定时器的生命周期只归 applyRefreshInterval 一处；刷哪一屏由 refreshTick 看
+    // 当前活动页决定。壳这里只管「切页 + 该页首屏取数」，不再兼职调度。
 
     var pages = document.querySelectorAll('.page');
     for (var i = 0; i < pages.length; i++) {
@@ -1746,44 +1747,104 @@
   };
 
   // ===== Auto-refresh Control =====
-  function getRefreshInterval() {
-    var saved = localStorage.getItem('autoRefreshInterval');
-    if (saved !== null) return parseInt(saved, 10);
-    return 10;
-  }
-  function saveRefreshInterval(val) {
-    localStorage.setItem('autoRefreshInterval', String(val));
-  }
-  function applyRefreshInterval() {
-    var val = parseInt(document.getElementById('autoRefreshInterval').value, 10);
-    var toggle = document.getElementById('autoRefreshToggle');
+  // 单一真源（2026-11-15，2.3b 收口后第一片「壳」）：
+  //   · **状态**只有两个键：间隔 + 开关（都在 localStorage）；
+  //   · **调度**只有 applyRefreshInterval 一个出口（建/清定时器只在这里）；
+  //   · **谁被刷**只有 refreshTick 一处判断（看当前活动页）。
+  // 改之前这三件事散在三个函数里，于是有三种「界面说在刷、实际没刷」：
+  //   ① switchPage 离开概览时 clearInterval，回来没人重建 ⇒ 开关亮着、数字再也不动；
+  //   ② 拨开关关掉不落盘（只有把间隔选成「关闭」才落盘）⇒ 刷新页面自动刷新又回来；
+  //   ③ 存进去的间隔不在选项里（旧版本留过 45 秒 / 以后删掉某一档）⇒ select.value=''
+  //      ⇒ parseInt('') = NaN ⇒ setInterval(fn, NaN) 被当成 0 延迟 ⇒ 自我请求风暴。
+  //      实测 1.5 秒内打了 212 次 /api/status（量法见 e2e/auto-refresh.spec.js 第三条）。
+  var REFRESH_INTERVAL_KEY = 'autoRefreshInterval';
+  var REFRESH_ENABLED_KEY = 'autoRefreshEnabled';
+  var REFRESH_DEFAULT_INTERVAL = 10;
 
-    if (val === 0 || !toggle.checked) {
-      if (window.__statusInterval) {
-        clearInterval(window.__statusInterval);
-        window.__statusInterval = null;
+  // 合法档位只认 <select> 里**真实存在**的选项，不在这里写死 [5,10,30,60]。
+  // 选项是界面的事，也是唯一能说清「哪些值有意义」的地方；写死会在下次改选项时
+  // 悄悄过期（删掉 60 ⇒ 老用户存的 60 变非法 ⇒ 又掉回 ③ 那支风暴）。
+  function refreshIntervals() {
+    var sel = document.getElementById('autoRefreshInterval');
+    var out = [];
+    if (sel && sel.options) {
+      for (var i = 0; i < sel.options.length; i++) {
+        var v = parseInt(sel.options[i].value, 10);
+        if (!isNaN(v)) out.push(v);
       }
-      toggle.checked = false;
-      return;
     }
+    return out.length ? out : [REFRESH_DEFAULT_INTERVAL];
+  }
+
+  function readRefreshState() {
+    var allowed = refreshIntervals();
+    var interval = NaN;
+    var enabled = true;
+    try {
+      interval = parseInt(localStorage.getItem(REFRESH_INTERVAL_KEY), 10);
+      var rawEnabled = localStorage.getItem(REFRESH_ENABLED_KEY);
+      // 升级前只存了间隔、没有开关这个键：缺省按「开」，与升级前行为一致。
+      if (rawEnabled !== null) enabled = rawEnabled === '1';
+    } catch (e) { /* 隐私模式下 localStorage 会抛：按默认值走，不因为读不到存储就不刷新 */ }
+    if (isNaN(interval) || allowed.indexOf(interval) === -1) interval = REFRESH_DEFAULT_INTERVAL;
+    // 间隔 0 = 「关闭」这一档的语义，与开关同义：一处状态，两种表示。
+    if (interval === 0) enabled = false;
+    return { enabled: enabled, interval: interval };
+  }
+
+  function saveRefreshState(patch) {
+    var next = readRefreshState();
+    patch = patch || {};
+    if (patch.interval !== undefined) {
+      var v = parseInt(patch.interval, 10);
+      next.interval = isNaN(v) ? REFRESH_DEFAULT_INTERVAL : v;
+      // 选「关闭」这一档就是关；选别的档不擅自把开关打开。
+      if (next.interval <= 0) next.enabled = false;
+    } else if (patch.enabled !== undefined) {
+      next.enabled = !!patch.enabled;
+      // 从「关闭」档拨回开启时得给一个真能用的间隔（否则 0 秒 = 还是关）。
+      if (next.enabled && next.interval <= 0) next.interval = REFRESH_DEFAULT_INTERVAL;
+    }
+    try {
+      localStorage.setItem(REFRESH_INTERVAL_KEY, String(next.interval));
+      localStorage.setItem(REFRESH_ENABLED_KEY, next.enabled ? '1' : '0');
+    } catch (e) { /* 存不了就只在本次会话生效，但不能因此不刷新 */ }
+    return next;
+  }
+
+  // 一个周期刷什么：只刷用户正在看的那一屏。别的页有一进页就加载 + 自己的刷新按钮，
+  // 定时器不替它们猜（猜错就是「看不见的地方在打后端」）。
+  function refreshTick() {
+    var cur = document.querySelector('.page.active');
+    var pageId = cur && cur.id ? String(cur.id).replace(/^page-/, '') : '';
+    if (pageId === 'dashboard') {
+      loadStatus();
+      loadSessions();
+      loadProviderHealth();
+    } else if (pageId === 'today') {
+      // 默认页是「今天」，它也必须跟着刷 —— 否则开着面板对着不动的数字，会让人以为
+      // 记账停了（这个功能最怕的就是"看起来没在记"）。日期选择器里选的是哪天就刷哪天，
+      // 不悄悄跳回今天。
+      var picker = document.getElementById('todayDayPicker');
+      loadTodayPage(picker ? picker.value : '');
+    }
+  }
+
+  function applyRefreshInterval(patch) {
+    var state = saveRefreshState(patch);
+
+    // UI 是显示面，不许反过来当存储：把控件拨到状态上，而不是从控件里读状态。
+    var sel = document.getElementById('autoRefreshInterval');
+    if (sel && sel.value !== String(state.interval)) sel.value = String(state.interval);
+    var toggle = document.getElementById('autoRefreshToggle');
+    if (toggle) toggle.checked = state.enabled;
 
     if (window.__statusInterval) {
       clearInterval(window.__statusInterval);
+      window.__statusInterval = null;
     }
-    window.__statusInterval = setInterval(function() {
-        loadStatus();
-        loadSessions();
-        loadProviderHealth();
-        // 默认页是「今天」，它也必须跟着自动刷新 —— 否则开着面板对着不动的数字，
-        // 会让人以为记账停了（这个功能最怕的就是"看起来没在记"）。
-        // 日期选择器里选的是哪天就刷哪天，不悄悄跳回今天。
-        var cur = document.querySelector('.page.active');
-        if (cur && cur.id === 'page-today') {
-          var picker = document.getElementById('todayDayPicker');
-          loadTodayPage(picker ? picker.value : '');
-        }
-      }, val * 1000);
-    toggle.checked = true;
+    if (!state.enabled || state.interval <= 0) return;
+    window.__statusInterval = setInterval(refreshTick, state.interval * 1000);
   }
 
   // ===== Dynamic Proxy Nav =====
@@ -1902,8 +1963,32 @@
       .catch(function () { /* 拉取失败不阻塞：导航回退 /api/installed 仍可工作 */ });
   }
 
+  // 控件接线与「读状态 → 拨控件 → 建定时器」必须在**任何网络请求之前**跑完。
+  // 为什么：这两件事只依赖 DOM 与 localStorage，把它们塞在 checkAuth → fetchProxyConfigs
+  // 的 then 链里，意味着「后端慢多久，开关就失效多久」——用户在这段时间里拨了关，
+  // 初始化随后把控件拨回存档里的「开」，等于用户刚说的话被覆盖（而且没有任何提示）。
+  // 这不是理论问题：e2e/auto-refresh.spec.js 第二条一开始就撞上了它 —— 点完 tab 立刻点
+  // 滑块，同步地读回来发现状态没落盘，因为变化回调还没被接上。
+  function wireRefreshControls() {
+    var intervalSelectCtrl = document.getElementById('autoRefreshInterval');
+    if (intervalSelectCtrl) {
+      intervalSelectCtrl.addEventListener('change', function() {
+        // 只传「用户改了什么」，其余由 applyRefreshInterval 归一到状态上。
+        applyRefreshInterval({ interval: parseInt(this.value, 10) });
+      });
+    }
+    var toggleCheck = document.getElementById('autoRefreshToggle');
+    if (toggleCheck) {
+      toggleCheck.addEventListener('change', function() {
+        applyRefreshInterval({ enabled: this.checked });
+      });
+    }
+    applyRefreshInterval();
+  }
+
   function init() {
     initDarkMode();
+    wireRefreshControls();
     checkAuth().then(function(authOk) {
       if (!authOk) return;
       return fetchProxyConfigs().then(function() {
@@ -1912,10 +1997,8 @@
         renderDynamicProxyNav(installedNames);
       });
 
-      // Restore saved interval setting
-      var savedVal = getRefreshInterval();
-      var intervalSelect = document.getElementById('autoRefreshInterval');
-      if (intervalSelect) intervalSelect.value = String(savedVal);
+      // 自动刷新的间隔与开关由 applyRefreshInterval 统一从存储里读出来再拨控件
+      // （这里不再单独把 select.value 设一遍 —— 那就是第二份「谁说了算」）。
 
       // Load data
       Promise.all([
@@ -1944,22 +2027,9 @@
       });
 
       // Start auto-refresh
-      applyRefreshInterval();
+      // （控件接线与首次 apply 已提前到 init 开头 wireRefreshControls()：
+      //  这两件事不依赖鉴权与网络，放在这一层会让「后端慢 → 开关失效」。）
 
-      // Wire up controls
-      var intervalSelectCtrl = document.getElementById('autoRefreshInterval');
-      if (intervalSelectCtrl) {
-        intervalSelectCtrl.addEventListener('change', function() {
-          saveRefreshInterval(parseInt(this.value, 10));
-          applyRefreshInterval();
-        });
-      }
-      var toggleCheck = document.getElementById('autoRefreshToggle');
-      if (toggleCheck) {
-        toggleCheck.addEventListener('change', function() {
-          applyRefreshInterval();
-        });
-      }
       });
     });
   }
