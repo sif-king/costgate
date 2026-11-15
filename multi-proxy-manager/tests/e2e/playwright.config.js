@@ -28,8 +28,10 @@ module.exports = defineConfig({
   fullyParallel: true,
   timeout: 30000,
   webServer: {
-    command: `mkdir -p "${E2E_DATA_DIR}" && MP_CONSENT_BYPASS=1 PORT=${PORT} `
-      + `MP_DATA_DIR="${E2E_DATA_DIR}" JWT_SECRET_FILE="${E2E_DATA_DIR}/jwt-secret" `
+    // 只隔离 MP_DATA_DIR，**不设** JWT_SECRET_FILE：密钥走 resolveJwtSecretFile()（home 或
+    // workflow 预写的那个），与测试进程天然同源；指定一个服务端不会去写的路径只会让 helper 读空。
+    command: `D="${E2E_DATA_DIR}" && mkdir -p "$D" && { [ -f "$D/providers.json" ] || cp providers.sample.json "$D/providers.json"; } && `
+      + `MP_CONSENT_BYPASS=1 PORT=${PORT} MP_DATA_DIR="$D" `
       + `AUTH_RATE_MAX=100 AUTH_LOCKOUT_MAX=100 node server.js`,
     cwd: path.join(__dirname, '..', '..'),
     url: `http://localhost:${PORT}/login`,

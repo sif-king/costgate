@@ -32,6 +32,19 @@ const MANAGER = path.join(__dirname, '..', '..');
 const ROOT = path.join(MANAGER, '..');
 const read = (p) => fs.readFileSync(p, 'utf8');
 
+// 子进程环境必须「像一台没配过鉴权的本机」，否则测的不是回环免鉴权那条路。
+// 🔴 这条是 CI 教会我们的：p0 gate 的 manager job 设了 MANAGER_PASSWORD（账号体系形态），
+// 子进程若整份继承，needsPasswordSetup() 直接为假 ⇒ 走 verifyPassword ⇒ 401 而不是 400。
+// 本地恒绿、CI 恒红，就是这一行 env 的差别。
+function cleanEnv(extra) {
+  const env = { ...process.env };
+  delete env.MANAGER_PASSWORD;
+  delete env.MANAGER_AGENT_TOKEN;
+  delete env.JWT_SECRET;      // 不让外部密钥影响本用例（本用例只关心回环判定）
+  delete env.JWT_SECRET_FILE;
+  return Object.assign(env, extra);
+}
+
 test('回环 + 无密码时，登录端点 400 且不落盘密码（真跑路由）', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-auth-guard-'));
   const script = `
@@ -51,14 +64,12 @@ test('回环 + 无密码时，登录端点 400 且不落盘密码（真跑路由
   `;
   const out = execFileSync(process.execPath, ['-e', script], {
     cwd: MANAGER,
-    env: {
-      ...process.env,
+    env: cleanEnv({
       MP_DATA_DIR: tmp,
-      JWT_SECRET_FILE: path.join(tmp, 'jwt-secret'),
       // 限流器默认 5/min，单次探针不受影响；写死只为不受外部环境干扰。
       AUTH_RATE_MAX: '100',
       AUTH_LOCKOUT_MAX: '100',
-    },
+    }),
     encoding: 'utf8',
   });
 
@@ -93,7 +104,11 @@ test('两份 playwright 配置的测试服都必须隔离数据目录，且不�
     const src = read(file);
     const rel = path.relative(ROOT, file);
     assert.match(src, /MP_DATA_DIR=/, `${rel}: webServer 必须设 MP_DATA_DIR，否则测试读写真实 HOME`);
-    assert.match(src, /JWT_SECRET_FILE=/, `${rel}: webServer 必须设 JWT_SECRET_FILE，否则测试服与测试进程不是同一把密钥（401 假绿）`);
+    // 反过来钉：不许设 JWT_SECRET_FILE。第一版设了，CI 直接全红 ——
+    // lib/auth.js 见到 JWT_SECRET 环境变量就不落盘，于是「指定的文件」永远不存在，
+    // helper 读空 → 所有用例起不来。密钥交给 resolveJwtSecretFile() 与测试服天然同源。
+    assert.ok(!/JWT_SECRET_FILE=/.test(src.replace(/^\s*\/\/.*$/gm, '')),
+      `${rel}: 不要设 JWT_SECRET_FILE（CI 有 JWT_SECRET env 时服务端不落盘，helper 会读空）`);
     assert.ok(!/18792/.test(src.replace(/\/\/.*$/gm, '')),
       `${rel}: 配置里出现了生产端口 18792（去掉注释后仍在）——测试绝不许打真实面板`);
   }
@@ -107,14 +122,16 @@ test('E2E helper 与配置用同一个隔离目录（两处路径必须可对上
   // 根 E2E helper 取 config 导出的常量（零漂移）；
   assert.match(helper, /require\(['"]\.\.\/\.\.\/playwright\.config['"]\)\.E2E_DATA_DIR/,
     'e2e/helpers/auth.js 必须复用 config 的 E2E_DATA_DIR，不要自己再写一份路径');
-  assert.match(helper, /process\.env\.JWT_SECRET_FILE\s*=/, 'e2e/helpers/auth.js 必须设 JWT_SECRET_FILE');
+  assert.match(helper, /process\.env\.MP_DATA_DIR\s*=/, 'e2e/helpers/auth.js 必须把 MP_DATA_DIR 指向隔离目录');
+  assert.match(helper, /resolveJwtSecretFile\(\)/, 'e2e/helpers/auth.js 必须用 resolveJwtSecretFile() 定位密钥');
 
   // 旧矩阵 helper 是 TS、不便 require CJS config，允许复制表达式，但必须与 config 同形。
   assert.match(rootCfg, /path\.join\(os\.tmpdir\(\),\s*['"]costgate-e2e-data['"]\)/,
     'playwright.config.js 的 E2E_DATA_DIR 形态变了（临时目录 + 固定名）');
   assert.match(legacyHelper, /path\.join\(os\.tmpdir\(\),\s*['"]costgate-e2e-data['"]\)/,
     'tests/e2e/helpers.ts 的目录表达式必须与 playwright.config.js 一致');
-  assert.match(legacyHelper, /process\.env\.JWT_SECRET_FILE\s*=/, 'tests/e2e/helpers.ts 必须设 JWT_SECRET_FILE');
+  assert.match(legacyHelper, /process\.env\.MP_DATA_DIR\s*=/, 'tests/e2e/helpers.ts 必须把 MP_DATA_DIR 指向隔离目录');
+  assert.match(legacyHelper, /resolveJwtSecretFile\(\)/, 'tests/e2e/helpers.ts 必须用 resolveJwtSecretFile() 定位密钥');
 });
 
 test('服务端：回环守卫只拦 setup，不是把整条登录路封死', () => {

@@ -26,9 +26,9 @@ export const TEST_PASSWORD = 'TestPass123!';
 
 // 与 playwright.config.js 同一份隔离数据目录（config 里导出 E2E_DATA_DIR 会引入
 // @playwright/test 的 defineConfig，这里只复制同一表达式并由守卫断言两处一致）。
+// 只隔离数据目录，不碰密钥：密钥走 home 的密钥文件，与测试服同源（CI 由 workflow 预写）。
 export const E2E_DATA_DIR = process.env.MP_E2E_DATA_DIR || path.join(os.tmpdir(), 'costgate-e2e-data');
 process.env.MP_DATA_DIR = process.env.MP_DATA_DIR || E2E_DATA_DIR;
-process.env.JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || path.join(E2E_DATA_DIR, 'jwt-secret');
 
 export const PASSWORD_FILE = path.join(E2E_DATA_DIR, 'password');
 
@@ -51,14 +51,15 @@ export function setPasswordFile(password: string = TEST_PASSWORD): void {
 function managerToken(): string {
   const jwt = require('jsonwebtoken');
   const fs = require('fs');
-  const secretFile = process.env.JWT_SECRET_FILE as string;
+  // 与 lib/auth.js 同源：走 data-dir 的单一真源（不认 MP_DATA_DIR，只认 JWT_SECRET_FILE 或 home）。
+  const secretFile: string = require('../../lib/data-dir').resolveJwtSecretFile();
   let secret = '';
   try {
     secret = fs.readFileSync(secretFile, 'utf8').trim();
   } catch (e) {
     throw new Error(
       `E2E 读不到 JWT 密钥：${secretFile}\n`
-      + '测试服必须用同一个 JWT_SECRET_FILE 启动（webServer 会建目录并生成），否则签出的 token 必然 401。'
+      + '测试服必须用同一把密钥（默认都读 home 下的密钥文件；CI 由 workflow 预写），否则签出的 token 必然 401。'
     );
   }
   return jwt.sign({ authenticated: true, ts: Date.now() }, secret, { expiresIn: '2h' });

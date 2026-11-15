@@ -580,20 +580,29 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
     非回环（LAN / Docker）的首次设密码引导原样保留。
   - **前端**：`login.html` 拿到 status 后，`loopbackBypass && !hasPassword` ⇒ 直接 `location.replace('/dashboard.html')`，
     不渲染任何表单。登录页对本机用户本来就没有存在意义。
-  - **测试**：两份 playwright 配置的 webServer 都带 `MP_DATA_DIR` + `JWT_SECRET_FILE`（临时目录，先 `mkdir -p`）；
+  - **测试**：两份 playwright 配置的 webServer 都带 `MP_DATA_DIR`（临时目录，先 `mkdir -p`，并预置 providers sample 垫底）；
     `e2e/helpers/auth.js` 取 config 导出的同一常量，`tests/e2e/helpers.ts` 复制同一表达式；
     旧矩阵的 `login()` 改成**直接签 token 注入**，不再走登录页、不写任何密码文件；
     `01-auth-flow` 按新契约重写（5 条：直跳 / 端点 400 且不落盘 / 已设密码要登录 / 正确密码可进 / 首屏可加载）。
-- **为什么 `JWT_SECRET_FILE` 也得隔离**：`MP_DATA_DIR` 只管数据目录，密钥走 `resolveJwtSecretFile()` 的另一条路。
-  只隔离一半 ⇒ 测试进程与测试服密钥不同源，表现为 401，而且会被 `seedAuth` 掩盖成「页面空但没报错」的假绿。
+- 🔴 **刻意「不隔离」密钥——第一版把 `JWT_SECRET_FILE` 也指到临时目录，CI 直接全红**：
+  `resolveJwtSecretFile()` 不读 `MP_DATA_DIR`，只认 `JWT_SECRET_FILE` 或 home；而 `lib/auth.js` 见到
+  `JWT_SECRET` 环境变量就**不落盘**（CI 的 e2e-tier0 会预写密钥并导出 `JWT_SECRET`）。两者叠加 =
+  「指定了一个服务端根本不会写的路径」⇒ helper 读空 ⇒ 全部用例起不来。**不设它才是同源**：
+  测试服与 helper 都走 home 那个密钥文件。教训：判据要建在「代码真会怎么做」上，不是「我想让它怎么做」。
 - **守卫**：`tests/node/panel-no-home-pollution.test.js`（5 条），已登记进 `panel-guard-registry.test.js`。
   ① **子进程真跑** `routes/auth` 路由：回环 + 无密码提交 ⇒ 必须 400、`loopback:true`、且临时目录里**没有** password 文件；
   ② login.html 必须存在「回环且无密码 → 直跳面板」的可执行分支（认 `location.replace`，注释满足不了）；
-  ③ 两份 config 的 webServer 必须含两个环境变量，且去掉注释后不许出现 18792；
-  ④ helper 与 config 的目录表达式必须同形；⑤ 回环守卫必须在 `needsPasswordSetup()` 分支**内部**。
-- **注入验证（四式全真红，各自红在对应判据）**：① 把回环守卫改成 `false && …` ⇒ 真跑那条红在「必须 400」；
+  ③ 两份 config 的 webServer 必须含 `MP_DATA_DIR`、**不得**含 `JWT_SECRET_FILE`，且去掉注释后不许出现 18792；
+  ④ helper 必须把 `MP_DATA_DIR` 指向隔离目录、密钥用 `resolveJwtSecretFile()`；⑤ 回环守卫必须在 `needsPasswordSetup()` 分支**内部**。
+- 🔴 **「本地绿 ≠ CI 绿」这次的真凶是环境变量**：p0 gate 的 manager job 设了
+  `MANAGER_PASSWORD=ci-gate-test-password-not-a-secret`（为了让其余测试跑在「账号体系形态」下）。
+  子进程若整份继承 `process.env`，`needsPasswordSetup()` 直接为假 ⇒ 走 `verifyPassword` ⇒ 401 而不是 400。
+  修法：探针子进程用 `cleanEnv()` 显式删掉 `MANAGER_PASSWORD` / `MANAGER_AGENT_TOKEN` / `JWT_SECRET*`，
+  并把「删掉这行就复现 CI 的那个 401」做成注入验证（本地 `MANAGER_PASSWORD=…` 跑一遍即可复现）。
+- **注入验证（五式全真红，各自红在对应判据）**：① 把回环守卫改成 `false && …` ⇒ 真跑那条红在「必须 400」；
   ② login.html 直跳条件前加 `false &&` ⇒ 静态那条红在「少了分支」；③ 从根 config 删 `MP_DATA_DIR=` ⇒ 红在「必须设」；
-  ④ 把旧矩阵 `PORT` 改回 18792 ⇒ 红在「不许指向生产端口」。还原后 sha256 逐字节一致、守卫回绿。
+  ④ 把旧矩阵 `PORT` 改回 18792 ⇒ 红在「不许指向生产端口」；⑤ 去掉 `cleanEnv` 里删 `MANAGER_PASSWORD` 那行，
+  带 `MANAGER_PASSWORD=…` 真跑 ⇒ 精确复现 CI 的 `401 !== 400`。还原后 sha256 逐字节一致、守卫回绿。
 - **现场处置**：`password` 文件已删（备份在 `/tmp/costgate-backup/`），`/api/auth/status` 现在返回
   `loopbackBypass:true, hasPassword:false`，dashboard 与受保护 API 直接 200，无需重启（密码是每次读文件判的）。
 - **口径**：「本机不要密码」不等于「删掉鉴权能力」。要账号体系 = 设 `MANAGER_PASSWORD` 后重启；

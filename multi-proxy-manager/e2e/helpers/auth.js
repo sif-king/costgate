@@ -15,16 +15,15 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 
 // 🔴 与 playwright.config.js 共用同一个 E2E 数据目录（2026-11-15）。
-// 测试进程与 webServer 是两个进程，密钥必须落在同一处：
-// 若这里回退去读真实 HOME，签出的 token 与测试服校验用的密钥就不是一把，表现为 401 假绿；
-// 更糟的是测试服的密码文件也会写进真实 HOME（历史事故，见 playwright.config.js 注释）。
-// 直接取 config 导出的常量，避免两处各写一份路径后悄悄漂移。
+// 为什么必须共用：测试服写进隔离目录的密码/账本，测试进程若读真实 HOME，两边看到的不是同一套状态。
+// 但**只共用数据目录，不碰密钥路径**：密钥走 lib/data-dir.js 的 resolveJwtSecretFile()，
+// 与测试服天然同源（都读 home 那个文件，CI 里由 workflow 预写并导出 JWT_SECRET）。
+// 第一版在这里另设 JWT_SECRET_FILE 指向临时目录，结果服务端见到 JWT_SECRET env 就不落盘，
+// helper 读空 —— CI 全红。别再把密钥也「隔离」进来。
 const E2E_DATA_DIR = require('../../playwright.config').E2E_DATA_DIR;
 process.env.MP_DATA_DIR = process.env.MP_DATA_DIR || E2E_DATA_DIR;
-process.env.JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || require('path').join(E2E_DATA_DIR, 'jwt-secret');
 
-// 与 lib/auth.js 同源：密钥文件走 lib/data-dir.js 单一真源（含「新不存在回退读旧」），
-// 测试服继承同一 JWT_SECRET_FILE；不在这里另写一份路径，否则切目录后会出现 401 假绿。
+// 与 lib/auth.js 同源：密钥文件走 lib/data-dir.js 单一真源（含「新不存在回退读旧」）。
 function managerToken() {
   const secretFile = require('../../lib/data-dir').resolveJwtSecretFile();
   let secret;
@@ -34,7 +33,7 @@ function managerToken() {
     // 读不到就直说，别让 addInitScript 用空串签出一个必然 401 的 token（那是假绿）。
     throw new Error(
       'E2E 读不到 JWT 密钥：' + secretFile
-      + '\n测试服的 JWT_SECRET_FILE 必须与本进程一致，且测试服已启动（webServer 会建目录）。'
+      + '\n测试服必须与本进程用同一把密钥（默认都读 home 下的密钥文件；CI 由 workflow 预写）。'
     );
   }
   return jwt.sign({ authenticated: true, ts: Date.now() }, secret, { expiresIn: '2h' });

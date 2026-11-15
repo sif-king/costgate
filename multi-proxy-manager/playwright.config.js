@@ -22,7 +22,12 @@ const browserChannel = CI ? undefined : 'chrome';
 // ~/.multi-proxy-manager。又因为 /api/auth/login 曾在回环下走 setup 分支，
 // 一次「以为在登录」的提交就把 E2E 的测试密码写成了真密码 —— 用户下次开面板凭空多出一道登录门。
 // 现在服务端已拒绝回环 setup（routes/auth.js），这里再加一道：测试数据只落临时目录。
-// e2e/helpers/auth.js 用同一个常量解析 JWT 密钥，两边必须一致，否则 401 假绿。
+//
+// ⚠️ 只隔离 MP_DATA_DIR，**不要**顺手设 JWT_SECRET_FILE（第一版设了，CI 直接红）：
+//   · lib/data-dir.js 的 resolveJwtSecretFile() 不读 MP_DATA_DIR，只认 JWT_SECRET_FILE 或 home；
+//   · 而 lib/auth.js 见到 JWT_SECRET 环境变量就**不落盘**（CI 的 e2e-tier0 会预写密钥并导出 JWT_SECRET）；
+//   · 于是「指定了一个文件路径」+「服务端根本不写这个文件」⇒ helper 读空 ⇒ 所有用例起不来。
+// 不设它反而天然同源：测试服与 helper 都走 home 的同一个密钥文件。
 const E2E_DATA_DIR = process.env.MP_E2E_DATA_DIR || path.join(os.tmpdir(), 'costgate-e2e-data');
 
 module.exports = defineConfig({
@@ -41,13 +46,12 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    // MP_DATA_DIR / JWT_SECRET_FILE 不是可选装饰：没有它们，测试就会读写真实用户数据目录
-    // （密码文件、账本、JWT 密钥全在 ~ 下）。mkdir -p 先建目录，否则 auth 生成密钥时会 ENOENT。
+    // MP_DATA_DIR 不是可选装饰：没有它，测试就会读写真实用户数据目录（密码文件、账本全在 ~ 下）。
+    // mkdir -p 先建目录，否则服务端首次写数据会 ENOENT。
     // providers.json 用仓库里的公开示例垫底：数据目录一隔离，配置就是空的，
     // 「代理卡片 ≥1 / proxyConfigNames 非空」这类断言会红在「没数据」而不是「代码坏了」。
     command: `D="${E2E_DATA_DIR}" && mkdir -p "$D" && { [ -f "$D/providers.json" ] || cp providers.sample.json "$D/providers.json"; } && `
-      + `MP_CONSENT_BYPASS=1 PORT=18801 `
-      + `MP_DATA_DIR="$D" JWT_SECRET_FILE="$D/jwt-secret" `
+      + `MP_CONSENT_BYPASS=1 PORT=18801 MP_DATA_DIR="$D" `
       + `AUTH_RATE_MAX=100 AUTH_LOCKOUT_MAX=100 node server.js`,
     url: 'http://localhost:18801/login',
     reuseExistingServer: !CI,
