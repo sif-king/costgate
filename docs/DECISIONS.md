@@ -335,3 +335,6 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - **④ 守卫自证可被注释满足**：登记表原先断言「coherence 文本里出现 mp-shared.js / MPShared」，一句注释就能满足。改为断言**实现行**（`shared_line=$(grep`、`vline" -lt "$shared_line`）；E2E 登记锚点改成 `waitForFunction` 的实参 `window.MPShared.proxyConfigNames().length > 0`。
 - **⑤ 顺手**：删掉重复的 `waitForFunction`（同一段被写了两遍）；不可达代理不再显示探测耗时（连接失败时 `latencyMs` 也会被赋值，把「连接消耗」当「代理延迟」是另一类假数据）。
 - **复核后真跑**：node **46/46**、coherence **七项**、全量 E2E **61/61**、tier0 **47/47**。新增注入两式（删 epoch 判据 / 退回写 0）均真红并 sha256 恢复。
+
+- **⑥ CI 首跑红（本提交的第二次「本地绿 ≠ CI 绿」）**：`tests/unit/frontend/dashboard.test.js` 的「Health Page 诊断文案语义」四条原本直接 `readHtml('dashboard.html')` 并在页面里切片 `function reasonText(` → `function loadHealthPage(`。代码搬走后：切片的 end 标记落到 start 之前（`end > start` 断言失败）、调用点正则与「bash manage.sh start all」也都不在页面里了。**这不是功能坏了，是脚手架没跟**。改法：断言对象改成 `mp-shared.js`（reasonText 本体）+ `views/health.js`（调用点与「全都没跑」提示），判定语义一字未改。真跑 `dashboard.test.js` **39/39**。
+  - 本地全量 jest 另有 3 个套件红（`loopback-auth` / `api` / `forward-egress-e2e`，共 10 条），全部指向并行会话未提交的 `server.js` / `lib/forward.js` / `l2/*` 改动；同一批用例在 CI 干净 checkout 上是通过的。**本地红必须逐条归因，不能一句「并发假红」带过**。

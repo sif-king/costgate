@@ -249,27 +249,38 @@ describe('Dashboard Page', () => {
     // 实测踩过的坑：徽章已经写了「未运行」，诊断又拼一句「不可达（原因未知）」，
     // 结果屏幕上出现「不可达 · 不可达（原因未知）」——既重复又没信息。
     // 只断言代码，不断言注释（注释里出现的反例正是这次修复的说明）。
+    //
+    // 2026-11-15（2.3b 第六片）：诊断文案搬进 public/mp-shared.js，健康页渲染搬进
+    // public/views/health.js。断言对象跟着走，判定本身不变——否则代码搬走后这里
+    // 会红成「功能坏了」，而真相只是路径变了（D-020 同款：契约搬了，脚手架要跟）。
+    function readShared() {
+      return fs.readFileSync(path.join(PUBLIC_DIR, 'mp-shared.js'), 'utf8');
+    }
+    function readHealthView() {
+      return fs.readFileSync(path.join(PUBLIC_DIR, 'views', 'health.js'), 'utf8');
+    }
+
     function reasonTextCode() {
-      const html = readHtml('dashboard.html');
-      const start = html.indexOf('function reasonText(');
-      const end = html.indexOf('function loadHealthPage(');
+      const shared = readShared();
+      const start = shared.indexOf('function reasonText(');
+      const end = shared.indexOf('function latencyText(');
       expect(start).toBeGreaterThan(-1);
       expect(end).toBeGreaterThan(start);
-      return html.slice(start, end)
+      return shared.slice(start, end)
         .split('\n')
         .filter((line) => !/^\s*\/\//.test(line))   // 去整行注释
         .join('\n');
     }
 
     it('诊断函数接收 running，才能区分「没启动」与「启动了但卡住」', () => {
-      const html = readHtml('dashboard.html');
-      expect(html).toContain('function reasonText(r, running)');
-      expect(html).toMatch(/reasonText\(rz\s*&&\s*rz\.reason,\s*!!status\.running\)/);
+      expect(readShared()).toContain('function reasonText(r, running)');
+      // 调用点：健康页必须把 running 一起传进去（少了它就只能说「不可达」）。
+      expect(readHealthView()).toMatch(/reasonText\(rz\s*&&\s*rz\.reason,\s*!!status\.running\)/);
     });
 
     it('不再把「不可达」重复拼进诊断文字', () => {
-      const html = readHtml('dashboard.html');
-      expect(html).not.toContain("'不可达 · ' + reasonText");
+      const shared = readShared();
+      expect(shared).not.toContain("'不可达 · ' + reasonText");
       // 函数代码里不许再以「不可达」开头返回（外层徽章负责说这句话）。
       // 注意 '网络不可达' 是 EHOSTUNREACH 的真实原因描述，属合法文案，不在此列。
       expect(reasonTextCode()).not.toMatch(/return\s+['"]不可达/);
@@ -282,9 +293,9 @@ describe('Dashboard Page', () => {
     });
 
     it('全部不可达时要说明「不是故障，是代理没启动」并给起法', () => {
-      const html = readHtml('dashboard.html');
-      expect(html).toContain('没有任何代理在运行');
-      expect(html).toContain('bash manage.sh start all');
+      const healthView = readHealthView();
+      expect(healthView).toContain('没有任何代理在运行');
+      expect(healthView).toContain('bash manage.sh start all');
     });
   });
 
