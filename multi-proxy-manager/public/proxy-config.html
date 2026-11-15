@@ -1573,27 +1573,15 @@
     }
 
     function copyToClipboard(text) {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(function() {
-          showToast('已复制到剪贴板', 'success', 1500);
-        }).catch(function() {
-          fallbackCopy(text);
-        });
-      } else {
-        fallbackCopy(text);
-      }
+      // 统一走 kernel.copyText（2026-11-15 收口）：全站一个复制入口，失败必有反馈。
+      // 原实现自带 fallbackCopy，但那里 execCommand 的返回值被 try/catch 吞掉 ——
+      // 复制真失败时照样弹「已复制」，把失败说成了成功。
+      MPKernel.copyText(text).then(function (ok) {
+        if (ok) showToast('已复制到剪贴板', 'success', 1500);
+        else showToast('复制被浏览器拒绝，请手动选中复制', 'error', 3000);
+      });
     }
 
-    function fallbackCopy(text) {
-      var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); showToast('已复制到剪贴板', 'success', 1500); } catch {}
-      document.body.removeChild(ta);
-    }
 
     function maskKey(key) {
       if (!key || key.length < 12) return '***';

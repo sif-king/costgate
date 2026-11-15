@@ -183,6 +183,9 @@ function runPanel(file, fetchStub, exportList) {
     'views/alerts.js',
     'views/today.js',
     'views/registry.js',
+    // 2.3b 第五片（2026-11-15）：成本页 / 周报 / 账本 Hero 搬到 views/cost.js。
+    // 与 browser 同序——迟一步，页面薄包装就只剩 console.error 分支。
+    'views/cost.js',
   ];
   for (const rel of headScripts) {
     vm.runInContext(fs.readFileSync(path.join(PUBLIC, rel), 'utf8'), sandbox, { filename: rel });

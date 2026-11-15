@@ -965,8 +965,10 @@ body {
         if (line) {
           var text = line.textContent;
           if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).then(function() {
-              showToast('日志已复制到剪贴板', 'success', 1500);
+            // 与 kernel.copyText 同一契约：成功/失败都要有反馈，不许「点了没反应」。
+            MPKernel.copyText(text).then(function(ok) {
+              if (ok) showToast('日志已复制到剪贴板', 'success', 1500);
+              else showToast('复制被浏览器拒绝，请手动选中复制', 'error', 3000);
             });
           }
         }
@@ -1098,8 +1100,9 @@ body {
     }).join('\n');
 
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(function() {
-        showToast('已复制 ' + filtered.length + ' 条日志到剪贴板', 'success');
+      MPKernel.copyText(text).then(function(ok) {
+        if (ok) showToast('已复制 ' + filtered.length + ' 条日志到剪贴板', 'success');
+        else showToast('复制被浏览器拒绝，请用导出文件', 'error', 3000);
       });
     }
   };
@@ -1225,9 +1228,10 @@ body {
      if (!btn) return;
      var text = btn.dataset.res || '';
      if (navigator.clipboard && text) {
-       navigator.clipboard.writeText(text).then(function() {
-         showToast('修复建议已复制', 'success', 1500);
-         });
+       MPKernel.copyText(text).then(function(ok) {
+         if (ok) showToast('修复建议已复制', 'success', 1500);
+         else showToast('复制被浏览器拒绝，请手动选中复制', 'error', 3000);
+       });
      }
    };
   }

@@ -248,7 +248,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 ## D-018 · 「真浏览器点控件」进 CI，且守卫自己也要被守卫
 
 - **状态**：已执行（2026-11-15，老板批「按建议来」）
-- **背景**：`PANEL-HEALTH-CHECK-2026-11-15.md` 发现 A——工作区回退把 D-017 的 13 个 window 挂载一起退掉，真点 4 个控件全抛 `ReferenceError`，而 node 37/37、coherence 六项、E2E 50/50 **三套全绿**。追下去是两层缺口，不是一处：
+- **背景**：`PROJECT-STATE/PANEL-HEALTH-CHECK-2026-11-15.md`（本地资产，不入仓）发现 A——工作区回退把 D-017 的 13 个 window 挂载一起退掉，真点 4 个控件全抛 `ReferenceError`，而 node 37/37、coherence 六项、E2E 50/50 **三套全绿**。追下去是两层缺口，不是一处：
   - ① **运行态缺口**：`spa-views.spec.js` 只点 tab、smoke 只验加载不崩；内联 handler 的异常只在**交互那一刻**发生，加载阶段永远看不见。
   - ② **闸门缺口**：`tests/node/panel-inline-handlers.test.js` 既**从来没进 CI**（`p0-security-gate.yml` 的 panel behavior tests 步骤手写 4 个文件名，不含它），本身还能被随手删掉；删了以后没有任何一道闸会喊。
   - 附带查出一个真洞：D-017 的 ghost 判据写成 `!declared.has(rhs) && !declared.has(n)`，末项让「左侧函数本身有 IIFE 内声明」短路 ⇒ `window.filterRegistry = filterRegistr`（右侧拼错名）静态守卫恒绿。注入实测 E2E 3 条全红而它 `pass 1 / fail 0`。
@@ -284,3 +284,17 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - 🔴 **本轮环境坑（写进日志，不写进代码）**：Bash 命令在沙箱外运行、编辑工具在沙箱内，两者对同一文件可能看到不同视图 —— 跨调用做「备份 → 注入 → 恢复」时，`cp` 备份到的是旧视图，恢复会把污染写回去，表现为「`restored=true` 但文件仍是坏的」。解法：把「修复 + 注入 + 跑守卫 + `cp` 恢复 + `shasum` 校验」放进**同一次调用**，以 `git diff` 的视角为准。
 - 🔴 **推送前复核补丁（同日，peer review 指出）**：`e2e/inline-handlers.spec.js` 的「页面脚本已跑到底」探针原本等 `window.MPShell`，而 MPShell 正是本轮挪进 `<head>` 的东西 —— 探针会在页面 IIFE 执行**之前**就满足，契约层可能抢在挂载段跑完前取值，造成该红不红。改用 `window.switchPage`（IIFE 末尾才挂）作探针。同批加固 `check-panel-coherence.sh` 第 7 项：行号匹配从「全文件任意位置」收紧到 `^<script`（行首），否则注释里写一句 `<script src=...>` 就能骗过守卫 —— 与 D-018「注释式注入让静态守卫假绿」同族。
 - **推翻条件 / 剩余**：若 health/cost 抽离时证明共享状态「只读不写」，可用 getter 而不必做完整 store；若概览页证明它本质就是页面壳而非业务视图，则保留在 `dashboard.html` 并在此登记为「一页一文件」的明确例外。**仍未抽**：`health / cost / 概览`；前置＝共享状态单一真源迁移（20+13+5 处引用逐个改 `MPState.get/set`）+ 三个共享渲染件归位。
+
+## D-020 · 第五片抽 cost；视图模块作用域隔离；复制收口为单一入口
+
+- **状态**：已执行（2026-11-15，2.3b 第五片 + 修 CI 双红）
+- **背景**：D-019 把 `health / cost / 概览` 的前置登记为「共享状态单一真源迁移」。先按引用点精确清点，发现 **cost 是自治片**：`loadCostPage / loadWatchtower / loadCostSovereignty` 只依赖 `authToken`（全文只读不写，共 12 处引用，没有一处赋值）、`MPStates`（运行时才用到）与 6 个固定容器 id；不读 `proxyStatus`、不写共享状态、不被别的视图调用。⇒ 不必为了「凑继续抽」先把 38 处共享状态引用改成 store。
+- **决策**：
+  - ① **抽 cost 到 `public/views/cost.js`**（成本页余额/预算 + 上周账单 + 账本 Hero，含口径注释一起搬）。页面留三个同名薄包装，`switchPage` 分支表、`init()` 调用点、三个静态内联 handler 全部零改动；token 在模块内改用 `MPKernel.getToken()`（等价于原 `authToken` 快照，且不再跨作用域）。`dashboard.html` **2937 → 2716 行（−221）**。
+  - ② 🔴 **抽离当场暴露真 bug（作用域类）**：搬走的代码在原 IIFE 里能直接用到 `var fetchJSON = MPKernel.fetchJSON` 这个本地别名；模块里没有那个作用域，裸调即 `ReferenceError`。实测症状极具迷惑性——`/api/balances` 一次都没请求，余额区静静停在**静态骨架**「暂无余额数据」，不白屏、不收错误提示，看起来像「你没有余额」。修法：模块一律显式 `var fetchJSON = K.fetchJSON`，不假设任何页面本地别名存在。新增 `tests/node/panel-view-isolation.test.js` 静态守卫：`PAGE_LOCALS` 名单（fetchJSON / showReadError / showToast / esc / authToken / proxyStatus / PROXY_CONFIGS / versionCache / 加载条三件 / 三个共享渲染件）+ 剥注释与字符串字面量 + 「模块自己声明过就豁免」+ 「每个模块必须真有 global./window. 挂载」。注入两式真红（删别名 → 精确点名 `views/cost.js` 裸用 fetchJSON；塞一个只加载不挂载的模块 → 点名无挂载），`shasum` 校验恢复。
+  - ③ 🔴 **CI 双红（`82fde8e`）两个根因，都不是业务逻辑**：
+    - **L5 漂移**：`docs/DECISIONS.md` 里把本地资产写成裸文件名 `` `PANEL-HEALTH-CHECK-2026-11-15.md` ``，不带 `PROJECT-STATE/` 前缀 ⇒ 命不中 `drift-ignore.txt` 的 `PROJECT-STATE/*`，干净 checkout 判定「引用文件已删除」。改法不是删引用（本机 agent 需要这个指针），而是**写全路径并标注「本地资产，不入仓」**。验证按纪律做**干净树**：用 `git ls-files` 拼出 943 个已跟踪文件到临时目录（无 `PROJECT-STATE`）再跑 drift-check → ✅ 无漂移。本地绿不算数，这是 D-018 那条「答案取决于树里有什么」的同一判据。
+    - **E2E tier0 真点控件**：CI 上 `NotAllowedError: Failed to execute 'writeText' on 'Clipboard': Write permission denied.`。全站 7 处 `navigator.clipboard.writeText(x).then(成功提示)`，**6 处没接拒绝分支** ⇒ 浏览器禁剪贴板时用户点完毫无反应，控制台多一条 unhandled rejection（macOS 本地放行，所以只有 CI 抓得到）。收口为 `MPKernel.copyText(text) → Promise<boolean>`（**永不 reject**，Clipboard API → `execCommand` 兜底 → false），dashboard 两处、logs 三处、proxy-config 一处（顺手删掉「execCommand 返回值被 try/catch 吞掉、失败也弹已复制」的 `fallbackCopy`）全改按 true/false 分别提示；`login.html` 刻意不加载 kernel，自带两参数 `then` 兜底。新增 `tests/node/panel-copy-feedback.test.js`（`writeText` 只许出现在 kernel 与登记过的 login 例外）+ `e2e/copy-feedback.spec.js`（强制 `writeText` reject **且** `execCommand` 返回 false，真点复制按钮 → 必须出现 error toast、必须带出 URL、必须零 pageerror）。
+- **注入验证（全部真红 + SHA 校验恢复）**：① 删 `views/cost.js` 的 `fetchJSON` 别名 → 隔离守卫 rc=1 并点名；② 塞无挂载模块 → 第二条断言 rc=1；③ 把 `copyUnifiedIngressUrl` 退回「只接成功分支」→ copy E2E 失败于「复制被拒时必须弹错误提示」；④ 干净树 drift-check ✅（本地树同时 ✅，两者一致）。
+- **后果**：真跑 node **46/46**、coherence **七项**、全量 E2E **59/59**、tier0 闸门 **45/45**；`dashboard.html` **2716 行**。
+- **推翻条件 / 剩余**：`health` 与 `概览` 仍未抽——前置不变（`proxyStatus` 读写 + `PROXY_CONFIGS` 只读 + `reasonText / renderProviderIsolation / showProviderReadError` 三个共享渲染件）。若抽 health 时证明这些是「只读 + 一个写点」，可先用窄接口注入（把 renderer 归位到一个 shared 模块），不必做全量 `MPState` store；概览若证明它本质是页面壳而非业务视图，就地登记为例外，不再硬抽。

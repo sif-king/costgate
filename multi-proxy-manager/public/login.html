@@ -1192,19 +1192,28 @@ body::after {
 
   function copyResetCommand() {
     var cmd = 'rm ~/.multi-proxy-manager/password\nbash manage.sh restart manager';
-    if (navigator.clipboard) {
+    var btn = els.copyCmdBtn;
+    // 登录页故意不加载 mp-kernel（只引 nav.js），所以这里自带兜底。
+    // 浏览器禁剪贴板时 writeText 会 reject：不接拒绝分支，用户看到的就是
+    // 「点了一下，按钮毫无反应」（2026-11-15 全站同族缺陷，见 kernel.copyText）。
+    function flash(label) {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = label;
+      btn.disabled = true;
+      setTimeout(function() {
+        btn.textContent = orig;
+        btn.disabled = false;
+      }, 2000);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(cmd).then(function() {
-        var btn = els.copyCmdBtn;
-        if (btn) {
-          var orig = btn.textContent;
-          btn.textContent = '已复制！';
-          btn.disabled = true;
-          setTimeout(function() {
-            btn.textContent = orig;
-            btn.disabled = false;
-          }, 2000);
-        }
+        flash('已复制！');
+      }, function() {
+        flash('复制失败，请手动复制');
       });
+    } else {
+      flash('请手动复制');
     }
   }
 

@@ -42,6 +42,21 @@ const GUARDS = [
     must: ['@tier0', 'checkGate'],
     why: 'knowledge/skills「重新检测」按钮真点守卫',
   },
+  {
+    file: 'tests/node/panel-view-isolation.test.js',
+    must: ['PAGE_LOCALS', 'stripCommentsAndStrings', '裸用了页面局部名'],
+    why: '视图模块作用域隔离（防模块裸用页面 IIFE 本地名，如 cost 抽离后 fetchJSON 未定义的静默空壳）',
+  },
+  {
+    file: 'tests/node/panel-copy-feedback.test.js',
+    must: ['ALLOWED', 'copyText', '只许有一个入口'],
+    why: '复制只有一个入口且失败必反馈（CI 实测 headless 下 writeText 被拒 → 点了毫无反应）',
+  },
+  {
+    file: 'e2e/copy-feedback.spec.js',
+    must: ['@tier0', 'copyUnifiedIngressUrl', 'NotAllowedError'],
+    why: '强制剪贴板被拒后真点复制按钮（把 CI 那个失败模式本身钉死，不依赖环境是否放行）',
+  },
 ];
 
 test('关键面板守卫都在树里，且没有被放宽成空壳', () => {

@@ -205,3 +205,89 @@ test('dashboard 子视图「Agent 清单」筛选与弹窗真生效（views/regi
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// cost 视图专属断言（2026-11-15，2.3b 第五片）
+// 为什么单独加：这一片把「成本页 / 上周账单 / 账本 Hero」三块搬到 views/cost.js，
+// 三者全靠静态内联 onclick 触发，而且都是「读接口 → 拼 HTML」。坏法有三种且都
+// 只点 tab 查不出来：① script 没接线（点了刷新抛 ReferenceError，但首次进入由
+// switchPage 调的是页面薄包装，看起来正常）② 只渲染容器不渲染数（空壳）③ 把
+// 「读不到」渲染成「没有」。所以这里 stub 掉三个接口，断言三块区域都出**具体数值**，
+// 再真点「刷新」验证链路活着、没有全局异常。
+test('dashboard 子视图「成本」余额/预算/周报真出数，刷新按钮真触发（views/cost.js 接线）', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const watchtower = {
+    ok: true,
+    window: { fromDay: '2026-11-08', toDay: '2026-11-14' },
+    spend: { actualCost: 12.5, requestCount: 7, currency: 'CNY' },
+    saved: { computable: true, byRouting: 3, baselineCost: 15.5 },
+    zeroCost: { ratio: 0.25, requestCount: 2 },
+    dataQuality: { unknownModelRatio: 0, unknownModelCount: 0, entryCount: 7, unknownAgentCount: 0 },
+    byAgent: [{ agent: 'probe-cost-agent', actualCost: 12.5, requests: 7, topModel: 'probe-model' }],
+    caveats: ['口径：省下的钱是按对标价格反算的'],
+    tracking: { enabled: true, hint: '已开启记账' },
+  };
+
+  // 三个接口都给确定性数据；watchtower 同时喂「成本页」和「总览账本 Hero」。
+  await page.route('**/api/balances', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ balances: [{ provider: 'probe-provider', amount: 42.5 }] }),
+  }));
+  await page.route('**/api/budget', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ level: 'warn', enabled: true, caps: { total: 123.45 }, prices: { 'probe-model': 1 }, configHash: 'deadbeefdeadbeefcafe' }),
+  }));
+  await page.route('**/api/cost/watchtower**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(watchtower),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  // 账本 Hero 在 init() 里就拉（页面壳本身也会崩，所以先验它）。
+  await expect(page.locator('#costSovereigntyBody'), '总览账本卡应显示上周实际花费')
+    .toContainText('上周实际花费', { timeout: 15000 });
+  await expect(page.locator('#costSovereigntyBody')).toContainText('CNY 12.5');
+
+  await page.click('#viewTabs .section-tab[data-page="cost"]');
+  await expect(page.locator('#page-cost')).toHaveClass(/active/, { timeout: 15000 });
+
+  // ① 余额：真出 provider 名 + 金额（不是「暂无余额数据」空态）
+  const bal = page.locator('#costBalanceList');
+  await expect(bal, 'stub 的 provider 名应渲染出来').toContainText('probe-provider', { timeout: 15000 });
+  await expect(bal, '余额金额应渲染出来').toContainText('42.50');
+
+  // ② 预算：level=warn → 文案「警告」，且总上限真印出来
+  const bud = page.locator('#costBudgetInfo');
+  await expect(bud, 'warn 判级应显示「警告」').toContainText('警告', { timeout: 15000 });
+  await expect(bud, '总上限应真印出来').toContainText('123.45');
+  await expect(bud, '价表模型数应真印出来').toContainText('1');
+
+  // ③ 周报：卡片数值 + 按 agent 归因 + 口径说明
+  const wt = page.locator('#watchtowerSummary');
+  await expect(wt, '周报应显示实际花费').toContainText('实际花费', { timeout: 15000 });
+  await expect(wt).toContainText('CNY 12.5');
+  await expect(wt, '窗口应显示').toContainText('2026-11-08');
+  await expect(page.locator('#watchtowerAgents'), '按 agent 归因应出条目').toContainText('probe-cost-agent');
+  await expect(page.locator('#watchtowerCaveats'), '口径说明应显示').toContainText('对标价格');
+
+  // ④ 真点「刷新」（静态内联 onclick → 全局作用域解析）：必须无异常且仍出数。
+  // 这一下是这条用例的核心——模块没接线时，点它会抛 ReferenceError 而页面看起来没变。
+  await page.locator('#page-cost button[onclick="loadCostPage()"]').click();
+  await page.waitForTimeout(500);
+  await expect(bal, '刷新后余额应重新渲染').toContainText('probe-provider');
+  await page.locator('#page-cost button[onclick="loadWatchtower()"]').click();
+  await page.waitForTimeout(500);
+  await expect(wt, '刷新后周报应重新渲染').toContainText('CNY 12.5');
+
+  // ⑤ 总览账本卡的「刷新」内联 handler 也要真点得动（先切回总览，否则卡片不可见）。
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+  await page.locator('#costSovereigntyCard button[onclick="loadCostSovereignty()"]').click();
+  await page.waitForTimeout(500);
+  await expect(page.locator('#costSovereigntyBody')).toContainText('上周实际花费');
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});

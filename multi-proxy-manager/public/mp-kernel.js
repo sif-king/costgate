@@ -23,6 +23,7 @@
      showReadError(id, title, detail, hint, retry) 读失败块（三态里的 error 态）
      showToast(message, type, duration)            轻提示（全站一套观感）
      getToken()                                    读 auth_token（读入口收这一处）
+     copyText(text) → Promise<boolean>             复制（失败也说话，永不 reject）
 
    showToast 的来历（2026-11-14 老板拍板「视觉合成一套」前，它是被**拒绝**收进来的）：
    当时面板里同时活着三套——
@@ -189,11 +190,52 @@
     try { return sessionStorage.getItem('auth_token'); } catch (e) { return null; }
   }
 
+  // 复制文本：唯一目的是「失败也要说话」。
+  //
+  // 背景（2026-11-15，CI 抓到的真缺陷）：全站 7 处 `navigator.clipboard.writeText(x)
+  // .then(成功提示)` 里，6 处没接拒绝分支。浏览器禁掉剪贴板时（无手势上下文 /
+  // 权限策略 / 非安全上下文，headless Linux 上就是 "Write permission denied"），
+  // 用户点完**什么都没发生**：无提示、无兜底，控制台多一条 unhandled rejection。
+  // 这类「点了没反应」最难查——按钮在、事件也派发了，只是 Promise 被拒后没人管。
+  //
+  // 契约：永远 resolve(true/false)，绝不 reject。调用方只需要决定成功/失败各说什么。
+  // 顺序：Clipboard API → execCommand 兜底 → false（调用方提示手动复制）。
+  function copyText(text) {
+    var value = String(text === null || text === undefined ? '' : text);
+
+    function legacy() {
+      var ok = false;
+      var ta = document.createElement('textarea');
+      try {
+        ta.value = value;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+      } catch (e) {
+        ok = false;
+      }
+      if (ta.parentNode) ta.parentNode.removeChild(ta);
+      return ok;
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      return navigator.clipboard.writeText(value).then(
+        function () { return true; },
+        function () { return legacy(); },
+      );
+    }
+    return Promise.resolve(legacy());
+  }
+
   global.MPKernel = {
     esc: esc,
     fetchJSON: fetchJSON,
     showReadError: showReadError,
     showToast: showToast,
-    getToken: getToken
+    getToken: getToken,
+    copyText: copyText
   };
 })(typeof window !== 'undefined' ? window : globalThis);
