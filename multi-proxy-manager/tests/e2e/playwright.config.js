@@ -42,7 +42,10 @@ module.exports = defineConfig({
     navigationTimeout: 10000,
     headless: true,
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    // video 关掉：录屏要 ffmpeg 二进制，本机没装就整个用例起不来（报
+    // "Executable doesn't exist ... ffmpeg-mac"，看着像代码坏了，其实只是缺工具）。
+    // 这套是手工考古用，截图够定位；真要录屏先 `npx playwright install ffmpeg`。
+    video: 'off',
   },
   retries: 2,
   reporter: [['list']],

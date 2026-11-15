@@ -72,7 +72,9 @@ test.describe.serial('E2E Group 1: 回环免登录契约', () => {
   test('dashboard 免 token 可加载（回环放行）', async ({ page }) => {
     clearPasswordFile();
     await page.goto(`${BASE_URL}/dashboard.html`);
-    await expect(page.locator('#page-dashboard')).toBeVisible();
-    await expect(page.locator('#page-dashboard h1.page-title')).toContainText('概览');
+    // 首屏默认落在「今日」（#page-today 是 HTML 里唯一带 active 的容器），
+    // 概览是 #page-dashboard，要切 tab 才显示 —— 别照抄旧断言去等它可见。
+    await expect(page.locator('#page-today')).toBeVisible();
+    await expect(page.locator('#sidebarNav .nav-item').first()).toBeVisible();
   });
 });
