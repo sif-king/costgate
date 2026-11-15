@@ -96,6 +96,12 @@
     if (sec == null || isNaN(sec)) return '';
     sec = Math.round(Number(sec));
     if (sec <= 0) return '';
+    // 🔴 hermes-proxy/proxy.py 的 /health 把 uptime 填成 time.time()（**epoch 秒**，
+    // 不是进程运行秒数；见 hermes-proxy/proxy.py 的 'uptime': time.time()）。
+    // 1e9 秒 ≈ 31.7 年，任何真实运行时长都到不了这里 —— 命中即判「上游给的不是时长」，
+    // 宁可留空也不渲染成 20772d5h 这种荒谬假数字（本仓铁律：不许用假数据装正常）。
+    // 该 bug 归上游；本函数只负责不把它当真相展示。
+    if (sec >= 1e9) return '';
     var d = Math.floor(sec / 86400);
     var h = Math.floor((sec % 86400) / 3600);
     var m = Math.floor((sec % 3600) / 60);

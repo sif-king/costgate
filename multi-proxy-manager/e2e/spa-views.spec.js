@@ -314,7 +314,10 @@ test('dashboard 子视图「健康」三类统计/列表/隔离/历史真出数�
   // （走不到就会退化成裸 key 'codex'，断言立刻红）。
   await page.route('**/api/proxy-configs', (route) => route.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ codex: { name: 'Probe Health Proxy', port: 18790, defaultVersion: '9.9.9' } }),
+    body: JSON.stringify({
+      codex: { name: 'Probe Health Proxy', port: 18790, defaultVersion: '9.9.9' },
+      hermes: { name: 'Probe Hermes Proxy', port: 18793, defaultVersion: '9.9.9' },
+    }),
   }));
   // /api/status 真实形状是**扁平 map**（不是 {proxies:...}），这里照抄，
   // 免得测的是一个后端根本不会返回的形状。
@@ -326,6 +329,11 @@ test('dashboard 子视图「健康」三类统计/列表/隔离/历史真出数�
                rawHealth: { uptime: 3720 } },
       claude: { running: false, port: 18791, fault: false },
       cursor: { running: true, port: 18794, fault: false, health: { status: 'degraded', reasons: ['provider 连续失败'] } },
+      // hermes 的真实形态：/health 把 uptime 填成 time.time()（epoch 秒），
+      // 不是进程运行秒数。视图必须留空，不许渲染成 20772d5h。
+      hermes: { running: true, port: 18793, fault: false,
+                health: { status: 'ok' },
+                rawHealth: { uptime: 1763200000 } },
     }),
   }));
   // readyz：真探测优先。claude 带 ECONNREFUSED 原因码，用来验证 reasonText 走共享层。
@@ -359,16 +367,12 @@ test('dashboard 子视图「健康」三类统计/列表/隔离/历史真出数�
   // 早于它渲染会退化成裸 key（这正是这条用例要盯的通路，不能靠「等一下」糊过去）。
   await page.waitForFunction(() => window.MPShared && window.MPShared.proxyConfigNames().length > 0, null, { timeout: 15000 });
 
-  // 等页面 init 的 fetchProxyConfigs 落地再切健康页：配置仓是异步填的，
-  // 早于它渲染会退化成裸 key（这正是这条用例要盯的通路，不能靠「等一下」糊过去）。
-  await page.waitForFunction(() => window.MPShared && window.MPShared.proxyConfigNames().length > 0, null, { timeout: 15000 });
-
   await page.click('#viewTabs .section-tab[data-page="health"]');
   await expect(page.locator('#page-health')).toHaveClass(/active/, { timeout: 15000 });
 
-  // ① 三类统计：ok=1（codex）、degraded=1（cursor）、down=1（claude）
+  // ① 三类统计：ok=2（codex + hermes）、degraded=1（cursor）、down=1（claude）
   const cnt = (id) => page.locator('#' + id);
-  await expect(cnt('healthOkCount'), '健康数应为 1').toHaveText('1', { timeout: 15000 });
+  await expect(cnt('healthOkCount'), '健康数应为 2').toHaveText('2', { timeout: 15000 });
   await expect(cnt('healthDegradedCount'), '降级数应为 1').toHaveText('1');
   await expect(cnt('healthDownCount'), '故障数应为 1').toHaveText('1');
   await expect(cnt('healthHistoryCount'), '历史条数应为 1').toHaveText('1');
@@ -379,6 +383,14 @@ test('dashboard 子视图「健康」三类统计/列表/隔离/历史真出数�
   await expect(list, '延迟列应读 latencyMs（老 bug：恒显示 —）').toContainText('12ms');
   await expect(list, '运行时间应读 rawHealth.uptime（3720s → 1h2m）').toContainText('1h2m');
   await expect(list, '不可达原因应经 reasonText 给出原因+处置').toContainText('连接被拒');
+
+  // hermes 的 uptime 是 epoch 秒（上游 bug）。归一函数必须留空，绝不许把
+  // 1763200000 秒渲染成 "20407d8h" 这种荒谬假数字 —— 假数据比空更难发现。
+  // 断言按**行**取最后一格（运行时间），而不是匹配某个具体数字：写死数字的话，
+  // 换个时间戳就漏了（第一版就是这么假绿的，注入验证抓出来的）。
+  const hermesRow = page.locator('#healthProxyList .health-row', { hasText: 'Probe Hermes Proxy' });
+  await expect(hermesRow, 'hermes 行应渲染').toHaveCount(1);
+  await expect(hermesRow.locator('span').last(), 'epoch 秒不许当 uptime 渲染，必须是 -').toHaveText('-');
 
   // ③ Provider 隔离 + 副标题口径（observe 模式）
   await expect(page.locator('#healthPagePhList'), '隔离项应渲染').toContainText('probe-provider');
@@ -397,6 +409,54 @@ test('dashboard 子视图「健康」三类统计/列表/隔离/历史真出数�
   await page.selectOption('#healthHistoryLimit', '20');
   await expect.poll(() => historyCalls.some((u) => /limit=20/.test(u)), '下拉改 20 条应带 limit=20 重新请求').toBe(true);
   await expect(page.locator('#healthHistoryList'), '改条数后历史仍应渲染').toContainText('probe-reason');
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});
+
+// health 读失败口径（2026-11-15，2.3b 第六片）
+// 本仓硬纪律：读失败 ≠ 没有。旧实现在 /api/status 读失败时把三张统计卡写成 0、
+// 历史读失败把条数写成 0 —— 列表明明写着「读取失败」，上面却显示「一切为 0」，
+// 用户读到的结论是「测过了，都没有」，与真相相反。这条把「读失败必须显示 —」钉死。
+test('健康页读失败时统计卡显示 — 而不是 0，列表明说读取失败（读失败 ≠ 没有）', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { name: 'Probe Health Proxy', port: 18790, defaultVersion: '9.9.9' } }),
+  }));
+  // manager 挂了：/api/status 与 /api/health-history 双双 500。
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'probe status down' }),
+  }));
+  await page.route('**/api/health-history**', (route) => route.fulfill({
+    status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'probe history down' }),
+  }));
+  await page.route('**/api/provider-health', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ isolateEnabled: false, isolated: [] }),
+  }));
+  await page.route('**/api/readyz', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ proxies: { total: 0, details: [] } }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.waitForFunction(() => window.MPShared && window.MPShared.proxyConfigNames().length > 0, null, { timeout: 15000 });
+
+  await page.click('#viewTabs .section-tab[data-page="health"]');
+  await expect(page.locator('#page-health')).toHaveClass(/active/, { timeout: 15000 });
+
+  // 统计卡：四张全部 —（不是 0）
+  for (const id of ['healthOkCount', 'healthDegradedCount', 'healthDownCount', 'healthHistoryCount']) {
+    await expect(page.locator('#' + id), `读失败时 #${id} 必须显示 —，不许写 0`).toHaveText('—', { timeout: 15000 });
+  }
+
+  // 列表：明说读取失败 + 给重试，而不是渲染「暂无代理」
+  const list = page.locator('#healthProxyList');
+  await expect(list, '/api/status 读失败必须明说').toContainText('读取失败');
+  await expect(list, '读失败不该渲染成空态「暂无代理」').not.toContainText('暂无代理数据');
+  await expect(page.locator('#healthHistoryList'), '历史读失败必须明说').toContainText('读取失败');
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });

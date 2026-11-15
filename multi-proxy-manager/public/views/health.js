@@ -28,7 +28,7 @@
    依赖（见 dashboard.html head 与 coherence 第 7 项）：
      · mp-kernel.js → MPKernel.fetchJSON / esc / showReadError
      · mp-shell.js  → MPShell.showLoading / hideLoading / hideOfflineBanner
-     · mp-shared.js → MPShared.getProxyConfig / reasonText /
+     · mp-shared.js → MPShared.get / reasonText / latencyText / uptimeText /
                       renderProviderIsolation / showProviderReadError
    三者都必须先于本文件加载（加载时即取引用）。
 
@@ -100,10 +100,16 @@
       });
 
       var el = function(id) { return document.getElementById(id); };
-      if (el('healthOkCount')) el('healthOkCount').textContent = okCount;
-      if (el('healthDegradedCount')) el('healthDegradedCount').textContent = degradedCount;
-      if (el('healthDownCount')) el('healthDownCount').textContent = downCount;
-      if (el('healthHistoryCount')) el('healthHistoryCount').textContent = (historyData.history || []).length;
+      // 🔴 读失败时统计卡必须显示「—」，不许写 0：0 会被读成「测过了，没有」，
+      // 真相却是「没读到」。旧实现在 status 读失败时把三个计数写成 0、历史失败时
+      // 把条数写成 0 —— 列表明明写着「读取失败」，上面三张卡却说「一切为 0」。
+      var DASH = '—';
+      if (el('healthOkCount')) el('healthOkCount').textContent = statusFailed ? DASH : okCount;
+      if (el('healthDegradedCount')) el('healthDegradedCount').textContent = statusFailed ? DASH : degradedCount;
+      if (el('healthDownCount')) el('healthDownCount').textContent = statusFailed ? DASH : downCount;
+      if (el('healthHistoryCount')) {
+        el('healthHistoryCount').textContent = historyResult.__readError ? DASH : (historyData.history || []).length;
+      }
 
       // Render proxy health list
       var healthList = el('healthProxyList');
@@ -141,12 +147,14 @@
             }
             // 延迟 / 运行时间：字段名归一收到 mp-shared.js（老 bug：接口给 latencyMs
             // 与 rawHealth.uptime，两处渲染却读 latency / uptime，于是恒显示 —）。
-            var latency = SH.latencyText(health) || '-';
+            // 不可达时不印延迟：连接失败路径上 latencyMs 也可能被赋值，
+            // 把「连接消耗」当成「代理延迟」是另一种假数据。
+            var latency = reachable ? (SH.latencyText(health) || '-') : '-';
             var uptime = SH.uptimeText(status) || '-';
 
             return '<div class="health-row">' +
-              '<span class="health-provider"><span class="proxy-icon ' + config.iconClass + '" style="width:28px;height:28px;font-size:14px;">' + (config.icon || '') + '</span> ' + config.name + '</span>' +
-              '<span><span class="status-badge ' + statusClass + '"><span class="dot"></span>' + statusText + '</span> <span class="' + hClass + '"><span class="dot"></span>' + hText + '</span></span>' +
+              '<span class="health-provider"><span class="proxy-icon ' + esc(config.iconClass || '') + '" style="width:28px;height:28px;font-size:14px;">' + (config.icon || '') + '</span> ' + esc(config.name) + '</span>' +
+              '<span><span class="status-badge ' + statusClass + '"><span class="dot"></span>' + statusText + '</span> <span class="' + hClass + '"><span class="dot"></span>' + esc(hText) + '</span></span>' +
               '<span style="min-width:80px;text-align:right;font-family:var(--font-mono);font-size:13px;color:var(--color-text-secondary);">' + esc(latency) + '</span>' +
               '<span style="min-width:100px;text-align:right;font-size:13px;color:var(--color-text-tertiary);">' + esc(uptime) + '</span>' +
             '</div>';

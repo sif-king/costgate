@@ -59,7 +59,10 @@ const GUARDS = [
   },
   {
     file: 'e2e/spa-views.spec.js',
-    must: ['@tier0', 'healthProxyList', 'MPShared.get'],
+    // 只认真实代码里的锚点：`window.MPShared.proxyConfigNames().length > 0` 是
+    // waitForFunction 的实参，写注释满足不了它（D-018 的教训：注释式注入会骗过
+    // 只查文本的判据）。
+    must: ['@tier0', 'healthProxyList', 'window.MPShared.proxyConfigNames().length > 0'],
     why: '健康视图经共享层取数并真渲染（首个非自治视图：加载顺序/MPShared 通路/window 挂载三层都靠它守）',
   },
 ];
@@ -100,9 +103,11 @@ test('CI 两个闸门都真的会跑到面板守卫', () => {
     'p0 gate 必须跑 check-panel-coherence.sh（面板一致性守卫不能只留在本地 preflight）');
   // 2026-11-15 补：第 7 项新加了 mp-shared.js 的顺序判据（views/health.js 加载时即取
   // global.MPShared）。若有人把这段检查删掉，顺序错了也没人喊 —— 所以连这条判据一起钉住。
+  // 判据必须落在**代码**上：`shared_line=$(grep` 这行只可能是实现，不可能出现在注释里，
+  // 光断言「文件里出现 mp-shared.js 字样」会被一句注释满足（D-018 同族假绿）。
   const coherence = fs.readFileSync(path.join(ROOT, 'scripts/check-panel-coherence.sh'), 'utf8');
-  assert.match(coherence, /mp-shared\.js/,
-    'check-panel-coherence.sh 丢了 mp-shared.js 顺序检查（共享层晚于视图加载会导致健康页整体不加载且无报错）');
-  assert.match(coherence, /MPShared/,
-    'check-panel-coherence.sh 的 mp-shared 检查里没提 MPShared（判据被抽掉了）');
+  assert.match(coherence, /shared_line=\$\(grep/,
+    'check-panel-coherence.sh 的 mp-shared.js 顺序检查被删或改写（共享层晚于视图加载会导致健康页整体不加载且无报错）');
+  assert.match(coherence, /vline" -lt "\$shared_line/,
+    'check-panel-coherence.sh 丢了「views 早于 mp-shared.js」的判定行（只留变量赋值等于没检查）');
 });

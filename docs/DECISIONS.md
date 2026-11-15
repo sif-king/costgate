@@ -323,3 +323,15 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - C 把延迟退回读 `health.latency` → E2E 红于「延迟列应读 latencyMs」。
 - **后果**：真跑 node **46/46**、coherence **七项**、全量 E2E **60/60**、tier0 闸门 **46/46**；`dashboard.html` **2535 行**（本片净 −184，含新增注释）。
 - **推翻条件 / 剩余**：概览（`updateDashboardDisplay` / `renderProxyCards` / `toggleProxy` / `loadStatus` / onboard）仍未抽。它读写 `proxyStatus` 且是页面首屏与轮询宿主，**倾向判定为「页面壳」而非业务视图**；若要抽，先证明轮询与首屏渲染可以整体迁移，否则就地登记为例外，不再硬抽。
+
+### D-021 复核补丁（独立只读 peer review 后，2026-11-15）
+
+复核按 §5.7 判据逐条过：热路径 4 文件 0 改动 ✅、无夹带并行 WIP ✅、46/46 node + coherence ✅。结论原本是**不建议推**，因为抓到一个本提交**新引入**的假数据风险。逐项处理：
+
+- 🔴 **①（阻塞）hermes 的 `uptime` 是 epoch 秒**：`hermes-proxy/proxy.py` 的 `/health` 填的是 `time.time()`，不是进程运行秒数（实测 codex 是 `process.uptime()`=合理秒数，hermes 若是 epoch 就会被我的 `uptimeText` 渲染成「20772d」级荒谬时长）。这等于把「恒为 —」换成一个**看起来像真的假数字**，比原来更糟。修法：`uptimeText` 加 `sec >= 1e9` 判据（1e9 秒 ≈ 31.7 年，任何真实 uptime 都到不了）→ 留空，并在注释里写明这是上游 bug、本函数只负责不把它当真相展示。E2E stub 里加入 hermes 的真实形态（`rawHealth.uptime: 1763200000`），**按行**断言运行时间格必须为 `-`。注入「删掉 1e9 判据」→ 真红。
+  - 🔴 **这里还踩了自己一个坑**：第一版断言写死 `not.toContainText('20772d')`，注入验证时**假绿**（换个数就是 20407d）。断言太具体 = 只测了一个样本。改成按行取最后一格后注入才真红。
+- **② 读失败时统计卡写 0**（旧有行为，本片搬动后仍在）：列表写着「读取失败」，上面四张卡显示 0，读起来像「测过了，都没有」。改为读失败显示 `—`（status 失败三张、history 失败一张）。新增 `@tier0` 用例「读失败时统计卡显示 — 而不是 0」；注入「退回写 0」真红。
+- **③ 两处未转义**：`config.name` 与 `hText`（`reasonText` 会回显后端原因码）进 `innerHTML` 前补 `esc`。`config.icon` 是 icons.js 提供的 SVG 标记，**不能**转义（转义会把图标变成文本），保持原样并注明。
+- **④ 守卫自证可被注释满足**：登记表原先断言「coherence 文本里出现 mp-shared.js / MPShared」，一句注释就能满足。改为断言**实现行**（`shared_line=$(grep`、`vline" -lt "$shared_line`）；E2E 登记锚点改成 `waitForFunction` 的实参 `window.MPShared.proxyConfigNames().length > 0`。
+- **⑤ 顺手**：删掉重复的 `waitForFunction`（同一段被写了两遍）；不可达代理不再显示探测耗时（连接失败时 `latencyMs` 也会被赋值，把「连接消耗」当「代理延迟」是另一类假数据）。
+- **复核后真跑**：node **46/46**、coherence **七项**、全量 E2E **61/61**、tier0 **47/47**。新增注入两式（删 epoch 判据 / 退回写 0）均真红并 sha256 恢复。
