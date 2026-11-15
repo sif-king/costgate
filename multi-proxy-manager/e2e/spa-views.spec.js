@@ -291,3 +291,112 @@ test('dashboard 子视图「成本」余额/预算/周报真出数，刷新按�
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// health 视图专属断言（2026-11-15，2.3b 第六片）
+// 为什么单独加：这一片是**第一个非自治视图**——它原读页面 IIFE 的 proxyStatus、
+// PROXY_CONFIGS 与三个共享渲染件，抽离时必须先落 mp-shared.js。坏法比前几片多两种：
+//   ① 加载顺序错（views/health.js 早于 mp-shared.js）→ 模块整体 console.error 不加载，
+//      健康页停在「正在加载健康状态...」，而 tab 切换、面板可见全都正常（假绿）；
+//   ② 模块裸用页面本地名 → ReferenceError 只在交互时抛。
+// 所以这里 stub 四个接口 + 配置接口，断言三类统计数、列表真出条目（含配置里的显示名，
+// 证明 MPShared 通路活着）、延迟/运行时间两列真有值（老 bug：字段名读错恒显示 —）、
+// Provider 隔离与历史真渲染，再真点「刷新」和改下拉条数（内联 onchange）。
+test('dashboard 子视图「健康」三类统计/列表/隔离/历史真出数，刷新与条数下拉真触发（views/health.js 接线）', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const historyCalls = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/api/health-history')) historyCalls.push(r.url());
+  });
+
+  // 配置接口：显示名故意与 key 不同，用来证明视图真的走了 MPShared.get
+  // （走不到就会退化成裸 key 'codex'，断言立刻红）。
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { name: 'Probe Health Proxy', port: 18790, defaultVersion: '9.9.9' } }),
+  }));
+  // /api/status 真实形状是**扁平 map**（不是 {proxies:...}），这里照抄，
+  // 免得测的是一个后端根本不会返回的形状。
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { running: true, port: 18790, fault: false,
+               health: { status: 'ok', latencyMs: 12 },
+               rawHealth: { uptime: 3720 } },
+      claude: { running: false, port: 18791, fault: false },
+      cursor: { running: true, port: 18794, fault: false, health: { status: 'degraded', reasons: ['provider 连续失败'] } },
+    }),
+  }));
+  // readyz：真探测优先。claude 带 ECONNREFUSED 原因码，用来验证 reasonText 走共享层。
+  await page.route('**/api/readyz', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ proxies: { total: 2, details: [
+      { name: 'codex', reachable: true },
+      { name: 'claude', reachable: false, reason: 'ECONNREFUSED' },
+    ] } }),
+  }));
+  await page.route('**/api/provider-health', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ isolateEnabled: false, isolated: [{
+      providerId: 'probe-provider', consecutiveFailures: 3,
+      unhealthyUntil: Date.now() + 600000,
+      correlation: { verdict: 'single-proxy', sources: ['probe-src-a'] },
+    }] }),
+  }));
+  await page.route('**/api/health-history**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ history: [
+      { proxy: 'probe-health-proxy', status: 'degraded', reason: 'probe-reason', timestamp: 1763200000000 },
+    ] }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  // 等页面 init 的 fetchProxyConfigs 落地再切健康页：配置仓是异步填的，
+  // 早于它渲染会退化成裸 key（这正是这条用例要盯的通路，不能靠「等一下」糊过去）。
+  await page.waitForFunction(() => window.MPShared && window.MPShared.proxyConfigNames().length > 0, null, { timeout: 15000 });
+
+  // 等页面 init 的 fetchProxyConfigs 落地再切健康页：配置仓是异步填的，
+  // 早于它渲染会退化成裸 key（这正是这条用例要盯的通路，不能靠「等一下」糊过去）。
+  await page.waitForFunction(() => window.MPShared && window.MPShared.proxyConfigNames().length > 0, null, { timeout: 15000 });
+
+  await page.click('#viewTabs .section-tab[data-page="health"]');
+  await expect(page.locator('#page-health')).toHaveClass(/active/, { timeout: 15000 });
+
+  // ① 三类统计：ok=1（codex）、degraded=1（cursor）、down=1（claude）
+  const cnt = (id) => page.locator('#' + id);
+  await expect(cnt('healthOkCount'), '健康数应为 1').toHaveText('1', { timeout: 15000 });
+  await expect(cnt('healthDegradedCount'), '降级数应为 1').toHaveText('1');
+  await expect(cnt('healthDownCount'), '故障数应为 1').toHaveText('1');
+  await expect(cnt('healthHistoryCount'), '历史条数应为 1').toHaveText('1');
+
+  // ② 列表：配置显示名（MPShared 通路）+ 延迟/运行时间（字段名归一）+ 不可达原因（reasonText）
+  const list = page.locator('#healthProxyList');
+  await expect(list, '应渲染配置里的显示名（走 MPShared.get）').toContainText('Probe Health Proxy', { timeout: 15000 });
+  await expect(list, '延迟列应读 latencyMs（老 bug：恒显示 —）').toContainText('12ms');
+  await expect(list, '运行时间应读 rawHealth.uptime（3720s → 1h2m）').toContainText('1h2m');
+  await expect(list, '不可达原因应经 reasonText 给出原因+处置').toContainText('连接被拒');
+
+  // ③ Provider 隔离 + 副标题口径（observe 模式）
+  await expect(page.locator('#healthPagePhList'), '隔离项应渲染').toContainText('probe-provider');
+  await expect(page.locator('#healthPagePhSubtitle'), '副标题应说明 observe 模式').toContainText('observe 模式');
+
+  // ④ 健康历史
+  await expect(page.locator('#healthHistoryList'), '历史应渲染原因').toContainText('probe-reason');
+
+  // ⑤ 真点「刷新」：静态内联 onclick → 全局作用域解析，模块没挂 window 就抛 ReferenceError
+  const before = historyCalls.length;
+  await page.locator('#page-health button[onclick="loadHealthPage()"]').click();
+  await expect.poll(() => historyCalls.length, '刷新应重新请求健康历史').toBeGreaterThan(before);
+  await expect(list, '刷新后列表仍应出条目').toContainText('Probe Health Proxy');
+
+  // ⑥ 改条数下拉（内联 onchange="loadHealthHistory()"）：必须真带上新 limit 重新取数
+  await page.selectOption('#healthHistoryLimit', '20');
+  await expect.poll(() => historyCalls.some((u) => /limit=20/.test(u)), '下拉改 20 条应带 limit=20 重新请求').toBe(true);
+  await expect(page.locator('#healthHistoryList'), '改条数后历史仍应渲染').toContainText('probe-reason');
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});

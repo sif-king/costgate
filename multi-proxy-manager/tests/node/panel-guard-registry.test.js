@@ -57,6 +57,11 @@ const GUARDS = [
     must: ['@tier0', 'copyUnifiedIngressUrl', 'NotAllowedError'],
     why: '强制剪贴板被拒后真点复制按钮（把 CI 那个失败模式本身钉死，不依赖环境是否放行）',
   },
+  {
+    file: 'e2e/spa-views.spec.js',
+    must: ['@tier0', 'healthProxyList', 'MPShared.get'],
+    why: '健康视图经共享层取数并真渲染（首个非自治视图：加载顺序/MPShared 通路/window 挂载三层都靠它守）',
+  },
 ];
 
 test('关键面板守卫都在树里，且没有被放宽成空壳', () => {
@@ -93,4 +98,11 @@ test('CI 两个闸门都真的会跑到面板守卫', () => {
   // 把「视图忘接线 / 壳机制静默失效」重新放回无人看管的盲区。
   assert.match(p0, /bash\s+scripts\/check-panel-coherence\.sh/,
     'p0 gate 必须跑 check-panel-coherence.sh（面板一致性守卫不能只留在本地 preflight）');
+  // 2026-11-15 补：第 7 项新加了 mp-shared.js 的顺序判据（views/health.js 加载时即取
+  // global.MPShared）。若有人把这段检查删掉，顺序错了也没人喊 —— 所以连这条判据一起钉住。
+  const coherence = fs.readFileSync(path.join(ROOT, 'scripts/check-panel-coherence.sh'), 'utf8');
+  assert.match(coherence, /mp-shared\.js/,
+    'check-panel-coherence.sh 丢了 mp-shared.js 顺序检查（共享层晚于视图加载会导致健康页整体不加载且无报错）');
+  assert.match(coherence, /MPShared/,
+    'check-panel-coherence.sh 的 mp-shared 检查里没提 MPShared（判据被抽掉了）');
 });

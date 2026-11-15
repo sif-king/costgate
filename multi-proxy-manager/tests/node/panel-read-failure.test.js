@@ -179,6 +179,9 @@ function runPanel(file, fetchStub, exportList) {
   const headScripts = [
     'mp-kernel.js',
     'mp-shell.js',
+    // 2.3b 第六片（2026-11-15）：代理配置只读仓 / reasonText / Provider 隔离渲染
+    // 归位到 mp-shared.js，views/health.js 加载时即取 global.MPShared。
+    'mp-shared.js',
     'views/shadow.js',
     'views/alerts.js',
     'views/today.js',
@@ -186,6 +189,7 @@ function runPanel(file, fetchStub, exportList) {
     // 2.3b 第五片（2026-11-15）：成本页 / 周报 / 账本 Hero 搬到 views/cost.js。
     // 与 browser 同序——迟一步，页面薄包装就只剩 console.error 分支。
     'views/cost.js',
+    'views/health.js',
   ];
   for (const rel of headScripts) {
     vm.runInContext(fs.readFileSync(path.join(PUBLIC, rel), 'utf8'), sandbox, { filename: rel });

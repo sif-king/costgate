@@ -170,7 +170,9 @@ fi
 # 告警页的加载条 / 离线横幅三处全走 console.error 分支，不报错、不白屏、
 # 页面照常出数据，只是壳机制静默失效。另一个同族坑（2.3a）：视图 script 放到
 # 文档末尾，页面 IIFE 在 1.3k 行处就调入口 → MPViews is not defined 全线崩。
-# 所以判定只看树里的行号：mp-shell.js < 每个 views/*.js < 首个内联 <script>。
+# 所以判定只看树里的行号：mp-shell.js / mp-shared.js < 每个 views/*.js < 首个内联 <script>。
+# 2026-11-15 加 mp-shared.js：views/health.js 在加载时即取 global.MPShared，
+# 而 mp-shared.js 又依赖 mp-kernel.js（取 esc / showReadError）。三者顺序都不能乱。
 DASH="$PANEL_DIR/dashboard.html"
 if [ -f "$DASH" ]; then
   # 只认**行首的真 script 标签**：注释里写一句 `<script src=...>` 不算接线，
@@ -179,6 +181,16 @@ if [ -f "$DASH" ]; then
   shell_line=$(grep -nE '^<script[^>]*src="\./mp-shell\.js"' "$DASH" | head -1 | cut -d: -f1)
   if [ -z "$shell_line" ]; then
     fail "dashboard.html 没引 mp-shell.js（views/*.js 会拿到 undefined 的 MPShell，壳机制静默失效）"
+  fi
+  # 共享层同样必须在所有 views 之前：health 视图加载时即取 global.MPShared。
+  shared_line=$(grep -nE '^<script[^>]*src="\./mp-shared\.js"' "$DASH" | head -1 | cut -d: -f1)
+  if [ -z "$shared_line" ]; then
+    fail "dashboard.html 没引 mp-shared.js（views/health.js 会拿到 undefined 的 MPShared，健康页无法取数）"
+  else
+    kline_all=$(grep -nE '^<script[^>]*src="\./mp-kernel\.js"' "$DASH" | head -1 | cut -d: -f1)
+    if [ -n "$kline_all" ] && [ "$shared_line" -lt "$kline_all" ]; then
+      fail "mp-shared.js 在第 ${shared_line} 行，早于 mp-kernel.js 第 ${kline_all} 行（它要取 MPKernel.esc / showReadError）"
+    fi
   fi
   for vf in "$PANEL_DIR"/views/*.js; do
     [ -e "$vf" ] || continue
@@ -193,6 +205,9 @@ if [ -f "$DASH" ]; then
     fi
     if [ -n "$shell_line" ] && [ "$vline" -lt "$shell_line" ]; then
       fail "views/$vname 在第 ${vline} 行，早于 mp-shell.js 第 ${shell_line} 行（模块加载时取不到 MPShell）"
+    fi
+    if [ -n "$shared_line" ] && [ "$vline" -lt "$shared_line" ]; then
+      fail "views/$vname 在第 ${vline} 行，早于 mp-shared.js 第 ${shared_line} 行（模块加载时取不到 MPShared）"
     fi
   done
 fi

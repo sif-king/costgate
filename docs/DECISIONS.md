@@ -300,3 +300,26 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - **配套断言更新（推 `b8723bd` 后 CI 抓到）**：`tests/unit/frontend/logs.test.js` 原来断言页面里存在字符串 `clipboard.writeText`——契约变了之后这条必然红（`manager full suite`）。不是放宽，而是升级为更硬的判据：走 `MPKernel.copyText`、页面不许再直接调 `navigator.clipboard.writeText(`、三处复制必须各有失败提示。`login.test.js` 同步加「必须带拒绝回调 + 必须有可见失败反馈」。🔴 踩坑：Jest 的 `expect` **只接受一个参数**，照 Playwright 习惯写 `expect(v, '说明')` 会直接报 `Expect takes at most one argument`（两条用例同一个错，第二次才发现）。
 - 🔴 **本地全量的读法**：本机除工作树外还有并行会话未提交的后端 WIP（`server.js` +5 行等），实测它会让 `tests/unit/api.test.js` 的回环免鉴权两条恒红（401 而非 404）。判据按既有纪律：**单跑仍红 ≠ 我引入**——该套件与本次改动零引用，且 CI（干净 checkout）上同一提交的 `manager` job 里这两条是绿的。基线读数须以「CI 视角」为准，本地红项要能逐条归因到具体 WIP。
 - **推翻条件 / 剩余**：`health` 与 `概览` 仍未抽——前置不变（`proxyStatus` 读写 + `PROXY_CONFIGS` 只读 + `reasonText / renderProviderIsolation / showProviderReadError` 三个共享渲染件）。若抽 health 时证明这些是「只读 + 一个写点」，可先用窄接口注入（把 renderer 归位到一个 shared 模块），不必做全量 `MPState` store；概览若证明它本质是页面壳而非业务视图，就地登记为例外，不再硬抽。
+
+## D-021 · 第六片抽 health；落共享层 mp-shared.js；修「延迟/运行时间恒为 —」
+
+- **状态**：已执行（2026-11-15，2.3b 第六片）
+- **背景**：D-020 把 health 的前置登记为「共享状态迁移」，并写明「若证明是只读 + 一个写点，可先用窄接口注入，不必做全量 store」。按引用点清点：
+  - `proxyStatus`：1 个声明 + 1 个写点（`loadHealthPage` 里的 `proxyStatus = statusResult.proxies`）+ 概览渲染 / `toggleProxy` / `loadStatus` 若干读点；
+  - `PROXY_CONFIGS`：全页 13 处引用，唯一写点 `fetchProxyConfigs`；
+  - 共享渲染件 3 个：`reasonText`（health + onboard 步骤条）、`renderProviderIsolation` / `showProviderReadError`（概览卡 + health）。
+  ⇒ 结论：**不必做 store**，但要有一个「只读仓 + 纯渲染」的共享层，否则 health 只能继续贴在页面 IIFE 上。
+- **决策**：
+  - ① **新建 `public/mp-shared.js`**：`setProxyConfigs`（唯一写入口）/ `get` / `proxyConfigNames` + `reasonText` + `latencyText` / `uptimeText` + `renderProviderIsolation` / `showProviderReadError`。定位写清楚：**只读仓 + 纯函数渲染，无轮询、无副作用、无订阅**。页面 `fetchProxyConfigs` 只负责「拼一次 + 写一次」，页面不再持第二份可写副本。
+  - ② **新建 `public/views/health.js`**（`MPViews.health.load`，另挂 `window.loadHealthPage` / `loadHealthHistory`）：三路取数、统计、代理健康列表、Provider 隔离、健康历史整体搬走，口径注释一并搬。`dashboard.html` **2719 → 2535 行（−184）**。
+  - ③ 🔴 **一处有意行为差异**：旧 `loadHealthPage` 会把 `/api/status` 写回页面 `proxyStatus`。模块改为私有 `healthStatus`，不再写页面状态。理由：页面 `proxyStatus` 只在 `loadStatus()` / `toggleProxy()` 被消费并重渲染，切回总览并不重画代理卡 —— 那次写回既不影响界面，又让「卡片显示的旧状态」和「按钮判断用的新状态」来自两份快照（文案与实际动作可能相反）。现在两者都只来自 `loadStatus()`。
+  - ④ 🔴 **抽离当场抓到一个存在已久的口径 bug**：`/api/status` 实际给的是 `health.latencyMs` 与 `rawHealth.uptime`，而概览卡与健康页都读 `health.latency` / `status.uptime` ⇒ **「延迟」「运行时间」两列从来都是 `—`**，看起来像「探不到数据」。这不是本次引入，但属于本仓最忌讳的那类（把「字段名读错」显示成「没有数据」）。修法：归一逻辑收到 `MPShared.latencyText / uptimeText`（老字段优先、新字段兜底、都没有才留空），概览卡与健康页共用一份。E2E 断言 `12ms` 与 `3720s → 1h2m`。
+  - ⑤ 🔴 **消除重复挂载**：页面末尾原本还挂着 `window.loadHealthPage / window.loadHealthHistory`（D-017 时期补的），与本片模块挂载重名。同名两处挂载 = 又一份「谁是活的」的歧义，而且会让「模块忘了挂」被页面那份静默掩盖 —— **注入验证时实测踩到**（摘掉模块挂载后两层守卫全绿）。改为视图模块独占，页面不再重复。
+  - ⑥ **coherence 第 7 项扩展**：新增 `mp-shared.js` 的存在性与顺序判据（必须在 `mp-kernel.js` 之后、所有 `views/*.js` 之前）。理由同 D-019：`views/health.js` 在加载那一刻就取 `global.MPShared`，晚一步即模块整体不加载 —— 而页面不会白屏、tab 照常切换，只在健康页留下一句「正在加载健康状态...」。
+  - ⑦ **守卫登记表补两条**：`e2e/spa-views.spec.js`（健康用例的关键字）与「coherence 里必须仍含 mp-shared 判据」，防新增的守卫本身被悄悄删除。
+- **注入验证（全部真红 + sha256 校验恢复）**：
+  - A 把 `views/health.js` 提到 `mp-shared.js` 之前 → coherence `rc=1`，精确报「在第 21 行，早于 mp-shared.js 第 22 行」；健康 E2E 红于「健康数应为 1」（模块没加载，页停在加载态）。
+  - B 摘掉模块的 `global.loadHealthHistory` 挂载 → 静态守卫 `rc=1` 点名 `loadHealthHistory`；E2E 红于「下拉改 20 条应带 limit=20 重新请求」。
+  - C 把延迟退回读 `health.latency` → E2E 红于「延迟列应读 latencyMs」。
+- **后果**：真跑 node **46/46**、coherence **七项**、全量 E2E **60/60**、tier0 闸门 **46/46**；`dashboard.html` **2535 行**（本片净 −184，含新增注释）。
+- **推翻条件 / 剩余**：概览（`updateDashboardDisplay` / `renderProxyCards` / `toggleProxy` / `loadStatus` / onboard）仍未抽。它读写 `proxyStatus` 且是页面首屏与轮询宿主，**倾向判定为「页面壳」而非业务视图**；若要抽，先证明轮询与首屏渲染可以整体迁移，否则就地登记为例外，不再硬抽。

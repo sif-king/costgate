@@ -15,7 +15,11 @@
 <!-- 页面壳机制（2026-11-15 从 IIFE 末尾抽出）：必须先于所有 views/*.js。
      views 在 head 里就会取 global.MPShell，晚一步就永远拿到 undefined。 -->
 <script src="./mp-shell.js"></script>
-<!-- 页内视图模块（2026-11-14 起）：必须晚于 mp-kernel.js / mp-shell.js、早于页面内联脚本。
+<!-- 面板共享层（2026-11-15 加）：代理配置只读仓 + 不可达诊断文案 + Provider 隔离渲染。
+     views/health.js 在加载时即取 global.MPShared，所以必须早于所有 views/*.js；
+     写入只有一处（页面 fetchProxyConfigs → MPShared.setProxyConfigs）。 -->
+<script src="./mp-shared.js"></script>
+<!-- 页内视图模块（2026-11-14 起）：必须晚于 mp-kernel.js / mp-shell.js / mp-shared.js、早于页面内联脚本。
      放 head 而不是文档末尾：内联 IIFE 在 1.3k 行处就调这些入口，晚加载即
      「MPViews is not defined」全线崩（这是 2.3a 踩过的坑）。 -->
 <script src="./views/shadow.js"></script>
@@ -23,6 +27,7 @@
 <script src="./views/today.js"></script>
 <script src="./views/registry.js"></script>
 <script src="./views/cost.js"></script>
+<script src="./views/health.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>
@@ -1349,7 +1354,9 @@
   // 2026-10-27 收口 PROXY_CONFIGS 多副本：本对象不再硬编码，改为启动时从服务端
   // GET /api/proxy-configs 拉取（服务端 buildProxyConfigs() 为唯一真源）。icon/iconClass 由
   // icons.js（决策 E 全站单一图标源）的 window.MPIcons.proxies[name] 解析。见 fetchProxyConfigs()。
-  var PROXY_CONFIGS = {};
+  // 代理配置只读仓已归位到 mp-shared.js（MPShared.get / proxyConfigNames）。
+  // 本页只保留一次写入（fetchProxyConfigs），不再持第二份可写副本。
+  // 理由（D-020 同族）：同一个对象被页面与视图各持一份，早晚读出两个答案。
 
   // ===== State =====
   var proxyStatus = {};
@@ -1557,7 +1564,7 @@
     container.innerHTML = proxies.map(function(entry) {
       var name = entry[0];
       var status = entry[1];
-      var config = PROXY_CONFIGS[name] || { name: name, icon: '', iconClass: '', port: 0, defaultVersion: '' };
+      var config = MPShared.get(name) || { name: name, icon: '', iconClass: '', port: 0, defaultVersion: '' };
       var isRunning = status.running;
       var isFault = !!status.fault;
       var statusClass = isRunning ? 'running' : (isFault ? 'fault' : 'stopped');
@@ -1583,8 +1590,12 @@
         healthBadge = '<span class="status-badge offline"><span class="dot"></span>未检测</span>';
       }
 
-      var uptimeText = status.uptime ? '运行 ' + status.uptime : '';
-      var latencyText = status.health && status.health.latency ? '延迟 ' + status.health.latency : '';
+      // 延迟 / 运行时间：字段名归一收到 mp-shared.js（接口给 latencyMs / rawHealth.uptime，
+      // 旧这里读 latency / uptime，于是概览卡这两项从来没显示过）。
+      var upText = MPShared.uptimeText(status);
+      var upLatency = MPShared.latencyText(status.health);
+      var uptimeText = upText ? '运行 ' + upText : '';
+      var latencyText = upLatency ? '延迟 ' + upLatency : '';
       var versionValue = versionData && versionData.proxies && versionData.proxies[name] ? versionData.proxies[name] : (config.defaultVersion || '');
       var versionBadge = versionValue ? '<span class="proxy-version-badge">' + esc(versionValue) + '</span>' : '';
 
@@ -1623,7 +1634,7 @@
     container.innerHTML = entries.map(function(entry) {
       var name = entry[0];
       var status = entry[1];
-      var config = PROXY_CONFIGS[name] || { name: name, icon: '' };
+      var config = MPShared.get(name) || { name: name, icon: '' };
       var badgeClass = status.running ? 'running' : 'stopped';
       var badgeText = status.running ? 'ON' : 'OFF';
       return '<a href="proxy-config.html?proxy=' + name + '" class="nav-item proxy-nav-item" data-proxy="' + esc(name) + '" data-tooltip="' + esc(config.name) + '" tabindex="0">' +
@@ -1652,7 +1663,7 @@
         if (versionData.proxies) {
           Object.keys(versionData.proxies).forEach(function(key) {
             var ver = versionData.proxies[key];
-            var config = PROXY_CONFIGS[key];
+            var config = MPShared.get(key);
             rows.push({ label: config ? config.name : key, value: ver });
           });
         }
@@ -1686,7 +1697,7 @@
       .then(function(res) { return res.json(); })
       .then(function(data) {
         if (data.success) {
-          showToast((PROXY_CONFIGS[name] ? PROXY_CONFIGS[name].name : name) + ' 已' + (action === 'start' ? '启动' : '停止'), 'success');
+          showToast((MPShared.get(name) ? MPShared.get(name).name : name) + ' 已' + (action === 'start' ? '启动' : '停止'), 'success');
           proxyStatus[name] = Object.assign({}, proxyStatus[name], { running: action === 'start' });
           updateDashboardDisplay(versionCache);
         } else if (action === 'start' && data.conflict) {
@@ -1706,185 +1717,21 @@
       });
   };
 
-  // ===== Health Page =====
-  // 不可达时的诊断文字。两段：出什么事（原因）+ 该干什么（处置）。
-  // 三条纪律：
-  //  1. 不再输出带「不可达」前缀的句子——外层徽章已经说了不可达，重复一次就是
-  //     「不可达 · 不可达（原因未知）」这种自己骂自己的文案（实测踩过）。
-  //  2. reason 缺失时不许写「原因未知」了事：/api/status 的 running 本身就是信息，
-  //     进程没跑就是最有用的一句话。缺字段只可能发生在面板与 manager 版本不一致时。
-  //  3. 不认识的码原样露出——宁可显示一个陌生字符串，也不要替它编解释。
-  function reasonText(r, running) {
-    if (r === 'timeout') {
-      return running ? '探测超时 · 进程在跑但 2s 内没回 /health，去看日志'
-                     : '探测超时 · 进程记录里没在跑，先启动再看';
-    }
-    if (r === 'ECONNREFUSED') {
-      return running ? '连接被拒 · 进程记录说有跑，但端口没人监听，八成启动即崩，去看日志'
-                     : '连接被拒 · 该代理未启动（端口没人监听）';
-    }
-    if (r === 'EHOSTUNREACH' || r === 'ENETUNREACH') return '网络不可达 · 检查本机网络或监听地址';
-    if (r) return '原因码 ' + String(r);
-    // reason 缺失（未升级的 manager）：仍然给出可执行判断，并标明信息不完整。
-    return running ? '进程在跑但探测不通 · 原因字段缺失（面板与 manager 版本不一致，重启面板）'
-                   : '该代理未运行';
+  // ===== Health Page（2.3b 第六片，2026-11-15）=====
+  // 实现（三路取数 / 统计 / 代理健康列表 / Provider 隔离 / 健康历史）已抽到 views/health.js。
+  // 这一片不自治：原实现读页面 IIFE 的 proxyStatus、PROXY_CONFIGS 与三个共享渲染件。
+  // 所以先落 public/mp-shared.js（配置只读仓 + reasonText + Provider 隔离渲染），
+  // 模块只从 MPShared 取，不跨 IIFE、不裸用页面本地名（D-020 的教训）。
+  // 有意差异：模块不再把 /api/status 写回页面 proxyStatus（见 views/health.js 文件头）。
+  function loadHealthPage() {
+    if (window.MPViews && window.MPViews.health) window.MPViews.health.load();
+    else console.error("[dashboard] views/health.js 未加载，健康页无法取数");
   }
 
-  function loadHealthPage() {
-    showLoading();
-    // 历史条数取下拉框当前值（默认 50）。2026-11-14 之前这个下拉的
-    // onchange="loadHealthHistory()" 引用的是一个**从未定义**的函数——换了条数
-    // 只会抛 ReferenceError、列表纹丝不动。现在 loadHealthHistory 就是本函数的
-    // 别名（见文件末尾的全局暴露段），条数在这里读一次。
-    var limitSel = document.getElementById('healthHistoryLimit');
-    var historyLimit = parseInt((limitSel && limitSel.value) || '50', 10) || 50;
-    // 三个请求各自标记读失败：一个挂了不让另外两个也跟着变空白，
-    // 但绝不喂 mock 假数据——挂掉的那段必须显示「读不到」。
-    Promise.all([
-      fetchJSON('/api/status').catch(function(e) { return { __readError: e }; }),
-      fetchJSON('/api/provider-health').catch(function(e) { return { __readError: e }; }),
-      fetchJSON('/api/health-history?limit=' + historyLimit).catch(function(e) { return { __readError: e }; }),
-      // /api/readyz 会对每个代理真发一次 /health 请求（不是看端口在不在听）。
-      // /api/status 的 health 可能是缓存或推断，两者冲突时以 readyz 为准。
-      fetchJSON('/api/readyz').catch(function(e) { return { __readError: e }; })
-    ]).then(function(results) {
-      var statusResult = results[0] || {};
-      var phResult = results[1] || {};
-      var historyResult = results[2] || {};
-      var readyzResult = results[3] || {};
-      var statusFailed = !!statusResult.__readError;
-      proxyStatus = statusFailed ? {} : (statusResult.proxies || statusResult);
-      var phData = phResult.__readError ? { isolated: [] } : phResult;
-      var historyData = historyResult.__readError ? { history: [] } : historyResult;
-      // 名 → 真实探测结果。readyz 读不到时留空，渲染侧会退回 /api/status 的推断。
-      var readyMap = {};
-      if (!readyzResult.__readError && readyzResult.proxies && readyzResult.proxies.details) {
-        readyzResult.proxies.details.forEach(function(d) { if (d && d.name) readyMap[d.name] = d; });
-      }
-
-      // Update stats（同一套判据：readyz 真探测优先，缺数据才退回 /api/status 推断）
-      var okCount = 0, degradedCount = 0, downCount = 0;
-      Object.keys(proxyStatus).forEach(function(name) {
-        var s = proxyStatus[name] || {};
-        var rz = readyMap[name];
-        var reachable = rz ? !!rz.reachable : (!!s.health && s.health.status !== 'down' && !!s.running);
-        var degraded = !!s.health && s.health.status === 'degraded';
-        if (!reachable) downCount++;
-        else if (degraded) degradedCount++;
-        else okCount++;
-      });
-
-      var el = function(id) { return document.getElementById(id); };
-      if (el('healthOkCount')) el('healthOkCount').textContent = okCount;
-      if (el('healthDegradedCount')) el('healthDegradedCount').textContent = degradedCount;
-      if (el('healthDownCount')) el('healthDownCount').textContent = downCount;
-      if (el('healthHistoryCount')) el('healthHistoryCount').textContent = (historyData.history || []).length;
-
-      // Render proxy health list
-      var healthList = el('healthProxyList');
-      if (healthList) {
-        if (statusFailed) {
-          // 读不到 ≠ 没有代理。过去这里兜底成 mock 三代理（pid 12345 / uptime 2h34m），
-          // 故障被伪装成「三个代理都在跑」——这是本轮修掉的最危险一处。
-          showReadError('healthProxyList', '读取失败',
-            statusResult.__readError.message || '未知错误',
-            'manager 的 /api/status 没返回。若 manager 本身没起来，先看 logs 页的启动日志。', loadHealthPage);
-        } else {
-          var entries = Object.entries(proxyStatus);
-          if (entries.length === 0) {
-            healthList.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="empty-text">暂无代理数据</div></div>';
-          } else {
-          healthList.innerHTML = entries.map(function(entry) {
-            var name = entry[0], status = entry[1];
-            var config = PROXY_CONFIGS[name] || { name: name, iconClass: '' };
-            var health = status.health;
-            var rz = readyMap[name];   // /api/readyz 的真实探测结果（可能缺此项）
-            var statusClass = status.running ? 'running' : 'stopped';
-            var statusText = status.running ? '运行中' : '未运行';
-            // 可达性以 readyz 的真探测为准；没有 readyz 数据才退回 /api/status 的 health 推断。
-            var reachable = rz ? !!rz.reachable : (!!health && health.status !== 'down');
-            var degraded = !!health && health.status === 'degraded';
-            var hClass = reachable ? (degraded ? 'status-badge degraded' : 'status-badge online') : 'status-badge offline';
-            var hText;
-            if (!reachable) {
-              // 只说「不可达」等于什么都没说：用户分不清「没启动」和「起来了但卡住」，
-              // 这两种处置完全相反（去 start vs 去看日志）。原因 + 处置必须一起给。
-              // 外层徽章已经写了「未运行/运行中」，这里不再重复「不可达」三个字。
-              hText = reasonText(rz && rz.reason, !!status.running);
-            } else {
-              hText = degraded ? '降级' : '健康';
-            }
-            var latency = health && health.latency ? health.latency : '-';
-            var uptime = status.uptime || '-';
-
-            return '<div class="health-row">' +
-              '<span class="health-provider"><span class="proxy-icon ' + config.iconClass + '" style="width:28px;height:28px;font-size:14px;">' + (config.icon || '') + '</span> ' + config.name + '</span>' +
-              '<span><span class="status-badge ' + statusClass + '"><span class="dot"></span>' + statusText + '</span> <span class="' + hClass + '"><span class="dot"></span>' + hText + '</span></span>' +
-              '<span style="min-width:80px;text-align:right;font-family:var(--font-mono);font-size:13px;color:var(--color-text-secondary);">' + esc(latency) + '</span>' +
-              '<span style="min-width:100px;text-align:right;font-size:13px;color:var(--color-text-tertiary);">' + esc(uptime) + '</span>' +
-            '</div>';
-          }).join('');
-          // 全都没跑时，满屏红色不构成信息。把「这不是故障，是代理还没启动」说明白，
-          // 否则第一次打开面板的人只会看到九行红字，以为整机坏了。
-          if (downCount === entries.length) {
-            healthList.innerHTML =
-              '<div style="padding:10px 12px;margin:0 0 10px;border-radius:8px;background:rgba(127,127,127,.10);font-size:13px;line-height:1.6;color:var(--color-text-secondary);">' +
-              '没有任何代理在运行 —— 这是「只装了管理器、还没启动代理」的常态，不是故障。' +
-              '起法：<code>bash manage.sh start all</code>，或逐个启动需要的代理。' +
-              '</div>' + healthList.innerHTML;
-          }
-          }
-        }
-      }
-
-      // Render provider health（渲染与读失败都走公共函数，见 renderProviderIsolation）
-      var phList = el('healthPagePhList');
-      if (phList) {
-        if (phResult.__readError) {
-          // 「所有 Provider 健康」这句话只有在真读到「无隔离项」时才配说。
-          // 读失败时说它，等于替一个没查过的系统开健康证明。
-          showProviderReadError('healthPagePhList', 'healthPagePhSubtitle', phResult.__readError, loadHealthPage);
-        } else {
-          renderProviderIsolation('healthPagePhList', 'healthPagePhSubtitle', phData);
-        }
-      }
-
-      // Render health history
-      var historyList = el('healthHistoryList');
-      if (historyList) {
-        if (historyResult.__readError) {
-          showReadError('healthHistoryList', '读取失败',
-            historyResult.__readError.message || '未知错误',
-            '读不到健康历史，不代表期间没有发生故障。', loadHealthPage);
-        } else {
-        var history = historyData.history || [];
-        if (history.length === 0) {
-          historyList.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="empty-text">暂无健康历史</div></div>';
-        } else {
-          historyList.innerHTML = history.slice(0, historyLimit).map(function(h) {
-            var hClass = h.status === 'ok' ? 'status-badge online' : h.status === 'degraded' ? 'status-badge degraded' : 'status-badge offline';
-            var hText = h.status === 'ok' ? '健康' : h.status === 'degraded' ? '降级' : '故障';
-            var time = h.timestamp ? new Date(h.timestamp).toLocaleString('zh-CN') : '-';
-            return '<div class="health-row">' +
-              '<span class="health-provider">' + esc(h.proxy || h.name || 'unknown') + '</span>' +
-              '<span><span class="' + hClass + '"><span class="dot"></span>' + hText + '</span></span>' +
-              '<span style="flex:1;font-size:12px;color:var(--color-text-tertiary);">' + esc(h.reason || '-') + '</span>' +
-              '<span style="font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono);">' + esc(time) + '</span>' +
-            '</div>';
-          }).join('');
-        }
-        }
-      }
-
-      hideOfflineBanner();
-      hideLoading();
-    }).catch(function(err) {
-      // 整页读失败：说清楚是哪一路挂了，不要静默 hideLoading 后留一片空白。
-      hideOfflineBanner();
-      showReadError('healthProxyList', '读取失败', err && err.message || '未知错误',
-        'manager 不可达或 /api/status 异常。可点上方「重试」。', loadHealthPage);
-      hideLoading();
-    });
+  // 共享诊断文案（mp-shared.js）：本页仍有调用点（onboard 步骤条的「原因 + 该干什么」），
+  // health 视图内部直接调 MPShared.reasonText。保留同名别名，调用点零改动。
+  function reasonText(r, running) {
+    return MPShared.reasonText(r, running);
   }
 
   // ===== Alerts Page =====
@@ -2203,52 +2050,18 @@
   };
 
   // ===== Provider Health Loading =====
-  // ===== Provider 隔离状态（概览卡 + 健康页共用一份渲染）=====
-  // 2026-11-14 合并：这两处原先各写一遍几乎逐字相同的 HTML 生成代码（连
-  // 「连续失败 N 次 · 来源」那段都一样），同一份数据两处渲染，口径迟早漂。
-  //
-  // 两条铁律，都是被真 bug 换来的：
-  //   ① 这里只负责「读到了」的渲染；读失败必须走 showProviderReadError()。
-  //      原概览的 catch 先 renderProviderHealth([], …) 再改副标题，于是卡体写着
-  //      「所有 Provider 健康」、副标题写着「读取失败」—— 替一个没查过的系统开了
-  //      健康证明。注释明写着不许，实现却这么干了（读失败 ≠ 没有）。
-  //   ② 副标题必须一起清空，否则「observe 模式」会和「读取失败」并排出现，
-  //      被读成「一切正常，只是没数据」。
+  // ===== Provider 隔离状态（实现在 mp-shared.js，2.3b 第六片）=====
+  // 这两件（渲染 + 读失败提示）原本在本 IIFE 里，2026-11-14 已把「概览卡 + 健康页」
+  // 两处逐字重复的 HTML 合并成一份。2026-11-15 抽 health 视图时它们必须两处可用，
+  // 于是连同 reasonText 一起归位到 mp-shared.js（只读仓 + 纯渲染，无副作用）。
+  // 两条铁律随实现一起搬走（读失败必须走 showProviderReadError；副标题必须一起清空），
+  // 本页只留同名别名，概览卡的调用点零改动。
   function renderProviderIsolation(containerId, subId, data) {
-    var container = document.getElementById(containerId);
-    if (!container) return;
-    var sub = document.getElementById(subId);
-    if (sub) sub.textContent = (data && data.isolateEnabled) ? '自动隔离已开启（live）' : 'observe 模式（仅建议，不改路由）';
-
-    var list = (data && data.isolated) || [];
-    if (list.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="empty-text">所有 Provider 健康</div></div>';
-      return;
-    }
-
-    container.innerHTML = list.map(function(p) {
-      var remainMs = (p.unhealthyUntil || 0) - Date.now();
-      var remainMin = Math.max(0, Math.round(remainMs / 60000));
-      var corr = p.correlation || {};
-      var verdictText = corr.verdict === 'network-wide' ? '全网故障' : '单 Proxy 抖动';
-      var verdictClass = corr.verdict === 'network-wide' ? 'badge-error' : 'badge-warning';
-      var sources = (corr.sources || []).join(', ') || '—';
-      return '<div class="session-item">' +
-        '<div class="session-header">' +
-          '<span class="session-proxy-badge badge-' + esc(p.providerId) + '">' + esc(p.providerId) + '</span>' +
-          '<span class="' + verdictClass + '">' + verdictText + '</span>' +
-          '<span class="session-age">⏱ ' + remainMin + 'min 后恢复</span>' +
-        '</div>' +
-        '<div class="session-id">连续失败 ' + (p.consecutiveFailures || 0) + ' 次 · 来源：' + esc(sources) + '</div>' +
-      '</div>';
-    }).join('');
+    return MPShared.renderProviderIsolation(containerId, subId, data);
   }
 
   function showProviderReadError(containerId, subId, err, retryFn) {
-    var sub = document.getElementById(subId);
-    if (sub) sub.textContent = '—';
-    showReadError(containerId, '读取失败', (err && err.message) || '未知错误',
-      'Provider 隔离状态读不到，不代表 Provider 都健康。', retryFn);
+    return MPShared.showProviderReadError(containerId, subId, err, retryFn);
   }
 
   function loadProviderHealth() {
@@ -2338,7 +2151,8 @@
         if (occupied.length === 0) return;
         var names = occupied.map(function(k) {
           var c = conflicts[k];
-          var label = PROXY_CONFIGS[k] ? PROXY_CONFIGS[k].name : k;
+          var cc = MPShared.get(k);
+          var label = cc ? cc.name : k;
           return label + '（base_url → ' + (c.baseUrl || c.by) + '）';
         });
         var msg = '检测到以下代理被其它工具占用，本服务无法接管：\n' + names.join('\n') +
@@ -2512,7 +2326,7 @@
         throw new Error();
       })
       .catch(function() {
-        return Object.keys(PROXY_CONFIGS);
+        return MPShared.proxyConfigNames();
       });
   }
 
@@ -2528,7 +2342,7 @@
     }
 
     container.innerHTML = proxyNames.map(function(name) {
-      var config = PROXY_CONFIGS[name] || { name: name, icon: '' };
+      var config = MPShared.get(name) || { name: name, icon: '' };
       var status = proxyStatus[name];
       var badgeClass = status && status.running ? 'running' : 'stopped';
       var badgeText = status && status.running ? 'ON' : 'OFF';
@@ -2591,17 +2405,19 @@
   // 2026-10-27 收口 PROXY_CONFIGS 多副本：从服务端单一真源拉取，替代硬编码副本。
   // 服务端 GET /api/proxy-configs 返回状态字段（name/port/defaultVersion），
   // 图标由 icons.js（决策 E 全站单一图标源）的 window.MPIcons.proxies[name] 解析。
+  // 2026-11-15（2.3b 第六片）：仓本体搬到 mp-shared.js，本函数只负责「拼一次 + 写一次」。
+  // 页面不再持第二份可写副本 —— 否则视图与页面各读一份，早晚读出两个答案。
   function fetchProxyConfigs() {
     return fetch('/api/proxy-configs')
       .then(function (res) { return res.json(); })
       .then(function (serverCfg) {
-        PROXY_CONFIGS = {};
+        var map = {};
         var proxyIcons = (window.MPIcons && window.MPIcons.proxies) || {};
         for (var name in serverCfg) {
           if (!serverCfg.hasOwnProperty(name)) continue;
           var s = serverCfg[name];
           var pi = proxyIcons[name] || {};
-          PROXY_CONFIGS[name] = {
+          map[name] = {
             name: s.name,
             port: s.port,
             defaultVersion: s.defaultVersion,
@@ -2609,6 +2425,7 @@
             iconClass: pi.iconClass || name
           };
         }
+        MPShared.setProxyConfigs(map);
       })
       .catch(function () { /* 拉取失败不阻塞：导航回退 /api/installed 仍可工作 */ });
   }
@@ -2694,10 +2511,9 @@
   // loadTodayPage / lookupWho 已由 views/today.js 挂载。
   window.loadCostSovereignty = loadCostSovereignty;
   window.copyUnifiedIngressUrl = copyUnifiedIngressUrl;
-  window.loadHealthPage = loadHealthPage;
-  // 健康历史条数下拉的原引用 loadHealthHistory 从未定义过（换了条数只会
-  // ReferenceError、列表不动）。语义就是「按当前下拉值重拉健康页」，别名即可。
-  window.loadHealthHistory = loadHealthPage;
+  // loadHealthPage / loadHealthHistory 已由 views/health.js 挂载（2.3b 第六片）。
+  // 这里不再重复挂一遍：同名两处挂载 = 又一份「谁是活的」的歧义，
+  // 而且会让「模块忘了挂」这类回退被页面这份静默掩盖（注入验证时实测踩到）。
   // filterAlerts / loadAlertsPage / collectAlerts 已由 views/alerts.js 挂载；
   // loadRegistryPage / filterRegistry / showAddAgentModal / closeAgentModal /
   // saveAgent / editAgent / deleteAgent 已由 views/registry.js 挂载，本段不再重复。
