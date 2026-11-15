@@ -48,6 +48,13 @@ const GUARDS = [
     why: '视图模块作用域隔离（防模块裸用页面 IIFE 本地名，如 cost 抽离后 fetchJSON 未定义的静默空壳）',
   },
   {
+    file: 'tests/node/panel-overview-ownership.test.js',
+    // 关键字带转义反斜杠：只可能出现在**判据正则**里，写一句注释或 message 满足不了
+    // （D-018 / D-021④ 的同族教训：只查文本的登记表会被散文骗过）。
+    must: ['var\\s+proxyStatus', 'MPViews\\.overview\\.status', 'global\\.toggleProxy'],
+    why: '概览状态归属（搬走的是持有者：页面不许再长第二份 proxyStatus/versionCache，薄包装不许被当死码删）',
+  },
+  {
     file: 'tests/node/panel-copy-feedback.test.js',
     must: ['ALLOWED', 'copyText', '只许有一个入口'],
     why: '复制只有一个入口且失败必反馈（CI 实测 headless 下 writeText 被拒 → 点了毫无反应）',

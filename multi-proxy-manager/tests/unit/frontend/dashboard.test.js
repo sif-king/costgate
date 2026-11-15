@@ -20,6 +20,12 @@ function readHtml(filename) {
   return fs.readFileSync(path.join(PUBLIC_DIR, filename), 'utf8');
 }
 
+// 2.3b 第七片（2026-11-15）：概览的渲染与启停搬到 public/views/overview.js。
+// 下面几条断言判的是**行为契约**（卡上有启停按钮、动作只可能是 start/stop、故障态
+// 有独立文案与徽章色），代码搬走后断言对象跟着搬——不放宽判据、也不假装它还在页面里
+// （D-021 复核时同族踩过：切片的 end 标记漂移会让断言悄悄失效）。
+const OVERVIEW_VIEW = fs.readFileSync(path.join(PUBLIC_DIR, 'views/overview.js'), 'utf8');
+
 describe('Dashboard Page', () => {
 
   describe('HTML Structure', () => {
@@ -169,20 +175,20 @@ describe('Dashboard Page', () => {
     });
 
     it('should have proxy cards with toggle buttons', () => {
-      expect(html).toContain('btn-toggle-');
-      expect(html).toContain('toggleProxy');
+      expect(OVERVIEW_VIEW).toContain('btn-toggle-');
+      expect(OVERVIEW_VIEW).toContain('toggleProxy');
     });
 
     it('should have start/stop API endpoints dynamically constructed', () => {
       // The dashboard constructs /api/{action}/{name} dynamically via fetch
-      expect(html).toContain("'/api/'");
-      expect(html).toContain('action');
+      expect(OVERVIEW_VIEW).toContain("'/api/'");
+      expect(OVERVIEW_VIEW).toContain('action');
     });
 
     it('should surface backend fault state in status badge (P2)', () => {
       // 后端 /api/status 返回 fault: true 时，卡片显示"故障熔断"而非笼统的"未运行"
-      expect(html).toContain('status.fault');
-      expect(html).toContain('故障熔断');
+      expect(OVERVIEW_VIEW).toContain('status.fault');
+      expect(OVERVIEW_VIEW).toContain('故障熔断');
     });
   });
 
@@ -200,14 +206,14 @@ describe('Dashboard Page', () => {
     });
 
     it('should define toggleProxy on window', () => {
-      // toggleProxy is defined in the dashboard script
-      expect(html).toContain('toggleProxy');
+      // toggleProxy 由 views/overview.js 挂到 window（生成 innerHTML 的那处负责，见 D-017）
+      expect(OVERVIEW_VIEW).toContain('toggleProxy');
     });
 
     it('toggleProxy action must only be \'start\' or \'stop\'', () => {
-      // Extract the action assignment from toggleProxy in the HTML
+      // Extract the action assignment from toggleProxy（实现已搬 views/overview.js）
       // Expected pattern: var action = status && status.running ? 'stop' : 'start';
-      var toggleMatch = html.match(/var action\s*=\s*([^;]+);/);
+      var toggleMatch = OVERVIEW_VIEW.match(/var action\s*=\s*([^;]+);/);
       expect(toggleMatch).not.toBeNull();
       var expr = toggleMatch[1];
       // Must use ternary with exactly 'start' and 'stop'

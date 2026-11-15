@@ -118,7 +118,7 @@ const storageStub = {
 const PANEL_EXPORTS =
   'fetchJSON: fetchJSON, showReadError: showReadError, loadHealthPage: loadHealthPage,' +
   ' loadAlertsPage: loadAlertsPage, loadSessions: loadSessions, loadStatus: loadStatus,' +
-  ' loadVersion: loadVersion, updateVersionDisplay: updateVersionDisplay,' +
+  ' loadVersion: loadVersion,' +
   ' loadRegistryPage: loadRegistryPage, loadProviderHealth: loadProviderHealth,' +
   ' loadCostPage: loadCostPage, loadWatchtower: loadWatchtower,' +
   ' loadOnboarding: loadOnboarding,' +
@@ -190,6 +190,10 @@ function runPanel(file, fetchStub, exportList) {
     // 与 browser 同序——迟一步，页面薄包装就只剩 console.error 分支。
     'views/cost.js',
     'views/health.js',
+    // 2.3b 第七片（2026-11-15）：概览取数 / 首屏渲染 / 启停搬到 views/overview.js。
+    // 页面 loadStatus / loadVersion 只是薄包装 ⇒ 这个文件不进沙箱，
+    // 下面「读失败不许喂 mock 三代理」两条就测的是转发层而不是实现。
+    'views/overview.js',
   ];
   for (const rel of headScripts) {
     vm.runInContext(fs.readFileSync(path.join(PUBLIC, rel), 'utf8'), sandbox, { filename: rel });

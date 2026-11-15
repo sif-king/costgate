@@ -338,3 +338,26 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 
 - **⑥ CI 首跑红（本提交的第二次「本地绿 ≠ CI 绿」）**：`tests/unit/frontend/dashboard.test.js` 的「Health Page 诊断文案语义」四条原本直接 `readHtml('dashboard.html')` 并在页面里切片 `function reasonText(` → `function loadHealthPage(`。代码搬走后：切片的 end 标记落到 start 之前（`end > start` 断言失败）、调用点正则与「bash manage.sh start all」也都不在页面里了。**这不是功能坏了，是脚手架没跟**。改法：断言对象改成 `mp-shared.js`（reasonText 本体）+ `views/health.js`（调用点与「全都没跑」提示），判定语义一字未改。真跑 `dashboard.test.js` **39/39**。
   - 本地全量 jest 另有 3 个套件红（`loopback-auth` / `api` / `forward-egress-e2e`，共 10 条），全部指向并行会话未提交的 `server.js` / `lib/forward.js` / `l2/*` 改动；同一批用例在 CI 干净 checkout 上是通过的。**本地红必须逐条归因，不能一句「并发假红」带过**。
+
+## D-022 · 第七片抽概览；搬走「状态持有者」，页面不再持第二份快照
+
+- **状态**：已执行（2026-11-15，2.3b 第七片）
+- **背景**：D-019 把「概览」的前置登记为「共享状态单一真源迁移（`proxyStatus` 20+ 处、`PROXY_CONFIGS` 13 处、`versionCache` 5 处）」，D-021 末尾又登记「概览倾向判为页面壳；若要抽，先证明轮询与首屏渲染可以整体迁移，否则就地登记为例外」。本片就是那次证明。
+- **清点（决定「搬持有者」而不是「造 store」）**：前六片搬完后 `proxyStatus` 只剩 4 个读点（概览卡 / 侧栏代理勋章 / 启停判断 / 轮询写回），`versionCache` 只在 `loadVersion` / 启停 / 概览渲染之间流动，**没有第三个消费者**。⇒ 不需要 `MPState` 全局 store，需要的是把**持有者**搬走：状态跟着它唯一的消费者走。
+- **决策**：
+  - ① **新建 `public/views/overview.js`**（`MPViews.overview`），整块迁入：首屏统计 / 代理卡 / 侧栏代理项 / 状态翻转强调 / 版本明细卡 / `/api/status` 轮询 / `/api/version` / 端口冲突检测 / 启停按钮，以及私有 `proxyStatus` `versionCache` `prevStatusSnapshot` `pendingProxyNavEntries`。`dashboard.html` **2535 → 2256 行（−279）**。
+  - ② **页面只留三个同名薄包装**（`loadStatus` / `loadVersion` / `checkProxyConflicts`）：`init()`、自动刷新、`BroadcastChannel` 跨页同步、`MPStates.registerRetry` 重试回调都还按名字调用它们。侧栏 `renderDynamicProxyNav` 改为**只经 `MPViews.overview.status(name)`** 读勋章；State 段的 `var proxyStatus` / `var versionCache` 与「Loading Bar」两个薄包装一并删除（后两者随 `loadStatus`/`loadVersion` 搬走后已是死码）。
+  - ③ **`window.toggleProxy` 由模块挂载**：概览卡的 `onclick="toggleProxy('x')"` 是拼进 `innerHTML` 的动态属性，静态 HTML 里搜不到，`panel-inline-handlers` 守卫也只看静态属性 —— 生成处必须自己挂（D-017）。
+  - ④ **新增 `tests/node/panel-overview-ownership.test.js`（4 条）**：页面不许再声明 `proxyStatus`/`versionCache`、不许再按下标裸读；模块必须真持有两者 + 暴露 `MPViews.overview` + 挂 `window.toggleProxy`；页面三个薄包装必须还在。并登记进守卫登记表（关键字带转义反斜杠，散文满足不了）。
+  - ⑤ **新增 E2E `@tier0`「总览首屏」**：这一屏此前**零运行态断言** —— `spa-views.spec.js` 的子视图清单里没有「概览」（它是硬编码 tab），smoke 只验「页面不崩」。于是「接线丢了 / 状态为空 / 模块没挂」三种坏法全都表现成一句「暂无代理，请先安装代理程序」，读起来像「你什么都没装」（本仓最忌讳的「把没读到显示成没有」）。新用例钉：卡片按 `/api/status` 出（含「故障熔断」、`12ms`、`1h2m`）、统计 `1/2`、版本卡取 `/api/version`（管理器 + 子包两条）、**点「启动」真 POST `/api/start/claude` 且按钮翻成「停止」**（证明状态在视图里被重渲染，若页面留着第二份快照这里会停在「启动」）、侧栏徽章 `ON`、概览 tab 可达。
+  - ⑥ **`panel-view-isolation` 的 `PAGE_LOCALS` 补 `showDemoBanner` / `hideDemoBanner`**：本轮自己撞上了 —— 模块里裸调 `hideDemoBanner()`（页面有同名函数），而它位于 `/api/status` 成功分支，页面照常出数据、只是演示横幅不收。名单是这类「同名不同作用域」唯一能被静态抓住的地方。
+  - ⑦ **`tests/unit/frontend/dashboard.test.js` 四条断言改判 `views/overview.js`**（卡片有启停按钮 / 动作只可能是 `start`/`stop` / `fault` 有独立文案）。不是放宽判据，是断言对象跟着代码搬（D-021 复核同族：切片的 end 标记漂移会让断言悄悄失效）。
+- **注入验证（四式全真红 + sha256 逐字节恢复）**：
+  - A 摘掉 `views/overview.js` 接线 → coherence `rc=1` 精确点名 + 总览 E2E 红（卡片出不来）。
+  - B 摘掉 `global.toggleProxy = toggle` → 归属守卫 `rc=1` + E2E 红（点按钮无请求）。
+  - C 页面重新长出 `var proxyStatus = {}` → 归属守卫 `rc=1`。
+  - D 页面改回裸读 `proxyStatus[name]` → 归属守卫 `rc=1`（两条：下标裸读 + 少了 `status()` 读取口）。
+  - 🔴 **C 式第一版是假绿，且是守卫自己的缺陷**：第一版用整段正则剥 `/* ... */`，页面里某个不平衡的 `/*`（字符串/样式里）把后半页 JS 整段吞掉（实测 89k → 49k），于是「页面不许声明 `proxyStatus`」在**真注入之后仍然通过** —— 拿「文件变小了」当证据。改为**按行过滤**（只丢纯注释行，无跨行状态），重跑真红。这条与 D-018「注释式注入让守卫假绿」同族，方向相反：一个是被注释满足，一个是被注释吃掉。
+- **后果**：真跑 node **50/50**、coherence **七项**、jest 前端 **320/320**、全量 E2E **62/62**、tier0 闸门 **48/48**；`dashboard.html` **2256 行**。
+- 🔴 **本轮环境读数（不改代码，只记判据）**：全量 E2E 首跑 1 failed（`/sessions` 会话列表停在「加载中」），单跑该 spec **9/9 绿**、复跑全量 **62/62** ⇒ 四 worker 共用一个 manager 的并发抖动，与该用例零引用（`sessions.html` + `/api/sessions`）。按纪律逐条归因后才算「不是本改动引入」。
+- **推翻条件 / 剩余**：剩下的都属**页面壳**本身（鉴权 / 横幅 / 自动刷新间隔 / 暗色 / 侧栏动态导航 / onboarding / 会话列表）。概览不再是「一页一文件」的例外 —— 事实是它也能抽，前提是把状态一起搬。若后续抽 onboarding / sessions，按同一判据先清点读点：**读点多且只有本视图用 ⇒ 搬持有者；读点分散 ⇒ 先落只读仓（mp-shared 那层），都不必造全局 store**。

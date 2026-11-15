@@ -460,3 +460,101 @@ test('健康页读失败时统计卡显示 — 而不是 0，列表明说读取�
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// 总览首屏（2026-11-15，2.3b 第七片 · D-022）
+// 为什么单独加：这一屏是产品第一眼，而它此前**一条运行态断言都没有**——
+// spa-views 的子视图清单里没有「概览」（它是硬编码 tab），smoke 只验「页面不崩」。
+// 于是「模块没接线 / 入口没挂 / 状态为空」三种坏法全都表现成一句「暂无代理，
+// 请先安装代理程序」：不报错、不白屏，读起来像「你什么都没装」——本仓最忌讳的
+// 那种「把没读到显示成没有」。这条钉四件事：
+//   ① 卡片真按 /api/status 出（走 MPShared.get 的显示名，不是裸 key）；
+//   ② 版本卡取 /api/version（管理器版本 + 子包版本）；
+//   ③ 启停按钮真发请求，且成功后**状态被重渲染**（证明状态持有者在视图里，
+//      而不是页面留着第二份快照）；
+//   ④ 侧栏代理徽章 ON/OFF 跟着状态走（页面只经 MPViews.overview.status() 读）。
+test('总览首屏代理卡/版本卡真出数，启停按钮真发请求并重渲染（views/overview.js 接线）', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const startCalls = [];
+  page.on('request', (r) => {
+    if (/\/api\/(start|stop)\//.test(r.url())) startCalls.push(r.url());
+  });
+
+  // 显示名与 key 故意不同：走不到 MPShared.get 就会退化成裸 key，断言立刻红。
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { name: 'Probe Overview Proxy', port: 18790, defaultVersion: '9.9.9' },
+      claude: { name: 'Probe Claude Proxy', port: 18791, defaultVersion: '9.9.9' },
+    }),
+  }));
+  // /api/status 的真实形状是扁平 map，照抄真实形状，不测后端不会返回的东西。
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { running: true, port: 18790, fault: false,
+               health: { status: 'ok', latencyMs: 12 }, rawHealth: { uptime: 3720 } },
+      // fault=true 用来证明「故障熔断」与「未运行」是两种文案（P2 的老 bug）。
+      claude: { running: false, port: 18791, fault: true },
+    }),
+  }));
+  await page.route('**/api/version', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ version: '9.9.9', proxies: { codex: '1.2.3' } }),
+  }));
+  await page.route('**/api/conflicts', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ conflicts: {} }),
+  }));
+  await page.route('**/api/start/claude', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.waitForFunction(() => window.MPShared && window.MPShared.proxyConfigNames().length > 0, null, { timeout: 15000 });
+
+  // ① 先切到「概览」这块再断言：默认页是「今天」，#page-dashboard 是 display:none 的
+  // 隐藏容器 —— 卡片照样渲染（init 的 loadStatus 与当前可见页无关），但按钮点不到。
+  // 这一步同时证明那个硬编码 tab 真的接上了 switchPage。
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard'), '点「概览」tab 应激活 #page-dashboard').toHaveClass(/active/, { timeout: 15000 });
+
+  // ② 代理卡：两张、按状态给文案、显示名来自 MPShared、延迟/运行时间走归一函数
+  const cards = page.locator('#proxyStatusList .proxy-card');
+  await expect(cards, '应渲染 2 张代理卡（读不到 = 只剩一句「暂无代理」）').toHaveCount(2, { timeout: 15000 });
+  const list = page.locator('#proxyStatusList');
+  await expect(list, '卡片应显示配置里的显示名（走 MPShared.get）').toContainText('Probe Overview Proxy');
+  await expect(list, '运行中状态应显示「运行中」').toContainText('运行中');
+  await expect(list, 'fault=true 必须显示「故障熔断」而不是「未运行」').toContainText('故障熔断');
+  await expect(list, '延迟应读 latencyMs').toContainText('12ms');
+  await expect(list, '运行时间应读 rawHealth.uptime（3720s → 1h2m）').toContainText('1h2m');
+
+  // ③ 统计卡：1/2 运行中、2 个已安装
+  await expect(page.locator('#proxyStatusCount'), '运行数应为 1/2').toHaveText('1/2', { timeout: 15000 });
+  await expect(page.locator('#installedCount'), '已安装数应为 2').toHaveText('2');
+
+  // ④ 版本卡：管理器版本 + 子包版本都来自 /api/version
+  const versionCard = page.locator('#versionInfo');
+  await expect(versionCard, '版本卡应取 /api/version').toContainText('9.9.9', { timeout: 15000 });
+  await expect(versionCard, '子包版本应出自 version.proxies').toContainText('1.2.3');
+
+  // ⑤ 启停按钮真发请求：claude 未运行 ⇒ 必须是 start（不是 stop）
+  await expect(page.locator('#btn-toggle-claude'), '未运行的代理按钮应写「启动」').toContainText('启动');
+  await page.locator('#btn-toggle-claude').click();
+  await expect.poll(() => startCalls.some((u) => /\/api\/start\/claude$/.test(u)),
+    '点「启动」必须真的 POST /api/start/claude').toBe(true);
+  // 成功后状态被重渲染（按钮翻成「停止」）：这一条证明状态持有者在视图里，
+  // 如果页面还留着第二份 proxyStatus 副本，这里会停在「启动」。
+  await expect(page.locator('#btn-toggle-claude'), '启动成功后按钮应翻成「停止」（状态已重渲染）')
+    .toContainText('停止', { timeout: 15000 });
+
+  // ⑥ 侧栏代理徽章跟着状态走（页面只经 MPViews.overview.status() 读，不持副本）
+  await expect(page.locator('#proxyNavItems [data-proxy="codex"] .nav-badge'), '运行中的代理徽章应为 ON')
+    .toHaveText('ON', { timeout: 15000 });
+  await expect(page.locator('#proxyNavItems [data-proxy="claude"] .nav-badge'), '刚启动的代理徽章也应变成 ON')
+    .toHaveText('ON', { timeout: 15000 });
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});

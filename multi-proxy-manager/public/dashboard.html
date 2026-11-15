@@ -28,6 +28,7 @@
 <script src="./views/registry.js"></script>
 <script src="./views/cost.js"></script>
 <script src="./views/health.js"></script>
+<script src="./views/overview.js"></script>
 <script src="./nav.js"></script>
 <script src="./states.js"></script>
 <script src="./gatebar.js"></script>
@@ -1359,7 +1360,10 @@
   // 理由（D-020 同族）：同一个对象被页面与视图各持一份，早晚读出两个答案。
 
   // ===== State =====
-  var proxyStatus = {};
+  // proxyStatus / versionCache 已于 2.3b 第七片搬进 views/overview.js（D-022）：
+  // 状态的持有者是概览视图，页面只经 MPViews.overview.status() 读侧栏勋章。
+  // 不在本页留第二份，是因为两份快照会让「卡片显示的状态」和「按钮判断的状态」
+  // 来自不同时刻 —— 文案和动作可能相反。
   var authToken = MPKernel.getToken();
 
   // ===== 共享助手（mp-kernel.js，全站一份）=====
@@ -1369,7 +1373,6 @@
   var esc = MPKernel.esc;
   var fetchJSON = MPKernel.fetchJSON;
   var showReadError = MPKernel.showReadError;
-  var versionCache = {};
   // registryAgents / editingAgentId 已随 2.3b 第四片搬进 views/registry.js（模块私有，不挂 window）。
 
   // ===== Toast System =====
@@ -1516,206 +1519,19 @@
   // ===== Escaping Utility =====
   // 已收到 mp-kernel.js（esc）；本页只留别名，见上方 State 段。
 
-  // ===== Loading Bar =====
-  // 真实现已抽到 mp-shell.js（head 里先于 views/*.js 加载）。这里保留同名
-  // 薄包装：函数声明会 hoist，页面里在定义之前调用的地方照旧可用，调用点零改动。
-  function showLoading() { return window.MPShell.showLoading(); }
-  function hideLoading() { return window.MPShell.hideLoading(); }
-
   // ===== Mock Data =====
   // 说明：原 getMockStatus() / getMockVersion() 已于 2026-10-16 删除。
   // 它们过去在 /api/status、/api/version 读失败时兜底，返回 pid 12345 / uptime「2h34m」/
   // 假版本 '1.0.3' 这类「像真的」假数据，把故障伪装成正常。
   // 现在的约定是读失败就明说读失败（见上方 fetchJSON / showReadError），不猜、不装、不静默。
 
-  // ===== Dashboard Rendering =====
-  function updateDashboardDisplay(versionData) {
-    var proxies = Object.entries(proxyStatus);
-    var running = proxies.filter(function(entry) { return entry[1].running; }).length;
-    var total = proxies.length;
-
-    var statusEl = document.getElementById('proxyStatusCount');
-    var installedEl = document.getElementById('installedCount');
-    var sessionEl = document.getElementById('sessionCount');
-    var alertEl = document.getElementById('alertCount');
-
-    if (statusEl) statusEl.textContent = total > 0 ? running + '/' + total : '0/0';
-    if (installedEl) installedEl.textContent = total;
-    if (sessionEl) sessionEl.textContent = document.querySelectorAll('.session-item').length;
-    if (alertEl) {
-      // alertEvents 已随告警页抽进 views/alerts.js（2.3b 第二片），概览从这里读副本。
-      var alertEvts = (window.MPViews && window.MPViews.alerts) ? window.MPViews.alerts.events() : [];
-      alertEl.textContent = alertEvts.filter(function(a) { return a.severity === 'critical' || a.severity === 'warning'; }).length;
-    }
-
-    renderProxyCards(proxies, versionData);
-    renderProxyNavItems(proxies);
-  }
-
-  function renderProxyCards(proxies, versionData) {
-    var container = document.getElementById('proxyStatusList');
-    if (!container) return;
-
-    if (proxies.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><div class="empty-text">暂无代理，请先安装代理程序</div></div>';
-      return;
-    }
-
-    container.innerHTML = proxies.map(function(entry) {
-      var name = entry[0];
-      var status = entry[1];
-      var config = MPShared.get(name) || { name: name, icon: '', iconClass: '', port: 0, defaultVersion: '' };
-      var isRunning = status.running;
-      var isFault = !!status.fault;
-      var statusClass = isRunning ? 'running' : (isFault ? 'fault' : 'stopped');
-      var statusText = isRunning ? '运行中' : (isFault ? '故障熔断' : '未运行');
-      var btnClass = isRunning ? 'btn-danger' : 'btn-success';
-      var btnText = isRunning ? '停止' : '启动';
-      var btnIcon = isRunning ? '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>' : '<svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-
-      var statusBadge = '<span class="status-badge ' + statusClass + '"><span class="dot"></span>' + statusText + '</span>';
-      var healthBadge = '';
-      if (status.health) {
-        var healthStatus = status.health.status;
-        var healthClass, healthText, healthReason = '';
-        var reasonsArr = Array.isArray(status.health.reasons) ? status.health.reasons : [];
-        if (reasonsArr.length > 0) healthReason = reasonsArr[0];
-
-        if (healthStatus === 'ok') { healthClass = 'status-badge online'; healthText = '健康'; }
-        else if (healthStatus === 'degraded') { healthClass = 'status-badge degraded'; healthText = '降级' + (healthReason ? '·' + healthReason : ''); }
-        else { healthClass = 'status-badge offline'; healthText = healthReason || '异常'; }
-        var titleText = (reasonsArr.length > 0 ? reasonsArr.join('；') : healthText);
-        healthBadge = '<span class="' + healthClass + '" title="' + (titleText ? esc(titleText.slice(0, 200)) : '') + '"><span class="dot"></span>' + esc(healthText.slice(0, 60)) + '</span>';
-      } else if (!isRunning) {
-        healthBadge = '<span class="status-badge offline"><span class="dot"></span>未检测</span>';
-      }
-
-      // 延迟 / 运行时间：字段名归一收到 mp-shared.js（接口给 latencyMs / rawHealth.uptime，
-      // 旧这里读 latency / uptime，于是概览卡这两项从来没显示过）。
-      var upText = MPShared.uptimeText(status);
-      var upLatency = MPShared.latencyText(status.health);
-      var uptimeText = upText ? '运行 ' + upText : '';
-      var latencyText = upLatency ? '延迟 ' + upLatency : '';
-      var versionValue = versionData && versionData.proxies && versionData.proxies[name] ? versionData.proxies[name] : (config.defaultVersion || '');
-      var versionBadge = versionValue ? '<span class="proxy-version-badge">' + esc(versionValue) + '</span>' : '';
-
-      return '<div class="proxy-card" id="proxy-card-' + name + '">' +
-        '<div class="proxy-icon ' + config.iconClass + '">' + config.icon + '</div>' +
-        '<div class="proxy-info">' +
-          '<div class="proxy-name-row">' +
-            '<span class="proxy-name">' + config.name + '</span>' +
-            '<span class="proxy-port-badge">:' + (status.port || config.port) + '</span>' +
-            versionBadge +
-          '</div>' +
-          '<div class="proxy-meta">' +
-            statusBadge +
-            (uptimeText ? '<span>' + esc(uptimeText) + '</span>' : '') +
-            (latencyText ? '<span>' + esc(latencyText) + '</span>' : '') +
-            healthBadge +
-          '</div>' +
-        '</div>' +
-        '<div class="proxy-actions">' +
-          '<button class="btn ' + btnClass + ' btn-sm" id="btn-toggle-' + name + '" onclick="toggleProxy(\'' + name + '\')">' + btnIcon + ' ' + btnText + '</button>' +
-          '<button class="btn btn-outline btn-sm" onclick="window.location.href=\'proxy-config.html?proxy=' + name + '\'">配置</button>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-  }
-
-  // 与 proxy-config 同一处时序竞争：/api/status 可能先于 nav.js 建好 #proxyNavItems 返回，
-  // 早到那次若直接 return，9 个代理就时有时无。改为暂存 + 等容器就绪事件补画。
-  var pendingProxyNavEntries = null;
-
-  function renderProxyNavItems(proxies) {
-    if (proxies) pendingProxyNavEntries = proxies;
-    var container = document.getElementById('proxyNavItems');
-    if (!container) return;
-    var entries = pendingProxyNavEntries || [];
-    container.innerHTML = entries.map(function(entry) {
-      var name = entry[0];
-      var status = entry[1];
-      var config = MPShared.get(name) || { name: name, icon: '' };
-      var badgeClass = status.running ? 'running' : 'stopped';
-      var badgeText = status.running ? 'ON' : 'OFF';
-      return '<a href="proxy-config.html?proxy=' + name + '" class="nav-item proxy-nav-item" data-proxy="' + esc(name) + '" data-tooltip="' + esc(config.name) + '" tabindex="0">' +
-        '<span class="nav-icon">' + config.icon + '</span>' +
-        config.name +
-        '<span class="nav-badge ' + badgeClass + '">' + badgeText + '</span>' +
-        '</a>';
-    }).join('');
-  }
-
-  document.addEventListener('mp-nav-rendered', function () {
-    if (pendingProxyNavEntries) renderProxyNavItems(pendingProxyNavEntries);
-  });
-
-  // ===== Version Info =====
-  // 只管概览页那张版本明细卡。**侧栏那个 #sidebarVersion 不归这里**——
-  // 侧栏由 nav.js 的 renderNav 重建，页面写进去的值会被下一次渲染冲掉；
-  // 取数与填充统一在 nav.js 的 fillSidebarVersion()（2026-11-14 收口）。
-  function updateVersionDisplay(versionData) {
-    var container = document.getElementById('versionInfo');
-
-    if (container) {
-      if (versionData) {
-        var rows = [];
-        if (versionData.version) rows.push({ label: '管理器版本', value: versionData.version });
-        if (versionData.proxies) {
-          Object.keys(versionData.proxies).forEach(function(key) {
-            var ver = versionData.proxies[key];
-            var config = MPShared.get(key);
-            rows.push({ label: config ? config.name : key, value: ver });
-          });
-        }
-        // 版本字符串来自仓库 VERSION 与各子包 package.json：只有根版本过了
-        // ^\d+\.\d+\.\d+ 校验，子包版本原样透传。进 innerHTML 前一律转义。
-        container.innerHTML = rows.map(function(row) {
-          return '<div class="version-item"><span class="ver-label">' + esc(row.label) + '</span><span class="ver-value">' + esc(row.value) + '</span></div>';
-        }).join('');
-      } else {
-        // null = 读失败。不能保留上一次成功的值——那会让用户以为版本没变，
-        // 从而放弃一次本该做的升级。也不能显示空（那像「没有版本信息」）。
-        container.innerHTML =
-          '<div class="version-item"><span class="ver-label">管理器版本</span>' +
-          '<span class="ver-value" style="color:#d97706;">读取失败</span></div>';
-      }
-    }
-  }
-
-  // ===== Proxy Control =====
-  window.toggleProxy = function(name) {
-    var btn = document.getElementById('btn-toggle-' + name);
-    if (!btn || btn.disabled) return;
-    btn.disabled = true;
-    var originalContent = btn.innerHTML;
-    btn.innerHTML = '<span class="loading-spinner"></span>';
-
-    var status = proxyStatus[name];
-    var action = status && status.running ? 'stop' : 'start';
-
-    fetch('/api/' + action + '/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': authToken || '' } })
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        if (data.success) {
-          showToast((MPShared.get(name) ? MPShared.get(name).name : name) + ' 已' + (action === 'start' ? '启动' : '停止'), 'success');
-          proxyStatus[name] = Object.assign({}, proxyStatus[name], { running: action === 'start' });
-          updateDashboardDisplay(versionCache);
-        } else if (action === 'start' && data.conflict) {
-          showToast(data.error || '该代理被其它工具占用，无法开启', 'error', 6000);
-          btn.innerHTML = originalContent;
-          btn.disabled = false;
-        } else {
-          showToast((action === 'start' ? '启动' : '停止') + '失败: ' + (data.error || '未知错误'), 'error');
-          btn.innerHTML = originalContent;
-          btn.disabled = false;
-        }
-      })
-      .catch(function(err) {
-        showToast((action === 'start' ? '启动' : '停止') + '失败: ' + err.message, 'error');
-        btn.innerHTML = originalContent;
-        btn.disabled = false;
-      });
-  };
+  // ===== 概览首屏渲染（已搬 views/overview.js，2.3b 第七片）=====
+  // 首屏统计、代理卡、侧栏代理项、状态翻转强调、版本明细卡、/api/status 轮询、
+  // /api/version、端口冲突检测、启停按钮 —— 全部搬到 views/overview.js。
+  // 这一片与 health（第六片）的区别：health 只是**读**共享状态，概览是它的**持有者**，
+  // 所以连 proxyStatus / versionCache 一起搬走，页面不再留第二份快照（D-022）。
+  // 本页只剩下方「概览取数」段的三个同名薄包装：switchPage 分支表、init()、自动刷新、
+  // BroadcastChannel 跨页同步、MPStates 重试回调都还按那两个名字调用，页面壳零改动。
 
   // ===== Health Page（2.3b 第六片，2026-11-15）=====
   // 实现（三路取数 / 统计 / 代理健康列表 / Provider 隔离 / 健康历史）已抽到 views/health.js。
@@ -2074,116 +1890,21 @@
       });
   }
 
-  // ===== Data Loading =====
-  // 因果动效（2026-11-01 · Stageshow「every motion has a cause / change only
-  // what changed」）：状态翻转前快照，重渲染后只对 running/fault/health 真变了的
-  // 代理卡片加一瞬强调（result follows cause），没变的不动；reduced-motion 直接不闪。
-  var prevStatusSnapshot = null;
-
-  function highlightStatusChanges(prev, next) {
-    if (!prev || !next) return;
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    for (var name in next) {
-      if (!next.hasOwnProperty(name)) continue;
-      var p = prev[name] || {};
-      var n = next[name] || {};
-      var nHealth = (n.health && n.health.status) || '';
-      var changed = (p.running !== n.running) || (p.fault !== n.fault) || (p.health !== nHealth);
-      if (!changed) continue;
-      var card = document.getElementById('proxy-card-' + name);
-      if (!card) continue;
-      card.classList.add('status-changed');
-      (function(el) { setTimeout(function() { el.classList.remove('status-changed'); }, 900); })(card);
-    }
-  }
-
+  // ===== 概览取数（实现在 views/overview.js，2.3b 第七片）=====
+  // 三个入口都是薄包装：函数声明会 hoist，init() 里在定义之前就调用的地方照旧可用，
+  // 调用点零改动。模块自己那三个真身由 MPViews.overview 暴露。
+  // 状态持有者也在模块里：本页 renderDynamicProxyNav 只经 MPViews.overview.status()
+  // 读勋章，不再持 proxyStatus 副本。
   function loadStatus() {
-    showLoading();
-    prevStatusSnapshot = {};
-    for (var pk in proxyStatus) {
-      if (!proxyStatus.hasOwnProperty(pk)) continue;
-      var ps = proxyStatus[pk] || {};
-      prevStatusSnapshot[pk] = {
-        running: !!ps.running,
-        fault: !!ps.fault,
-        health: (ps.health && ps.health.status) || ''
-      };
-    }
-    fetchJSON('/api/status')
-      .then(function(data) {
-        Object.assign(proxyStatus, data);
-        updateDashboardDisplay(versionCache);
-        highlightStatusChanges(prevStatusSnapshot, proxyStatus);
-        prevStatusSnapshot = null;
-        hideOfflineBanner();
-        hideDemoBanner();
-      })
-      .catch(function(err) {
-        // 过去这里在 proxyStatus 为空时喂 getMockStatus()——三个假代理，
-        // codex「运行中 pid 12345 uptime 2h34m 延迟 45ms」。
-        // 总览页是用户第一眼看到的地方，在这里显示「像真的」假数据最危险：
-        // 他会以为代理都在跑，直到真的调不通才发现。宁可显示「读不到」。
-        if (Object.keys(proxyStatus).length === 0) {
-          // 读失败 ≠ 没有代理：给独立错误态 + 重试，而不是渲染「暂无代理」空态
-          MPStates.registerRetry('dashboard:status', loadStatus);
-          var box = document.getElementById('proxyStatusList');
-          if (box) box.innerHTML = MPStates.error({
-            title: '读取失败',
-            detail: (err && err.message) || 'manager 不可达',
-            hint: '代理状态读不到，不代表没有安装代理程序。可点重试，或检查 manager 是否在运行。',
-            retryKey: 'dashboard:status'
-          });
-          showOfflineBanner();
-          showToast('代理状态读取失败：' + ((err && err.message) || 'manager 不可达'), 'error', 6000);
-        }
-      })
-      .finally(hideLoading);
-  }
-
-  function checkProxyConflicts() {
-    // 2026-10-24：原先裸 fetch + 不判 res.ok。/api/conflicts 500 时 body 没有 conflicts
-    // 字段 → occupied 为空 → 直接 return，界面显示「没冲突」。冲突检测失败被显示成
-    // 检测通过，是这段里最危险的一种静默。改成读失败就明说。
-    fetchJSON('/api/conflicts', { headers: { 'x-auth-token': authToken || '' } })
-      .then(function(data) {
-        var conflicts = data.conflicts || {};
-        var occupied = Object.keys(conflicts).filter(function(k) { return conflicts[k] && conflicts[k].occupied; });
-        if (occupied.length === 0) return;
-        var names = occupied.map(function(k) {
-          var c = conflicts[k];
-          var cc = MPShared.get(k);
-          var label = cc ? cc.name : k;
-          return label + '（base_url → ' + (c.baseUrl || c.by) + '）';
-        });
-        var msg = '检测到以下代理被其它工具占用，本服务无法接管：\n' + names.join('\n') +
-                  '\n请先关闭占用工具（如 cc-switch）对这些代理的代理，再开启本服务开关。';
-        showToast(msg, 'error', 8000);
-      })
-      .catch(function(e) {
-        // 不阻断主界面，但必须说出来：静默 = 把「检测失败」显示成「没冲突」。
-        showToast('端口冲突检测读取失败（' + ((e && e.message) || '未知错误') +
-                  '）——未检测到冲突 ≠ 没有冲突，请手动确认。', 'error', 8000);
-      });
+    return window.MPViews.overview.loadStatus();
   }
 
   function loadVersion() {
-    showLoading();
-    fetchJSON('/api/version')
-      .then(function(data) {
-        versionCache = data;
-        updateVersionDisplay(data);
-        hideOfflineBanner();
-        hideDemoBanner();
-      })
-      .catch(function(err) {
-        // 过去这里兜底 getMockVersion()——假的 '1.0.3' + 三个假子版本号。
-        // 版本号是「我装的是不是最新」的判断依据，喂假值会让用户放弃升级。
-        versionCache = null;
-        updateVersionDisplay(null);
-        showOfflineBanner();
-        showToast('版本信息读取失败：' + ((err && err.message) || 'manager 不可达'), 'error', 6000);
-      })
-      .finally(hideLoading);
+    return window.MPViews.overview.loadVersion();
+  }
+
+  function checkProxyConflicts() {
+    return window.MPViews.overview.checkProxyConflicts();
   }
 
   // ===== Offline Banner =====
@@ -2343,7 +2064,7 @@
 
     container.innerHTML = proxyNames.map(function(name) {
       var config = MPShared.get(name) || { name: name, icon: '' };
-      var status = proxyStatus[name];
+      var status = window.MPViews.overview.status(name);
       var badgeClass = status && status.running ? 'running' : 'stopped';
       var badgeText = status && status.running ? 'ON' : 'OFF';
       return '<a href="proxy-config.html?proxy=' + name + '" class="nav-item proxy-nav-item" data-proxy="' + esc(name) + '" data-tooltip="' + esc(config.name) + '" tabindex="0">' +

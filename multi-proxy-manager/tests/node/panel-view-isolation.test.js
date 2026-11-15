@@ -29,10 +29,14 @@ const PUBLIC = path.join(__dirname, '..', '..', 'public');
 const VIEWS = path.join(PUBLIC, 'views');
 
 // 页面 IIFE 的私有名字：模块里出现即视为「以为自己在页面作用域里」。
+// 2026-11-15 第七片补 showDemoBanner / hideDemoBanner：概览抽离时模块里写了裸调
+// `hideDemoBanner()`（页面有同名函数），运行时就是 ReferenceError——而它在
+// `/api/status` 成功的分支里，页面照常出数据，只是演示横幅不收。同类拼接靠名单挡。
 const PAGE_LOCALS = [
   'fetchJSON', 'showReadError', 'showToast', 'esc',
   'authToken', 'proxyStatus', 'PROXY_CONFIGS', 'versionCache',
   'showLoading', 'hideLoading', 'showOfflineBanner', 'hideOfflineBanner',
+  'showDemoBanner', 'hideDemoBanner',
   'reasonText', 'renderProviderIsolation', 'showProviderReadError',
 ];
 
