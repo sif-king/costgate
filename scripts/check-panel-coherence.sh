@@ -173,15 +173,17 @@ fi
 # 所以判定只看树里的行号：mp-shell.js < 每个 views/*.js < 首个内联 <script>。
 DASH="$PANEL_DIR/dashboard.html"
 if [ -f "$DASH" ]; then
+  # 只认**行首的真 script 标签**：注释里写一句 `<script src=...>` 不算接线，
+  # 否则守卫会被注释骗过（与 D-018「注释式注入让静态守卫假绿」同族）。
   first_inline=$(grep -nE '<script>|<script [^>]*>[^<]' "$DASH" | grep -vE 'src=' | head -1 | cut -d: -f1)
-  shell_line=$(grep -nE '<script[^>]*src="\./mp-shell\.js"' "$DASH" | head -1 | cut -d: -f1)
+  shell_line=$(grep -nE '^<script[^>]*src="\./mp-shell\.js"' "$DASH" | head -1 | cut -d: -f1)
   if [ -z "$shell_line" ]; then
     fail "dashboard.html 没引 mp-shell.js（views/*.js 会拿到 undefined 的 MPShell，壳机制静默失效）"
   fi
   for vf in "$PANEL_DIR"/views/*.js; do
     [ -e "$vf" ] || continue
     vname=$(basename "$vf")
-    vline=$(grep -nF "<script src=\"./views/$vname\"" "$DASH" | head -1 | cut -d: -f1)
+    vline=$(grep -nE "^<script src=\"\./views/$vname\"" "$DASH" | head -1 | cut -d: -f1)
     if [ -z "$vline" ]; then
       fail "views/$vname 没在 dashboard.html 接线（新增视图必须补 <script src>）"
       continue

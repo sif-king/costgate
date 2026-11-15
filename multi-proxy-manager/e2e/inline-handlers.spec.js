@@ -63,9 +63,12 @@ async function openDashboard(page) {
   await seedAuth(page);
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
   await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
-  // MPShell 是页面 IIFE 末尾挂的：等到它出现，才说明整段脚本执行到底、
-  // window 挂载已经就绪，没有过早取值造成的假绿。
-  await page.waitForFunction(() => typeof window.MPShell === 'object', null, { timeout: 15000 });
+  // 探针必须挑「页面 IIFE 末尾才挂上」的东西。
+  // 2026-11-15（D-019）修正：原来用 window.MPShell，但页面壳已抽到 mp-shell.js
+  // 并在 <head> 就挂载 —— 它会在页面 IIFE 执行之前就满足，契约层可能在
+  // window 挂载段跑完前取值，造成「该红的没红 / 不该红的红」。改用 switchPage：
+  // 它在 IIFE 末尾的全局暴露段挂载，出现即代表整段页面脚本执行到底。
+  await page.waitForFunction(() => typeof window.switchPage === 'function', null, { timeout: 15000 });
 }
 
 // ── 1. 契约层：每个被引用的名字，在真浏览器里都必须是可调用的全局函数 ──
