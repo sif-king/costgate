@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="./components.css">
   <script src="./theme.js"></script>
   <script src="./mp-kernel.js"></script>
+  <script src="./mp-auth.js"></script>
   <link rel="stylesheet" href="./unify.css">
 </head>
 <style>
@@ -1381,24 +1382,9 @@
       return h;
     }
 
-    // B6: 全局 401 拦截 —— token 过期/无效时跳转登录页，避免页面显示错误状态。
-    // auth 端点自身的 401（密码错误）不拦截。本页 fetch 均为相对 /api/ 路径。
-    (function() {
-      var origFetch = window.fetch;
-      window.fetch = function(url, options) {
-        var p = origFetch(url, options);
-        if (typeof url === 'string' && url.indexOf('/api/') === 0
-            && url.indexOf('/api/auth/') !== 0) {
-          p.then(function(res) {
-            if (res.status === 401) {
-              sessionStorage.removeItem('auth_token');
-              window.location.href = 'login.html';
-            }
-          }).catch(function() {});
-        }
-        return p;
-      };
-    })();
+    // 2026-11-15 壳第四片：本页原有一份「只做 401 跳转、不做 token 注入」的半拦截器，
+    // 现由 head 里的 mp-auth.js 统一安装（注入 + 跳转一起给）。下面 getAuthHeaders() /
+    // fetchAdminApi() 里的手写 x-auth-token 保留：显式写法与全局注入同值，不冲突。
 
     async function fetchStatus() {
       try {

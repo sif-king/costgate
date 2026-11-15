@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="./components.css">
   <script src="./theme.js"></script>
   <script src="./mp-kernel.js"></script>
+  <script src="./mp-auth.js"></script>
   <link rel="stylesheet" href="./unify.css">
 </head>
 <style>
@@ -767,7 +768,7 @@ body {
   var autoRefreshInterval = null;
   var allLogs = [];
   var currentTimeRange = 0;
-  var authToken = sessionStorage.getItem('auth_token');
+  // 本页不再持 `var authToken` 快照：token 由 mp-auth.js 每次现读 MPKernel.getToken()。
   var searchDebounceTimer = null;
 
   // ===== Toast System =====
@@ -797,31 +798,10 @@ body {
     return token ? { 'x-auth-token': token } : {};
   }
 
-  // ===== Intercept fetch for auth token =====
-  // B6: 注入 token + 全局 401 拦截（auth 端点自身的 401 不拦截）
-  (function() {
-    var origFetch = window.fetch;
-    window.fetch = function(url, options) {
-      if (options === undefined) options = {};
-      if (typeof url === 'string' && url.indexOf('/api/') === 0 && authToken) {
-        if (!options.headers) options.headers = {};
-        if (typeof options.headers === 'object') {
-          options.headers['x-auth-token'] = authToken;
-        }
-      }
-      var p = origFetch(url, options);
-      if (typeof url === 'string' && url.indexOf('/api/') === 0
-          && url.indexOf('/api/auth/') !== 0) {
-        p.then(function(res) {
-          if (res.status === 401) {
-            sessionStorage.removeItem('auth_token');
-            window.location.href = 'login.html';
-          }
-        }).catch(function() {});
-      }
-      return p;
-    };
-  })();
+  // ===== 凭证 =====
+  // 2026-11-15 壳第四片：本页原先自装一份全局 fetch 拦截器（注入 x-auth-token + 401 跳转）。
+  // 现由 head 里的 mp-auth.js 统一安装。本页 getAuthHeader() 保留：它是「某几个请求要显式
+  // 带 token」的显式写法（如导出/下载），与全局拦截器不冲突（同值覆盖，无副作用）。
 
   // ===== Offline Banner =====
   function showOfflineBanner() {

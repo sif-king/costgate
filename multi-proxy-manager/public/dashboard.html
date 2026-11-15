@@ -12,6 +12,9 @@
   <link rel="stylesheet" href="./components.css">
     <script src="./icons.js"></script>
 <script src="./mp-kernel.js"></script>
+<!-- 通用鉴权层（2026-11-15 壳第四片）：探登录态 / 登录墙 / 全局 fetch 注入 token + 401 跳转。
+     必须紧跟 mp-kernel（它从中取 token），且先于页面首个内联脚本（内联里第一件事就是 checkAuth）。 -->
+<script src="./mp-auth.js"></script>
 <!-- 页面壳机制（2026-11-15 从 IIFE 末尾抽出）：必须先于所有 views/*.js。
      views 在 head 里就会取 global.MPShell，晚一步就永远拿到 undefined。 -->
 <script src="./mp-shell.js"></script>
@@ -1671,13 +1674,13 @@
   function dismissApiKeyBanner() { return window.MPShell.dismissApiKeyBanner(); }
 
   // ===== Auth =====
-  // 2026-11-15 壳第三片：真实现（探登录态 / 登录墙 DOM / 全局 fetch 改写）整段搬入
-  // mp-shell.js，本页只留同名薄包装。为什么搬：改写 window.fetch 是「所有接口请求的
-  // 必经之路」，却原来由本页私下改——别的页面照抄这段就会漏，而漏了不报错，只是
-  // 401 不再自动跳登录页。壳里装一次，全站一个答案。
-  // 拦截器由 mp-shell.js 在 <head> 里自装（早于本页与所有 views），此处不再安装。
-  function checkAuth() { return window.MPShell.checkAuth(); }
-  function showLoginRequired() { return window.MPShell.showLoginRequired(); }
+  // 2026-11-15 壳第四片：真实现从 mp-shell.js 再迁到 **mp-auth.js**（通用鉴权层）。
+  // 为什么再迁一层：鉴权是 9 个页面共同的问题，而 mp-shell.js 是 dashboard 专属壳
+  // （加载条 / 离线横幅 / apiKey 横幅只对 dashboard 的 DOM 有意义）。别的页面想用鉴权
+  // 就得连这些 DOM 假设一起引进来 —— 那是把 dashboard 的壳投影到别的页面上。
+  // 本页至此只剩两个同名薄包装，调用点（init 里的 checkAuth）零改动。
+  function checkAuth() { return window.MPAuth.checkAuth(); }
+  function showLoginRequired() { return window.MPAuth.showLoginRequired(); }
 
   // ===== Auto-refresh Control =====
   // 单一真源（2026-11-15，2.3b 收口后第一片「壳」）：

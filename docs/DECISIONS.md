@@ -461,7 +461,7 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
   - ① `mp-shell.js` 新增 `currentToken` / `showLoginRequired` / `checkAuth` / `installFetchAuth`，token 一律**现读** `MPKernel.getToken()`；拦截器打 `__mpAuthInstalled` 标记防重入（重复引入不叠两层）；模块加载时即安装——比原来（内联 IIFE）更早，覆盖 head 里所有取数脚本，是严格超集，不是等价替换。
   - ② 401 跳转**保留** `/api/auth/*` 豁免。这一条是硬约束：不豁免的话，登录页输错密码会被自己的拦截器当成会话过期，跳回自己。
   - ③ `dashboard.html` 的 `checkAuth` / `showLoginRequired` 变同名薄包装；删掉整段 fetch 改写与 `authToken` 快照；`init()` 里 `checkAuth()` 调用点零改动。
-  - ④ 新增 `tests/node/panel-shell-auth.test.js`（5 条静态判据），登记进 `panel-guard-registry.test.js`。
+  - ④ 新增壳鉴权守卫（5 条静态判据），登记进 `panel-guard-registry.test.js`。该守卫在 D-028 随实现迁层而升级并更名为 `tests/node/panel-auth-layer.test.js`（8 条，含运行态）。
 - **守卫的四个判据坑（都真踩了）**：
   - 🔴 **登记表 `must` 是 `src.includes(kw)` 字面量比对**，不是正则。我按前一条的写法把关键字写成「转义点 + 文件名」的形态（反斜杠加 `.js`），而登记表比的是**字面量**——文件里没有那个反斜杠，于是匹配不上、登记表红。关键字必须取「判据正则的**源码形态**」（见本条 `window` 后接转义点、点号后接 `fetch` 的那个写法），散文和普通文件名都不行。
   - 🔴 **别拿 `removeItem('auth_token')` 判「页面还在处理 401」**：页面的 `handleLogout` 本来就要清 token（主动退出 ≠ 会话过期），照这条写会误红。判据改成 `/status\s*===\s*401/`。
@@ -472,3 +472,49 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - **E2E 归因（不只报数字）**：全量 tier0 本机 **56 passed / 2 failed**（`auto-refresh` 两条 + `copy-feedback` 一条），单跑时失败的那条又会换人——同配置连跑两遍，第 1 遍 4/4 绿、第 2 遍只红第 64 行。于是把 `mp-shell.js`/`dashboard.html` 退回 HEAD 版本用同一条命令跑两遍作对照：**HEAD 同样两遍都 1 failed**。⇒ 这条抖动与本次改动无关，是本机沙箱的既有噪声（Chrome 临时克隆目录被沙箱拒删也是同一类噪声）。改动件已按 sha256 逐字节还原。
 - **后果**：真跑 node 守卫 **72/72**（新增 5 条）、coherence **七项**、jest 前端 **320/320**、运行态鉴权自检 **1/1**；`dashboard.html` 2030 → **1987** 行（−43：删 fetch 改写整段 + 登录墙 DOM + `authToken` 快照，两函数变薄包装）。
 - **推翻条件 / 剩余**：`switchPage` 分支表与侧栏动态导航仍未搬（前者的收益是可读性、属行为改动，需单独拍板）；同仓其余 8 个页面的拦截器副本**未动**——它们各自自治、且 dashboard 之外的页面不引 mp-shell（引了就会多一份 401 跳转语义），要收口得先把 mp-shell 拆成「可复用鉴权层 + dashboard 专属壳」，属独立一片。
+
+---
+
+## D-028 · 鉴权从 mp-shell 再剥一层到 mp-auth.js：把「请求怎么带凭证」从 4 个答案收成 1 个
+
+- **日期**：2026-11-15（壳第四片，老板「能做都做」）
+- **背景**：D-027 把鉴权收进 `mp-shell.js`，但它只服务 dashboard 一页。实测同仓有 **4 种带凭证方式**：
+  dashboard / knowledge / logs / skills 各抄一份全局 `fetch` 改写（4 个副本）；
+  proxy-config 只抄了 401 跳转那半、token 靠 3 处手写 header；
+  sessions / settings 只手写 header、**没有 401 跳转**（会话过期时页面一直显示「读取失败」，
+  用户点「重试」点到天荒地老也不知道自己已经掉线）；floor 走不鉴权的 `/api/floor`，不需要令牌层。
+- **决策**：新开 `public/mp-auth.js` 作**通用鉴权层**（`MPAuth`：`currentToken` / `showLoginRequired` /
+  `checkAuth` / `installFetchAuth`），加载即安装拦截器；`mp-shell.js` 收回到 **dashboard 专属壳**
+  （加载条 / 离线横幅 / apiKey 横幅），不再含任何 `/api` 语义；dashboard 的两个薄包装改为指向 `MPAuth`。
+- **为什么是「再剥一层」而不是「让别的页引 mp-shell」**：引 mp-shell 等于把 dashboard 的 DOM 假设
+  （`#loadingBar`、`#offlineBanner`、`#apiKeyBanner`）投影到 8 个别的页面上，且那些横幅函数在别的页
+  全是空打——「看着接好了、其实没接」的老毛病。分层后依赖方向是单向的：页面 → mp-auth → mp-kernel。
+- **改动面**：knowledge / logs / skills 删掉整段拦截器与 `authToken` 快照（快照全文只被拦截器用；
+  删除后 grep 只剩注释里的字）；proxy-config 删掉「只跳转不注入」的半拦截器；sessions / settings 只加
+  script 引入、不动业务；**全站 0 处页面再改写 `window.fetch`**（守卫扫全部 `*.html` 钉死）。
+- **有意接受的行为变化**（不是顺手改，是明确取舍）：sessions / settings 从此多了「401 → 清 token →
+  跳 login」这条路径。此前会话过期它们只显示「读取失败」，等于把「掉线」伪装成「没数据」。
+  代价：settings 跳到登录页会丢掉当前页未提交的操作——已核实该页**没有** dirty 状态（逐项点保存即提交），
+  丢的只是「正在看的位置」，因此接受。
+- **没做的事**：proxy-config / sessions / settings / logs 里**手写 `x-auth-token` 的地方保留**。
+  它们与全局注同值、不冲突，删掉纯属为「只剩一个答案」而扩大改动面（几处 header 是显式且按需的）；
+  真正的病根是**隐式全局改写被抄了 N 份**，那部分已收口。
+- **守卫**：`tests/node/panel-auth-layer.test.js`（8 条，取代 D-027 的 5 条壳守卫并更名，登记表同步）。
+  静态五条：真实现唯一在 mp-auth.js / 全站不许再改写 `window.fetch` / 打 `/api/` 的页面必须引 mp-auth.js /
+  加载顺序 `mp-kernel → mp-auth → 内联`、dashboard 另有 `mp-auth → mp-shell → views` /
+  login·consent·legal 三个无鉴权页**不得**引它。运行态两条：把 `mp-auth.js` 原文件塞进假 window 真跑，
+  验注入、非 `/api/` 不动、`/api/auth/*` 豁免、401 跳转、以及**幂等**。
+- **判定器坑（这轮真踩，都是「假绿」）**：
+  - 🔴 **数错观测点**：幂等判据第一版数「到达底层 `fetch` 的次数」→ 叠三层也只发一次网络请求，注入
+    「删掉防重入标记」照样全绿。改数 **401 处理次数**（`sessionStorage.removeItem` 命中次数），叠层
+    才暴露。D-024 是「取错退出码」，这次是「取错计数对象」，同族。
+  - 🔴 **散文满足判据**：`src.includes('mp-auth.js')` 会被页面注释里那句「现由 mp-auth.js 统一安装」喂饱——
+    把 `<script>` 删掉照样绿。改只认 `/<script\s+src="[^"]*mp-auth\.js"/`。判据必须落在**会执行的形态**上。
+- **注入验证（七式全真红，且各自红在对应判据）**：① `res.status === 401` → `402`；② knowledge 重新
+  `window.fetch = …`；③ logs 删掉 mp-auth.js 的 `<script>`；④ dashboard 把 mp-auth 提到 mp-kernel 之前；
+  ⑤ login.html 误引 mp-auth.js；⑥ mp-shell 又塞回 `/api/auth/status`；⑦ 删掉 `__mpAuthInstalled` 赋值。
+  还原后 sha256 逐字节一致、守卫回绿。
+- **后果**：node 守卫 **75/75**、coherence 七项、jest 前端 **320/320**、E2E tier0 **58/58**；
+  另用临时 spec 逐页（7 页）验「无 pageerror + `window.fetch.__mpAuthInstalled` 为真」，验完即删。
+- **剩余**：`switchPage` 分支表与侧栏动态导航（后者判定不该进壳：它读 `MPViews.overview.status`，
+  搬进壳会造成「壳依赖视图」的反向依赖）。

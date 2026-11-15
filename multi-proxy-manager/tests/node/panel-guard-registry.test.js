@@ -106,12 +106,13 @@ const GUARDS = [
     why: '壳横幅归属（apiKey 四函数真实现唯一在壳、页面只留薄包装、demo 与 initDarkMode 死码不复活）',
   },
   {
-    // 壳第三片（鉴权收口）的守门人。登记表用 src.includes(kw) 逐个比字面量，
-    // 所以关键字要取「判据正则的**源码形态**」（如 window\.fetch\s*=），
-    // 散文写「我们检查了 window.fetch」骗不过这一项。
-    file: 'tests/node/panel-shell-auth.test.js',
-    must: ['__mpAuthInstalled', 'res\\.status\\s*===\\s*401', 'window\\.fetch\\s*=', 'mp-shell.js'],
-    why: '壳鉴权归属（探测/登录墙/fetch 注入唯一在壳、页面只留薄包装、不许再改写 window.fetch、加载顺序与引用面）',
+    // 壳第三片→第四片：鉴权从 mp-shell.js 再迁到通用层 mp-auth.js，本守卫随之升级成
+    // 「跨页鉴权层」守卫。登记表用 src.includes(kw) 逐个比字面量，所以关键字要取
+    // 「判据正则的**源码形态**」（如 window\.fetch\s*=），散文写「我们检查了 window.fetch」
+    // 骗不过这一项。
+    file: 'tests/node/panel-auth-layer.test.js',
+    must: ['__mpAuthInstalled', 'res\\.status\\s*===\\s*401', 'window\\.fetch\\s*=', "'/api/auth/'"],
+    why: '跨页鉴权归属（真实现唯一在 mp-auth.js、全站不许再改写 window.fetch、打 /api 的页面必须引它、加载顺序与无鉴权页反例）',
   },
 ];
 

@@ -12,6 +12,7 @@
    <link rel="stylesheet" href="./components.css">
   <script src="./theme.js"></script>
   <script src="./mp-kernel.js"></script>
+  <script src="./mp-auth.js"></script>
   <link rel="stylesheet" href="./unify.css">
 </head>
 <style>
@@ -184,37 +185,17 @@ body { font-family: var(--font-family); background: var(--color-bg-secondary); c
 (function() {
    'use strict';
 
-   var authToken = sessionStorage.getItem('auth_token');
+   // 本页不再持 `var authToken` 快照：token 由 mp-auth.js 在每次请求时现读
+   // MPKernel.getToken()，缓存一份等于让页面拿过期令牌去请求。
 
    // ===== 转义（防御性渲染）=====
    // 实现已收到 mp-kernel.js（原为各页各抄一份，会分叉）；这里只留别名。
    var esc = MPKernel.esc;
 
-   // ===== fetch 拦截器：注入 x-auth-token + 全局 401 跳转（仿 logs.html，写操作鉴权用） =====
-   // 注：token 由拦截器统一注入，下方业务代码不必重复带头
-   (function() {
-     var origFetch = window.fetch;
-     window.fetch = function(url, options) {
-       if (options === undefined) options = {};
-       if (typeof url === 'string' && url.indexOf('/api/') === 0 && authToken) {
-         if (!options.headers) options.headers = {};
-         if (typeof options.headers === 'object') {
-           options.headers['x-auth-token'] = authToken;
-         }
-       }
-       var p = origFetch(url, options);
-       if (typeof url === 'string' && url.indexOf('/api/') === 0
-            && url.indexOf('/api/auth/') !== 0) {
-         p.then(function(res) {
-           if (res.status === 401) {
-             sessionStorage.removeItem('auth_token');
-             window.location.href = 'login.html';
-           }
-         }).catch(function() {});
-       }
-       return p;
-     };
-   })();
+   // ===== 凭证 =====
+   // 2026-11-15 壳第四片：本页原先自装一份全局 fetch 拦截器（注入 x-auth-token + 401 跳转），
+   // 与 dashboard/logs/skills 是同四个副本之一。现由 head 里的 mp-auth.js 统一安装，
+   // 本页只管业务取数——「请求怎么带凭证」全站一个答案，新页面照抄也不会漏。
 
    // ===== Toast / Loading =====
    // 实现已收到 mp-kernel.js（全站一套观感，2026-11-14 视觉统一）。
