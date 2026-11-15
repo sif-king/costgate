@@ -558,3 +558,229 @@ test('总览首屏代理卡/版本卡真出数，启停按钮真发请求并重�
 
   expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
 });
+
+// 首屏 onboarding（2026-11-15，2.3b 第八片）
+// 为什么单独加：这张卡回答「我下一步点哪」，是首屏唯一一处**主动指路**的地方，
+// 而它此前零运行态断言（E2E 只碰过统一入口卡上的复制按钮）。三种坏法都不报错：
+//   ① 三步判定算错（配了 2 个但 0 在跑，却把「发第一个请求」标成「现在做」）；
+//   ② 模块没接线 / 薄包装转发断了（卡片永远停在「正在读取运行状态…」，看起来像慢）；
+//   ③ 复制走了一份旧字面量（界面显示 A、复制出去 B，改端口必然漂移）。
+// 外加一条只有在这里才测得到的：**「不再提示」是真持久化**（localStorage），
+// 不是「点一下这次藏起来、刷新又回来」。
+test('首屏 onboarding：全没跑明说「不是故障」+ 三步高亮「现在做」+ 复制真写剪贴板 + 关闭后不再出现', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  // 剪贴板放行并记录写入内容：复制目标必须与界面显示同一个值。
+  await page.addInitScript(() => {
+    window.__copied = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (t) => { window.__copied.push(String(t)); return Promise.resolve(); },
+      },
+    });
+  });
+
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { name: 'Probe Onboard Proxy', port: 18790, defaultVersion: '9.9.9' },
+      claude: { name: 'Probe Claude Proxy', port: 18791, defaultVersion: '9.9.9' },
+    }),
+  }));
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { running: false, port: 18790, fault: false },
+      claude: { running: false, port: 18791, fault: false },
+    }),
+  }));
+  // /api/readyz 的真实形状：proxies.{total,reachable,down,details[]}
+  await page.route('**/api/readyz', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      status: 'degraded',
+      proxies: {
+        total: 2, reachable: 0, down: 2,
+        details: [
+          { name: 'codex', reachable: false, reason: 'ECONNREFUSED' },
+          { name: 'claude', reachable: false, reason: 'ECONNREFUSED' },
+        ],
+      },
+    }),
+  }));
+  await page.route('**/api/cost/watchtower*', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ spend: { requestCount: 0 } }),
+  }));
+  await page.route('**/api/version', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ version: '9.9.9', proxies: {} }),
+  }));
+  await page.route('**/api/conflicts', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ conflicts: {} }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+
+  // 默认页是「今天」，onboarding 卡在概览页 —— 先切过去。
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+
+  const card = page.locator('#onboardingCard');
+  const body = page.locator('#onboardingBody');
+  await expect(card, 'onboarding 卡应可见（配置了代理就该指路）').toBeVisible({ timeout: 15000 });
+
+  // ① 三态之一「配了但一个没跑」：必须说破「不是故障」，并带第一个卡住代理的原因 + 处置。
+  await expect(body, '0 在跑必须明说「不是故障」（否则九行红字被读成整机坏了）').toContainText('不是故障');
+  await expect(body, '不可达必须带原因（走 MPShared.reasonText）').toContainText('连接被拒');
+  await expect(body, '处置里要有能直接抄的命令').toContainText('bash manage.sh start');
+  await expect(page.locator('#onboardingSubtitle'), '副标题要报真实计数')
+    .toContainText('配了 2 个代理，但一个都没在跑');
+
+  // ② 三步高亮「现在做」的必须是第二步（起代理），不能是第一步或第三步。
+  const steps = page.locator('#onboardingBody .onboard-step');
+  await expect(steps, '未跑通时应列三步').toHaveCount(3, { timeout: 15000 });
+  await expect(steps.nth(0), '「起代理」应标已完成（说明配了代理）').toHaveClass(/onboard-step-done/);
+  await expect(steps.nth(1), '「把 agent 指过来」应是当前步').toHaveClass(/onboard-step-active/);
+  await expect(steps.nth(1), '当前步要写「现在做」').toContainText('现在做');
+  await expect(steps.nth(2), '「发第一个请求」应是待办').toHaveClass(/onboard-step-todo/);
+
+  // ③ 界面显示的接入 URL 必须是模块里那一个值（单一真源），点复制写进去的也是它。
+  const canonical = await page.evaluate(() => window.MPViews.onboarding.unifiedUrl);
+  await expect(page.locator('#unifiedIngressUrl'), '可见 URL 应被 load() 同步成真源').toHaveText(canonical);
+  await page.locator('#onboardingBody [data-onboard-copy]').click();
+  await expect.poll(async () => page.evaluate(() => window.__copied),
+    '点「复制接入 URL」必须真写剪贴板，且写的就是真源 URL').toContain(canonical);
+  await expect(page.locator('.toast.success').first(), '复制成功要有反馈').toContainText('已复制接入 URL', { timeout: 15000 });
+
+  // ④ 「不再提示」是真持久化：藏起来 + 落 localStorage + 刷新后仍不出现。
+  await page.locator('#onboardingDismiss').click();
+  await expect(page.locator('#onboardingCard'), '点「不再提示」后整卡应隐藏').toBeHidden({ timeout: 15000 });
+  expect(await page.evaluate(() => localStorage.getItem('mp-onboarding-dismissed')),
+    '关闭状态必须落到 localStorage（否则每次刷新都回来打扰）').toBe('1');
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page, '刷新后不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+  // 这里必须读 style.display：卡片在非活动页时 toBeHidden 恒真，判断不出「真关掉了」。
+  await expect.poll(() => page.locator('#onboardingCard').evaluate((el) => el.style.display),
+    '刷新后仍应记住「不再提示」（只藏不记 = 每天都来打扰）').toBe('none');
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});
+
+test('首屏 onboarding：已跑通收成一行确认、不再列三步，点「查看账本」真切到成本页', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { name: 'Probe Onboard Proxy', port: 18790, defaultVersion: '9.9.9' },
+      claude: { name: 'Probe Claude Proxy', port: 18791, defaultVersion: '9.9.9' },
+    }),
+  }));
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { running: true, port: 18790, fault: false },
+      claude: { running: true, port: 18791, fault: false },
+    }),
+  }));
+  await page.route('**/api/readyz', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      status: 'ready',
+      proxies: { total: 2, reachable: 2, down: 0, details: [] },
+    }),
+  }));
+  // 次信号真返回请求数：有请求 ⇒ 整卡收成一行（不再 nag 老用户）。
+  await page.route('**/api/cost/watchtower*', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ spend: { requestCount: 12 } }),
+  }));
+  await page.route('**/api/version', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ version: '9.9.9', proxies: {} }),
+  }));
+  await page.route('**/api/conflicts', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ conflicts: {} }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+
+  const body = page.locator('#onboardingBody');
+  await expect(body, '已发过请求应收成一行「已跑通 N 笔」').toContainText('已跑通 12 笔', { timeout: 15000 });
+  await expect(body, '已跑通不该再列三步 nag').not.toContainText('现在做');
+  await expect(page.locator('#onboardingBody .onboard-step'), '已跑通时三步应整段消失').toHaveCount(0);
+  // 老用户不需要「不再提示」——整卡已经收成一行。
+  await expect.poll(() => page.locator('#onboardingDismiss').evaluate((el) => el.style.display),
+    '已跑通时「不再提示」应隐藏').toBe('none');
+
+  // CTA 真跳转：模块通过页面壳公开面 switchPage('cost') 切页（不是自己改 class）。
+  await page.locator('#onboardingBody [data-onboard-cost]').click();
+  await expect(page.locator('#page-cost'), '点「查看账本」应切到成本页').toHaveClass(/active/, { timeout: 15000 });
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});
+
+test('首屏 onboarding：readyz 读失败 → 明说「读不到」+ 可重试，绝不隐藏或装空', { tag: ['@tier0', '@pr-gate'] }, async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  let readyzCalls = 0;
+  page.on('request', (r) => {
+    if (r.url().includes('/api/readyz')) readyzCalls += 1;
+  });
+
+  await page.route('**/api/proxy-configs', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { name: 'Probe Onboard Proxy', port: 18790, defaultVersion: '9.9.9' } }),
+  }));
+  await page.route('**/api/status', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ codex: { running: true, port: 18790, fault: false } }),
+  }));
+  await page.route('**/api/readyz', (route) => route.fulfill({
+    status: 500, contentType: 'application/json',
+    body: JSON.stringify({ error: 'readyz 挂了' }),
+  }));
+  await page.route('**/api/version', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', proxies: {} }),
+  }));
+  await page.route('**/api/conflicts', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ conflicts: {} }),
+  }));
+
+  await seedAuth(page);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page, '不应被踢到登录页').not.toHaveURL(/\/login/, { timeout: 15000 });
+  await page.click('#viewTabs .section-tab[data-page="dashboard"]');
+  await expect(page.locator('#page-dashboard')).toHaveClass(/active/, { timeout: 15000 });
+
+  const body = page.locator('#onboardingBody');
+  await expect(body, '读失败必须明说「读不到」，不能装成空态').toContainText('运行状态读不到', { timeout: 15000 });
+  await expect(body, '要带出后端给的原因').toContainText('readyz 挂了');
+  await expect(body, '要说明「读不到 ≠ 没有代理」').toContainText('不是「没有代理」');
+  await expect(body, '读失败不许假报「已跑通」').not.toContainText('已跑通');
+  // 整卡不许隐藏：隐藏等于把「读不到」装成「没事」。
+  await expect.poll(() => page.locator('#onboardingCard').evaluate((el) => el.style.display),
+    '读失败时整卡必须留着').not.toBe('none');
+
+  // 重试是真重跑（不是死按钮）：点一下 readyz 必须再请求一次。
+  const before = readyzCalls;
+  await page.locator('#onboardingBody .mp-retry-btn').click();
+  await expect.poll(() => readyzCalls, '点「重试」必须重新请求 /api/readyz').toBeGreaterThan(before);
+  await expect(body, '重试后仍读不到应继续如实说读不到').toContainText('运行状态读不到', { timeout: 15000 });
+
+  expect(errors, `致命 JS 异常: ${errors.join(' | ')}`).toEqual([]);
+});

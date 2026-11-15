@@ -60,6 +60,12 @@ const GUARDS = [
     why: '复制只有一个入口且失败必反馈（CI 实测 headless 下 writeText 被拒 → 点了毫无反应）',
   },
   {
+    file: 'tests/node/panel-onboarding-ownership.test.js',
+    // 同样只用判据正则里的形态（转义反斜杠 + 唯一字面量计数），散文满足不了。
+    must: ['var\\s+ONBOARD_DISMISS', 'MPViews\\.onboarding\\.copyUnifiedUrl', '统一接入 URL 字面量只有一份'],
+    why: '首屏 onboarding 归属（三态判定/关闭状态/接入 URL 字面量各只有一份，页面只留转发薄包装）',
+  },
+  {
     file: 'e2e/copy-feedback.spec.js',
     must: ['@tier0', 'copyUnifiedIngressUrl', 'NotAllowedError'],
     why: '强制剪贴板被拒后真点复制按钮（把 CI 那个失败模式本身钉死，不依赖环境是否放行）',

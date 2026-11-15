@@ -194,6 +194,10 @@ function runPanel(file, fetchStub, exportList) {
     // 页面 loadStatus / loadVersion 只是薄包装 ⇒ 这个文件不进沙箱，
     // 下面「读失败不许喂 mock 三代理」两条就测的是转发层而不是实现。
     'views/overview.js',
+    // 2.3b 第八片（2026-11-15）：首屏 onboarding 三步判定 / 关闭 / 复制搬到
+    // views/onboarding.js。下面三条 onboarding 用例走页面薄包装 loadOnboarding，
+    // 不加载它测到的只是 console.error 分支（旧版会「读失败但 body 空」假绿）。
+    'views/onboarding.js',
   ];
   for (const rel of headScripts) {
     vm.runInContext(fs.readFileSync(path.join(PUBLIC, rel), 'utf8'), sandbox, { filename: rel });

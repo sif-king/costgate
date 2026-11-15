@@ -361,3 +361,27 @@ Licensed under AGPL-3.0 (source) + Commercial license (see LICENSE-COMMERCIAL.md
 - **后果**：真跑 node **50/50**、coherence **七项**、jest 前端 **320/320**、全量 E2E **62/62**、tier0 闸门 **48/48**；`dashboard.html` **2256 行**。
 - 🔴 **本轮环境读数（不改代码，只记判据）**：全量 E2E 首跑 1 failed（`/sessions` 会话列表停在「加载中」），单跑该 spec **9/9 绿**、复跑全量 **62/62** ⇒ 四 worker 共用一个 manager 的并发抖动，与该用例零引用（`sessions.html` + `/api/sessions`）。按纪律逐条归因后才算「不是本改动引入」。
 - **推翻条件 / 剩余**：剩下的都属**页面壳**本身（鉴权 / 横幅 / 自动刷新间隔 / 暗色 / 侧栏动态导航 / onboarding / 会话列表）。概览不再是「一页一文件」的例外 —— 事实是它也能抽，前提是把状态一起搬。若后续抽 onboarding / sessions，按同一判据先清点读点：**读点多且只有本视图用 ⇒ 搬持有者；读点分散 ⇒ 先落只读仓（mp-shared 那层），都不必造全局 store**。
+
+## D-023 · 第八片抽首屏 onboarding；顺手把「接入 URL」收成一份真源
+
+- **状态**：已执行（2026-11-15，2.3b 第八片）
+- **背景**：前七片把页内视图基本搬空后，`dashboard.html` 剩下的可搬块只剩首屏 onboarding（约 180 行）与会话列表。onboarding 只读两个接口（`/api/readyz` 主信号、`/api/cost/watchtower` 次信号 best-effort）和六个固定容器 id，不读 `proxyStatus`、不写共享状态、不被别的视图调用 —— 与 registry / cost 同形的自治片。
+- **决策**：
+  - ① **新建 `public/views/onboarding.js`**（`MPViews.onboarding.{ load, copyUnifiedUrl, statusLine, unifiedUrl }`），整块迁入三态判定（加载 / 下一步 / 读失败→重试）、三步黄金路径、一次性关闭。`dashboard.html` **2256 → 2075 行（−181）**。
+  - ② **页面只留两个同名薄包装**（`loadOnboarding` / `copyUnifiedIngressUrl`）：`init()` 的调用点、静态内联 `onclick="copyUnifiedIngressUrl()"`、`showReadError` 的重试回调都还按名字调它们。模块不重复挂 `window.*`（同名两处挂载 = 又一份「谁是活的」的歧义，D-021④ 的教训）。
+  - ③ **接入 URL 收成一份字面量**（本片唯一的真问题，不是搬代码顺手美化）：原来复制目标写在页面 IIFE（`var url = 'http://127.0.0.1:18880/v1'`），而 Hero 卡的可见文本是 HTML 里手写的同一串 —— 改端口必然只改一处，用户看到 A、复制出去 B。现在真源是模块的 `UNIFIED_URL`，`load()` 把 `#unifiedIngressUrl` 的文本同步过去（幂等）；HTML 里那份降级成首屏占位并注明。
+  - ④ **「3 分钟跑通」CTA 统一走 `MPKernel.copyText`**：原代码先判 `navigator.clipboard` 是否存在，没有就只提示命令、不尝试复制；而 `copyText` 自带 `execCommand` 兜底且永不 reject。两套复制口径并存的直接后果是「同样点复制，一处会兜底、一处不会」。
+  - ⑤ **新增 `tests/node/panel-onboarding-ownership.test.js`（4 条）**：页面不许再声明关闭状态 / 三步判定；模块必须真持有 `DISMISS_KEY` 与两个判定函数并暴露公开面；两个薄包装必须还在且真转发；**接入 URL 字面量只许在模块里出现 1 次、页面内联脚本 0 次**。已登记进守卫登记表（关键字用判据正则里的转义形态，散文满足不了）。
+  - ⑥ **新增 E2E `@tier0` 三条**（这张卡此前零运行态断言，E2E 只碰过统一入口卡上的复制按钮）：
+    - 全没跑：明说「不是故障」+ 带「连接被拒」+ 处置命令；三步里第 2 步必须是 `onboard-step-active`（不是第 1/3 步）；可见 URL == `unifiedUrl` 且点复制真写进剪贴板；点「不再提示」→ 整卡隐藏 + `localStorage` 落值 + **刷新后仍隐藏**（读 `style.display`，因为卡片在非活动页时 `toBeHidden` 恒真，判断不出真关掉）。
+    - 已跑通：收成一行「已跑通 12 笔」、三步整段消失、`#onboardingDismiss` 隐藏、点「查看账本」真切到成本页（走页面壳公开面 `switchPage`）。
+    - 读失败：明说「读不到」+ 带后端原因 + 「读不到 ≠ 没有代理」+ 不假报「已跑通」+ 整卡不隐藏；**点重试必须再请求一次 `/api/readyz`**（防死按钮）。
+  - ⑦ `panel-read-failure` 沙箱按 head 真实顺序加载 `views/onboarding.js`：三条 onboarding 用例走页面薄包装，不加载模块就只测到 `console.error` 分支（旧版会「读失败但 body 空」假绿）。
+- **注入验证（五式全真红 + sha256 逐字节恢复）**：
+  - A 摘掉 `views/onboarding.js` 接线 → coherence `rc=1` 精确点名 + E2E 红。
+  - B `loadOnboarding` 薄包装不再转发（`if (false && …)`）→ E2E 红（卡片停在加载态）。
+  - C 页面重新长出 `var ONBOARD_DISMISS` → 归属守卫红（1 条）。
+  - D 模块里 `var current = total === 0 ? 0 : (running === 0 ? 1 : 2)` 改成 `var current = 2` → E2E 红（证明三步断言验的是判定，不是文案存在）。
+  - E 页面回流一份 `var url = 'http://127.0.0.1:18880/v1'` → 归属守卫红（字面量计数）。
+- **后果**：真跑 node **54/54**、coherence **七项**、jest 前端 **320/320**、全量 E2E **65/65**、tier0 闸门 **51/51**；`dashboard.html` **2075 行**（2.3b 起点 3121）。
+- **推翻条件 / 剩余**：最后一块自治片是「会话列表 + `loadProviderHealth`」。页面壳本身（鉴权 / 横幅 / 自动刷新调度 / 暗色 / 侧栏动态导航）不是视图，抽了只多一层跳转 —— 要动先改 `switchPage` 分支表与刷新调度，属于行为改动，应单独一片并单独拍板。
