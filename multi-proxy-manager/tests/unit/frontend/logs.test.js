@@ -204,8 +204,18 @@ describe('Logs Page', () => {
     let html;
     beforeAll(() => { html = readHtml('logs.html'); });
 
-    it('should use clipboard API for copying', () => {
-      expect(html).toContain('clipboard.writeText');
+    it('should copy via MPKernel.copyText and report failure too', () => {
+      // 2026-11-15（D-020）：复制收口到 kernel.copyText。原来直接在页面里写
+      // navigator.clipboard.writeText(x).then(成功提示) —— 浏览器拒绝剪贴板时
+      // （CI headless 实测 Write permission denied）用户点完毫无反应，控制台只多
+      // 一条 unhandled rejection。所以断言从「用了剪贴板 API」升级成两个更硬的：
+      // ① 走统一入口；② 每处复制都带失败分支（三处复制 = 三条失败提示）。
+      expect(html).toContain('MPKernel.copyText');
+      // 页面不许再直接调 clipboard.writeText（失败无人接）
+      expect(html).not.toContain('navigator.clipboard.writeText(');
+      const failHints = (html.match(/复制被浏览器拒绝/g) || []).length;
+      // 三处复制都必须有失败提示
+      expect(failHints).toBeGreaterThanOrEqual(3);
     });
 
     it('should format logs as timestamp-level-proxy-message', () => {

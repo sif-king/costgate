@@ -191,9 +191,15 @@ describe('Login Page', () => {
       expect(html).toContain('manage.sh restart manager');
     });
 
-    it('should have copy command button', () => {
+    it('should have copy command button with failure feedback', () => {
       expect(html).toContain('copyResetCommand');
       expect(html).toContain('clipboard.writeText');
+      // 2026-11-15（D-020）：登录页不加载 mp-kernel，是唯一保留直接调 writeText 的例外，
+      // 因此必须自带拒绝分支——否则浏览器禁剪贴板时按钮点了毫无反应。
+      // writeText 必须带拒绝回调（Jest 的 expect 只收一个参数，说明写在注释里）
+      expect(html).toMatch(/writeText\(cmd\)\.then\([\s\S]{0,200}?,\s*function/);
+      // 复制失败要有可见反馈
+      expect(html).toContain('复制失败，请手动复制');
     });
 
     it('should close modal on overlay click', () => {
