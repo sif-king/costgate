@@ -397,6 +397,18 @@ if (process.env.NODE_ENV !== "test") {
 let _fsObserver = null;
 function startFsObserver() {
   const v = String(process.env.PROXY_FS_OBSERVE ?? '').trim().toLowerCase();
+  // 🔴 收到 SIGTERM 必须真退出。Node 一旦注册了信号监听器，就把「默认收到信号即退出」接管了，
+  // 只 stop() 观测而不 process.exit() ⇒ kill -TERM 变成**假停**：进程还在、端口还占着，
+  // launchd / `docker stop` 等不到退出，最后升级成 SIGKILL（观测账本可能被截断）。
+  // 注册放在最前面、且不看观测是否起来：观测关了（PROXY_FS_OBSERVE=off）同样要能干净退出。
+  process.on('SIGTERM', () => {
+    try {
+      if (_fsObserver) _fsObserver.stop();
+    } catch {
+      /* 退出中，忽略 */
+    }
+    process.exit(0);
+  });
   if (v === '0' || v === 'false' || v === 'off') {
     console.log('[fs-observe] 已关闭（PROXY_FS_OBSERVE）');
     return;
@@ -409,13 +421,6 @@ function startFsObserver() {
       return;
     }
     console.log(`[fs-observe] 观测 ${info.watching} 个仓库 → ${info.ledger}`);
-    process.on('SIGTERM', () => {
-      try {
-        _fsObserver.stop();
-      } catch {
-        /* 退出中，忽略 */
-      }
-    });
   } catch (e) {
     console.warn('[fs-observe] 启动失败（不影响管理台）:', e.message);
   }
