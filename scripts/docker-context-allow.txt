@@ -7,7 +7,17 @@
 # 但不算 CI 失败——这样「新出现的问题」会立刻红，而「已知的债」不会把 CI 变噪音。
 #
 # 什么时候必须删掉这里的条目：真正修好之后（加构建阶段自己产出 dist，或干脆
-# 让镜像不托管 cursor 代理）。删掉后守卫会重新变红，正好证明修好了。
+# 让镜像不托管 cursor 代理）。只删条目不修代码，守卫会立刻变红——红了就是没修完。
+#
+# --- 2026-11-16 清账 ---
+# 原两条（Dockerfile.lite-mvp / Dockerfile.manager 的 cursor-proxy/dist）已修：
+# 两个镜像都改成多阶段构建，cursor-proxy 由 cursor-builder 跑 tsc 自产 dist 并装依赖，
+# codex-proxy 由 codex-builder 装依赖，最终 stage 用 COPY --from 搬入。
+# 因此不再有「COPY 一个既不入库、又被 .dockerignore 排除的路径」这个问题。
+#
+# ⚠️ 仍未解决、但**不在本守卫判据内**的一条（所以不登记在这里，记在 Dockerfile 注释里）：
+#   hermes-proxy 是 Python（Flask），两个托管镜像都不含 Python 运行时 ⇒ 单容器形态下
+#   hermes 会「注册成功但 spawn 失败」。修法需加 python builder 并对齐 site-packages 路径，
+#   须在有 docker 的机器上验，未验之前不写「单容器托管全部代理」。
+#   运行时可验证性：两个镜像的 docker build 均未在真机跑过（开发机无 docker daemon）。
 
-Dockerfile.lite-mvp  cursor-proxy/dist  2026-11-09 已定：容器【托管代理运行时】（管理-only 镜像随后注册代理却起不来是最坏结果）。修法＝复用 Dockerfile.cursor 已证的多阶段样板：每个代理一个 builder 跑 tsc 自产 dist + `npm install --omit=dev`，基础镜像统一 bookworm（避开 manager=alpine 与 cursor=bookworm 的 native module libc 冲突）。状态＝结构修法已定、【运行时构建待在有 docker 的机器上 `docker build -f Dockerfile.lite-mvp .` 验证】——本沙箱无 docker daemon，按项目铁律不写「能 build」的未验证结论。见 PUBLISH-READINESS §三。
-Dockerfile.manager  cursor-proxy/dist  2026-11-09 同 lite-mvp：已定托管代理 + 同法修复；运行时构建待有 docker 的机器验证（本环境不声称能 build）。已在 Dockerfile 加 ⚠️ 注记。

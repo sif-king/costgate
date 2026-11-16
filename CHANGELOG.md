@@ -66,11 +66,17 @@ This file is part of the costgate project.
 - **MCP bridge 仅 `2025-03-26`**：对 `2026-07-28` stateless client 不保证通，dual-era 未排近期 roadmap。
 - **流式与工具调用未逐链路压过**：只验到“能通、有真 usage”。
 - **Windows 原生 PowerShell 通道只有安装脚本**；Git Bash 下 `quickstart.sh` 可直接跑。
-- **两个 Dockerfile 干净 clone 不能直接 build**（`COPY cursor-proxy/dist` 源在 `.dockerignore` 下）：
-  容器部署形态未对外承诺。修法已定（复用 `Dockerfile.cursor` 多阶段样板），待有 docker 的机器验证。
-- **`manage.sh stop` 对 manager 可能是假停**：`server.js` 的 `SIGTERM` handler 只停文件观测、不退出进程，
-  Node 注册 handler 后不再自动结束 ⇒ `kill -TERM` 被吞（2026-11-15 重启时实测）。当前靠桌面 App 的 watchdog
-  拉起；根治需在 handler 里补 `process.exit()`，该文件属并行会话资产，未改。
+- **两个托管镜像（`Dockerfile.manager` / `Dockerfile.lite-mvp`）仍未经运行时构建验证**：
+  原先 `COPY cursor-proxy/dist` 在干净 clone 上会失败（`dist` 不入库、又被 `.dockerignore` 排除）。
+  2026-11-16 已改成多阶段构建：cursor 由 builder 跑 `tsc` 自产 `dist` 并装依赖、codex 由 builder 装依赖，
+  最终 stage 用 `COPY --from` 搬入，`scripts/check-docker-context.js` 从 2 条已知债变为全绿。
+  但这两个镜像的 `docker build` **仍未在真机上跑过**（开发机无 docker daemon），
+  所以容器部署形态继续不对外承诺；有机器时一条命令可验：`docker build -f Dockerfile.lite-mvp .`。
+  剩余缺口：`hermes-proxy` 是 Python（Flask），托管镜像里没有 Python 运行时，
+  单容器形态下它会注册成功但起不来，修法需 python builder + `site-packages` 路径对齐。
+- **`manage.sh stop` 对 manager 是假停（已复现）**：`server.js` 的 `SIGTERM` handler 只停文件观测、不退出进程，
+  Node 注册 handler 后不再自动结束 ⇒ `kill -TERM` 被吞（2026-11-15 重启时实测）。2026-11-16 用隔离实例真跑复现：发 SIGTERM 后进程仍存活、端口仍被占。当前靠桌面 App 的 watchdog
+  拉起；修法已明确（handler 末尾补 `process.exit(0)`；`_fsObserver.stop()` 走的是同步 `appendFileSync` + `close`，不会丢观测记录），但 `server.js` 工作区里有并行会话的未提交改动，同文件提交会把对方改动一并带入，故本轮未改。
 - **跨平台与外部复验的口径**：判据 I 的冷启链路已在 macOS 本机真跑（干净导出 + 零配置 HOME，
   见上方实测记录），Windows 原生环境仍未验；那次 npm 依赖有缓存（9s），不能当冷装基准。
   判据 IV 首次 11-10 由第三方在 Windows 达成，用的是改名前的地址与 `621c6e5` 之前的代码，

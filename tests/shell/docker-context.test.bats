@@ -63,7 +63,21 @@ teardown() {
 }
 
 @test "registered problems are printed every run, not silently swallowed" {
-  grep -qE '^Dockerfile[^ ]*[[:space:]]{2,}' "$ROOT/scripts/docker-context-allow.txt"
+  # 2026-11-16：原来这条直接 grep 仓库里的 allow 文件，要求它至少有一条登记。
+  # 债还清后该文件合法地变成空的（两条 cursor-proxy/dist 已由多阶段构建修掉），
+  # 于是这条测试在「事情变好了」的时候反而红 —— 判据绑错了对象。
+  # 改成自己造一个场景：临时登记一条 + 制造一个真问题，验「已登记」会被打印、且不判失败。
+  local ALLOW="$ROOT/scripts/docker-context-allow.txt"
+  local ABK="$BATS_TEST_TMPDIR/allow.bak"
+  cp "$ALLOW" "$ABK"
+  cp "$DF" "$BAK"
+  printf '\nCOPY does-not-exist2/ ./x/\n' >> "$DF"
+  # 登记的源路径要和 COPY 行里写的**逐字一致**（含尾斜杠）：守卫用原始 token 做 key。
+  printf '\nDockerfile.codex  does-not-exist2/  测试用：验证已登记的问题每次都会打印，不会被静默吞掉\n' >> "$ALLOW"
   run node "$GUARD"
-  printf '%s' "$output" | grep -q '已登记的问题'
+  local st="$status" out="$output"
+  cp "$BAK" "$DF"
+  cp "$ABK" "$ALLOW"
+  [ "$st" -eq 0 ]
+  printf '%s' "$out" | grep -q '已登记的问题'
 }

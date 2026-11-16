@@ -1,3 +1,47 @@
+# costgate manager 镜像（docker-compose.yml 的 manager 服务）
+#
+# 用途有两种，本文件同时满足：
+#   ① 分离部署（docker-compose.yml 现状）：manager 只挂 docker.sock，代理跑独立容器，
+#      容器内 isProcessRunning / stopProxy 走 `docker container inspect|stop`
+#      （见 lib/process-manager.js 的 IS_DOCKER 分支），不依赖本地进程。
+#   ② 单容器托管：镜像里带代理源码与依赖，startProxy 走 spawn 时能真跑起来。
+#
+# 🔴 代理依赖为什么必须从 builder 拿：
+#   cursor-proxy/dist 不入库，且被 .dockerignore 的 `dist` 排除 —— 直接 COPY 宿主机的 dist
+#   在干净 clone 上必然失败（2026-11-09 登记的已知债）。改成从源码构建后，dist 不再来自宿主机。
+#   同时把 node_modules 一起带进来：否则容器里代理注册成功却一启动就 Cannot find module，
+#   而「管理-only 镜像 + 注册了却起不来」是最坏结果（2026-11-09 老板拍：容器托管代理运行时）。
+#   代码侧同样如此：buildProxyConfigs 用 fs.existsSync 探测入口，只 COPY 源码不装依赖
+#   会让入口「存在但跑不了」，比不注册更难查。
+#
+# ⚠️ hermes-proxy 是 Python（Flask + pyyaml + requests），本镜像不含 Python 运行时，
+#    因此只 COPY 源码、不装依赖：它按 docker-compose.yml 跑独立容器。
+#    单容器形态下 manager 面板会列出 hermes 但 spawn 会失败 —— 这一条在
+#    scripts/docker-context-allow.txt 里登记着，未修前别对外说「单容器托管全部代理」。
+#    修法（若要做）：加 python:3.11-slim builder 装依赖后 COPY site-packages 进来，
+#    但 node 镜像与 python 镜像的 site-packages 路径/版本必须对齐，需在有 docker 的机器上验。
+
+# ---- codex-proxy：纯 JS 依赖（dotenv / express）----
+FROM node:20-alpine AS codex-builder
+
+WORKDIR /build
+
+COPY codex-proxy/package.json codex-proxy/package-lock.json* ./
+RUN npm ci --omit=dev
+
+# ---- cursor-proxy：TS 需 tsc 出 dist；better-sqlite3 是 native，musl 下要从源码编译 ----
+FROM node:20-alpine AS cursor-builder
+
+WORKDIR /build
+
+RUN apk add --no-cache python3 make g++
+
+COPY cursor-proxy/package.json cursor-proxy/package-lock.json* ./
+RUN npm ci
+
+COPY cursor-proxy/ ./
+RUN npm run build
+
 FROM node:20-alpine
 
 RUN apk add --no-cache lsof docker-cli
@@ -11,19 +55,16 @@ RUN cd manager && npm install --production
 COPY multi-proxy-manager/ ./manager/
 
 # P0-1 补充：buildProxyConfigs 用 path.join(__dirname,'..') 找各代理目录，
-# 容器内必须是 /deploy/{codex-proxy,hermes-proxy,cursor-proxy}
+# 容器内必须是 /app/{codex-proxy,hermes-proxy,cursor-proxy}
 # 与宿主机仓库布局一致，否则 "Managed proxies: none"。
-#
-# ⚠️ 2026-11-09 核查：下面 `COPY cursor-proxy/dist` 在当前 .dockerignore 下必然失败 ——
-#   .dockerignore 排除了 dist 和 node_modules，而 dist 也不入库（git ls-files 查不到）。
-#   本机能构建只是因为本机 cursor-proxy/dist 恰好存在。详见 PROJECT-STATE/PUBLISH-READINESS-2026-11-09.md。
-# 📌 2026-11-09 已定（老板拍）：同 lite-mvp，容器【托管代理运行时】，修法＝复用 Dockerfile.cursor 多阶段样板
-#   （每代理 builder 跑 tsc 自产 dist + npm install --omit=dev，统一 bookworm 避 libc 冲突）。
-#   运行时构建待有 docker 的机器上验证（本沙箱无 daemon，不声称「已能 build」）。
 COPY codex-proxy/ ./codex-proxy/
+COPY --from=codex-builder /build/node_modules ./codex-proxy/node_modules
+
 COPY hermes-proxy/ ./hermes-proxy/
+
 COPY cursor-proxy/package.json ./cursor-proxy/
-COPY cursor-proxy/dist ./cursor-proxy/dist
+COPY --from=cursor-builder /build/dist ./cursor-proxy/dist
+COPY --from=cursor-builder /build/node_modules ./cursor-proxy/node_modules
 
 ENV PORT=18792
 
