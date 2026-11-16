@@ -23,6 +23,8 @@ COPY cursor-proxy/package.json .
 RUN rm -rf node_modules && npm install --omit=dev
 
 ENV PORT=18794
+# 与 hermes/codex 同一纪律：容器里必须绑 0.0.0.0，否则宿主端口映射打不到。
+ENV BIND_HOST=0.0.0.0
 
 EXPOSE 18794
 

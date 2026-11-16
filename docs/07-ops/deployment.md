@@ -86,20 +86,35 @@ docker compose down           # 停止
 docker compose logs           # 日志
 ```
 
-两个必须知道的点（2026-11-16 实测，缺一条就是「起了但用不了」）：
+三个必须知道的点（2026-11-16 / 17 真起容器实测，缺一条就是「起了但用不了」）：
 
-- **`BIND_HOST=0.0.0.0` 已写进 compose**。面板自身默认只绑回环（`server.js` 的 `BIND_HOST` 缺省 `127.0.0.1`），
-  容器里绑回环的话宿主端口映射打不到，表现为「容器 Up、浏览器连不上」。
-- **宿主侧可达范围由 `PANEL_BIND` 控制**，缺省 `127.0.0.1`（只有本机能访问）。真要对外提供访问再设 `PANEL_BIND=0.0.0.0`，
-  并确认前面有防火墙/反向代理。
+- **容器内必须绑 `0.0.0.0`，已写进各镜像**。四个服务自身默认都只绑回环（manager `BIND_HOST`、
+  cursor/hermes `BIND_HOST`、codex `PROXY_BIND_HOST`，缺省 `127.0.0.1`），容器里绑回环的话宿主端口映射
+  打不到，表现就是「容器 Up、浏览器连不上」。三个代理的 `ENV` 已分别写进 `Dockerfile.{codex,cursor,hermes}`，
+  不需要在 compose 里重复设。
+- **宿主侧可达范围**：面板由 `PANEL_BIND` 控制、三个代理由 `PROXY_BIND` 控制，**缺省都是 `127.0.0.1`**
+  （只有本机能访问）。真要对外再设 `0.0.0.0`，并确认前面有防火墙/反向代理。
 - 非回环 + 未配鉴权时服务端 **fail-closed 拒绝启动**（见 `server.js` 的 `shouldFailClosedBind`），
-  所以密码不是可选项；要显式免鉴权才设 `MP_BIND_AUTH_BYPASS=1`（自担风险）。
+  所以密码不是可选项；要显式免鉴权才设 `MP_BIND_AUTH_BYPASS=1`（自担风险）。代理侧的 `/admin-api`
+  同理，跨机暴露前先设 `PROXY_AUTH_TOKEN`。
 
-改过 Dockerfile 之后请跑一次启动冒烟——**构建成功不代表跑得起来**：
+改过 Dockerfile 之后请跑两个检查，**构建成功不代表跑得起来**：
 
 ```bash
-BUILD=1 bash scripts/verify-docker-image.sh      # 构建 + 起容器 + 等 /api/health 200
+node scripts/check-docker-runtime-closure.js    # 静态：require 出去的每个文件，镜像里那个路径上有没有
+BUILD=1 bash scripts/verify-docker-image.sh     # 动态：构建 + 起容器 + 等 /api/health 200
 ```
+
+为什么两条都要：静态那条只能判「路径对不对」，判不出「进程起来之后会不会崩」；动态那条要几分钟，
+不适合每次改都跑。2026-11-17 一天之内被同一类问题咬了三次——`Dockerfile.manager` 漏 `l2/`+`packs/`
+且 manager 目录落成 `/app/manager`（应是 `/app/multi-proxy-manager`）、`Dockerfile.codex` 漏 `l2/`、
+补完 `l2/` 又炸在 `tools/token-policy-bridge.js`。三次**构建全绿**，容器起来立刻 `MODULE_NOT_FOUND`。
+
+四容器联起已实测（2026-11-17，Docker 29.5.3 / macOS）：`docker compose up -d` 后四个容器全部 `Up`，
+`codex:18790`、`hermes:18793`、`cursor:18794`、`manager:18792` 的 `/health` 与 `/api/health` 全 200，
+manager 日志 `Managed proxies: codex, hermes, cursor`。测法：把宿主端口用 override 文件改到 `2889x`
+（本机 1879x 被开发实例占着），`docker compose -p <独立项目名> -f docker-compose.yml -f <override> up -d`。
+
 
 Manager 容器挂载 `/var/run/docker.sock` 控制其他容器；`IS_DOCKER = fs.existsSync('/.dockerenv')` 自动识别 Docker 环境，进程检测切 `docker container inspect`，API 转发用服务名替代 `127.0.0.1`。
 

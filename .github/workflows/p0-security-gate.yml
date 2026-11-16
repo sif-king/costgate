@@ -182,6 +182,12 @@ jobs:
       # 且被 .dockerignore 里的 `dist` 排除 —— 从干净 clone 构建必然失败。
       - name: docker build context (COPY sources reachable?)
         run: node scripts/check-docker-context.js
+      # 运行时闭包（2026-11-17 加）：上一条守「COPY 的源在不在」，这条守另一端
+      # 「代码 require 出去的文件，在镜像里的**那个路径**上有没有」。三次实案都是
+      # 构建全绿、容器起来立刻 MODULE_NOT_FOUND（manager 漏 l2/packs + 目录名错位、
+      # codex 漏 l2 又漏 tools/packs），本地一点症状都没有。
+      - name: docker runtime closure (required files land where node looks?)
+        run: node scripts/check-docker-runtime-closure.js
       - name: shell script gate (check.sh + bats)
         run: |
           bash tests/shell/check.sh
@@ -190,6 +196,7 @@ jobs:
             bats tests/shell/manage.sh.test.bats
             bats tests/shell/prod-deps.test.bats
             bats tests/shell/readme.test.bats
+            bats tests/shell/docker-runtime-closure.test.bats
           else
             echo "bats unavailable; check.sh already validated above"
           fi

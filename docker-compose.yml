@@ -4,8 +4,10 @@ services:
       context: .
       dockerfile: Dockerfile.codex
     container_name: multi-proxy-codex
+    # 宿主侧缺省只对本机开放（PROXY_BIND=0.0.0.0 才对外）；/admin-api 默认无鉴权，
+    # 不要在不设 PROXY_AUTH_TOKEN 的情况下摊到局域网。
     ports:
-      - "18790:18790"
+      - "${PROXY_BIND:-127.0.0.1}:18790:18790"
     env_file:
       - path: codex-proxy/.env
         required: false
@@ -22,7 +24,7 @@ services:
       dockerfile: Dockerfile.hermes
     container_name: multi-proxy-hermes
     ports:
-      - "18793:18793"
+      - "${PROXY_BIND:-127.0.0.1}:18793:18793"
     env_file:
       - path: hermes-proxy/.env
         required: false
@@ -39,7 +41,7 @@ services:
       dockerfile: Dockerfile.cursor
     container_name: multi-proxy-cursor
     ports:
-      - "18794:18794"
+      - "${PROXY_BIND:-127.0.0.1}:18794:18794"
     env_file:
       - path: cursor-proxy/.env
         required: false

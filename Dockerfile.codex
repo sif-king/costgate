@@ -9,7 +9,19 @@ RUN npm install --production
 
 COPY codex-proxy/ .
 
+# proxy.js 有 3 处 require 越出 codex-proxy/：../l2/circuit-breaker.js、../l2/responses-translate.js、
+# ../tools/token-policy-bridge.js；而后者又拉进 l2/context-fold、l2/token-policy 和 packs/curator/policies/*。
+# /app/proxy.js 的上一级是 /，所以这三块必须落在 /l2 /packs /tools（传递闭包共 16 个文件）。
+# 不放 /app/l2：compose 把 codex-proxy-data 卷挂在 /app 上，新卷只在**首次创建**时用镜像内容播种，
+# 之后镜像里改了也不会同步进卷（老代码一直跑）。放 / 不受该卷影响。这三块只用 Node 内置模块，
+# express/dotenv 只有 codex-proxy/ 自己用（在 /app 里，能正常解析到 node_modules）。
+COPY l2/ /l2/
+COPY packs/ /packs/
+COPY tools/ /tools/
+
 ENV PORT=18790
+# 与 hermes/cursor 同一纪律：容器里必须绑 0.0.0.0，否则宿主端口映射打不到（本机默认 127.0.0.1）。
+ENV PROXY_BIND_HOST=0.0.0.0
 
 EXPOSE 18790
 

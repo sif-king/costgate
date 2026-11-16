@@ -10,6 +10,28 @@ This file is part of the costgate project.
 各子包 `package.json` 里的 version 是模块自身版本，与产品版本独立。本文件记录“现在能用什么、已知限制”，
 而非逐 commit 的开发流水。
 
+## [未发布]
+
+### 修复（Docker 路径 + 进程退出，2026-11-17 真机实测）
+
+- **`docker compose up -d` 现在四个容器真能起来并响应**。此前有三种“构建全绿、容器起来就废”的形态：
+  - `Dockerfile.manager` 漏 `COPY l2/ packs/`，且 manager 目录落成 `/app/manager`（应为 `/app/multi-proxy-manager`），
+    容器起来立刻 `MODULE_NOT_FOUND`；
+  - `Dockerfile.codex` 漏 `l2/`（`require('../l2/circuit-breaker.js')`），补完 `l2/` 又炸在
+    `require('../tools/token-policy-bridge.js')` → 连带 `packs/curator/policies/*`；
+  - `cursor-proxy` 镜像里没绑 `0.0.0.0`，容器 `Up` 但宿主端口连不上（codex 同理，它的变量叫 `PROXY_BIND_HOST`）。
+- **`kill -TERM` 不再假停**：`server.js` 的 SIGTERM handler 只停文件观测、不 `process.exit()`，
+  Node 注册信号监听器后就不再自动退出 ⇒ 进程留在原地、端口继续占着，`launchd` / `docker stop`
+  最后只能升级成 SIGKILL。现在统一在入口注册并 `exit(0)`，观测关掉时同样能干净退出。
+- `docker-compose.yml`：四个 `env_file` 改 `required: false`（干净 clone 里没有那几个 `.env` 也能起）；
+  三个代理的宿主侧端口缺省只绑 `127.0.0.1`（`PROXY_BIND=0.0.0.0` 才对外）。
+
+### 新增守卫
+- `scripts/check-docker-runtime-closure.js`（+ `tests/shell/docker-runtime-closure.test.bats`，已进 CI）：
+  从每个 Dockerfile 的 CMD 入口求 require 闭包，按 COPY 规则把文件映射成镜像路径，**逐条边**比对。
+  漏 COPY 会报“没有被任何 COPY 覆盖”，目录名错位会报“按相对路径它要找 X，实际在 Y”。
+  与 `check-docker-context.js` 互补：那条守“源在不在”，这条守“落点对不对”。
+
 ## [1.0.0] · 2026-11-16
 
 ### 可交付（已实测）
