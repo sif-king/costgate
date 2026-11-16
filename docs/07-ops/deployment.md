@@ -75,11 +75,30 @@ macOS pip：`pip3 install -r requirements.txt` **不加 `--break-system-packages
 ### 2.3 Docker 模式
 
 docker-compose.yml 定义 4 服务（codex-proxy/hermes-proxy/cursor-proxy/manager），命名：`multi-proxy-{code}`，bridge 网络。
+四个 `env_file` 都是 `required: false`——**干净 clone 里没建那几个 `.env` 也能直接起**，API key 从第三节的环境变量或面板里配。
+（2026-11-16 修：此前写死必需，干净 clone 下 `docker compose up -d` 会报 env file 缺失直接失败。）
 
 ```bash
+# 面板挂载了 docker.sock（等同宿主 root），所以必须设密码；未设会在 compose 阶段直接报错退出
+echo 'MANAGER_PASSWORD=换成你自己的密码' > .env      # 与 docker-compose.yml 同目录
 docker compose up -d          # 启动
 docker compose down           # 停止
 docker compose logs           # 日志
+```
+
+两个必须知道的点（2026-11-16 实测，缺一条就是「起了但用不了」）：
+
+- **`BIND_HOST=0.0.0.0` 已写进 compose**。面板自身默认只绑回环（`server.js` 的 `BIND_HOST` 缺省 `127.0.0.1`），
+  容器里绑回环的话宿主端口映射打不到，表现为「容器 Up、浏览器连不上」。
+- **宿主侧可达范围由 `PANEL_BIND` 控制**，缺省 `127.0.0.1`（只有本机能访问）。真要对外提供访问再设 `PANEL_BIND=0.0.0.0`，
+  并确认前面有防火墙/反向代理。
+- 非回环 + 未配鉴权时服务端 **fail-closed 拒绝启动**（见 `server.js` 的 `shouldFailClosedBind`），
+  所以密码不是可选项；要显式免鉴权才设 `MP_BIND_AUTH_BYPASS=1`（自担风险）。
+
+改过 Dockerfile 之后请跑一次启动冒烟——**构建成功不代表跑得起来**：
+
+```bash
+BUILD=1 bash scripts/verify-docker-image.sh      # 构建 + 起容器 + 等 /api/health 200
 ```
 
 Manager 容器挂载 `/var/run/docker.sock` 控制其他容器；`IS_DOCKER = fs.existsSync('/.dockerenv')` 自动识别 Docker 环境，进程检测切 `docker container inspect`，API 转发用服务名替代 `127.0.0.1`。

@@ -7,7 +7,8 @@ services:
     ports:
       - "18790:18790"
     env_file:
-      - codex-proxy/.env
+      - path: codex-proxy/.env
+        required: false
     volumes:
       - codex-data:/root/.codex
       - codex-proxy-data:/app
@@ -23,7 +24,8 @@ services:
     ports:
       - "18793:18793"
     env_file:
-      - hermes-proxy/.env
+      - path: hermes-proxy/.env
+        required: false
     volumes:
       - hermes-data:/root/.hermes
       - hermes-proxy-data:/app
@@ -39,7 +41,8 @@ services:
     ports:
       - "18794:18794"
     env_file:
-      - cursor-proxy/.env
+      - path: cursor-proxy/.env
+        required: false
     volumes:
       - cursor-data:/app/data
     restart: unless-stopped
@@ -51,10 +54,19 @@ services:
       context: .
       dockerfile: Dockerfile.manager
     container_name: multi-proxy-manager
+    # 🔴 面板默认只绑回环（server.js 的 BIND_HOST 缺省 127.0.0.1），容器里绑 127.0.0.1
+    #    等于宿主端口映射打不到 —— 2026-11-16 实测：`docker compose up -d` 后访问 18792 连不上。
+    #    容器内必须绑 0.0.0.0；而 0.0.0.0 会触发 fail-closed（非回环 + 无鉴权 ⇒ 拒绝启动），
+    #    所以 MANAGER_PASSWORD 是必需项：这个面板挂载了 docker.sock，等同宿主 root，不能免鉴权。
+    #    PANEL_BIND 控制「宿主侧」可达范围，缺省只对本机开放，部署到服务器时显式设 0.0.0.0。
+    environment:
+      BIND_HOST: "0.0.0.0"
+      MANAGER_PASSWORD: ${MANAGER_PASSWORD:?docker 模式必须设 MANAGER_PASSWORD（面板挂载 docker.sock，等同 root）}
     ports:
-      - "18792:18792"
+      - "${PANEL_BIND:-127.0.0.1}:18792:18792"
     env_file:
-      - multi-proxy-manager/.env
+      - path: multi-proxy-manager/.env
+        required: false
     volumes:
       - manager-state:/root/.multi-proxy-manager
       - /var/run/docker.sock:/var/run/docker.sock

@@ -104,7 +104,7 @@ cd codex-proxy && npx jest --silent --forceExit                  # 62/62 (6 suit
 cd cursor-proxy && NODE_OPTIONS=--experimental-vm-modules npx jest --forceExit   # 219/219 (17 suites · ESM)
 
 # hermes-proxy(Python)
-cd hermes-proxy && /usr/bin/python3 -m pytest tests/ -q          # 77/77 (4 files)
+cd hermes-proxy && /usr/bin/python3 -m pytest tests/ -q          # 80/80 (4 files)
 
 # L2 内核 demo(13 demo,~182 checks)
 cd .. && for f in l2/*.demo.js; do node "$f"; done

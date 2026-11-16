@@ -49,10 +49,10 @@ RUN apk add --no-cache lsof docker-cli
 WORKDIR /app
 
 # Manager 自身
-COPY multi-proxy-manager/package.json multi-proxy-manager/package-lock.json* ./manager/
-RUN cd manager && npm install --production
+COPY multi-proxy-manager/package.json multi-proxy-manager/package-lock.json* ./multi-proxy-manager/
+RUN cd multi-proxy-manager && npm install --production
 
-COPY multi-proxy-manager/ ./manager/
+COPY multi-proxy-manager/ ./multi-proxy-manager/
 
 # P0-1 补充：buildProxyConfigs 用 path.join(__dirname,'..') 找各代理目录，
 # 容器内必须是 /app/{codex-proxy,hermes-proxy,cursor-proxy}
@@ -62,6 +62,14 @@ COPY --from=codex-builder /build/node_modules ./codex-proxy/node_modules
 
 COPY hermes-proxy/ ./hermes-proxy/
 
+# 🔴 l2/ 与 packs/ 是 manager 的运行时常驻依赖，不是可选件：
+#   server.js 第 14 行 require('../l2/fs-observer.js')，lib/forward.js require ../../packs/sandbox-egress。
+#   2026-11-16 实测：漏了这两条，镜像能构建成功但容器起来立刻 MODULE_NOT_FOUND 退出——
+#   「构建绿」不等于「跑得起来」，所以下面必须有真起容器的冒烟（scripts/verify-docker-image.sh）。
+#   两者只依赖 express（已在 manager 的 node_modules 里），不需要额外装包。
+COPY l2/ ./l2/
+COPY packs/ ./packs/
+
 COPY cursor-proxy/package.json ./cursor-proxy/
 COPY --from=cursor-builder /build/dist ./cursor-proxy/dist
 COPY --from=cursor-builder /build/node_modules ./cursor-proxy/node_modules
@@ -70,4 +78,4 @@ ENV PORT=18792
 
 EXPOSE 18792
 
-CMD ["node", "manager/server.js"]
+CMD ["node", "multi-proxy-manager/server.js"]

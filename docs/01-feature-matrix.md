@@ -8,6 +8,7 @@ This file is part of the costgate project.
 
 > 本表所有数字必须来自真实运行，不可从文档摘录。
 > 最后验证：**2026-10-23 全真跑**（manager **1615 pass / 0 fail / 106 suites** + codex 159/14 + claude 174/15 + opencode 159/14 + generic 159/14 + cursor 250/21 + hermes 77/4 + L2 51 demo + shell 11），main = `fd109c5`。上一版：2026-10-14（manager 1458 pass / 94 suites），已作废。
+> 2026-11-16 局部复核：hermes-proxy `/usr/bin/python3 -m pytest -q` → **80 passed / 4 files**（本行单独重跑，其余行仍为 10-23 快照）。
 > 10-14~15 变更：claude / opencode / generic-openai / dsh 四代理密集接入并全绿；cursor 绑定收口回环 + dotenv bug 修复；hermes config.yaml 自动生成；relay-ledger P2 观测闭环；`docs/00-codebase-map.md` 同步重写。10-08 历史快照见 §测试总计。
 
 ---
