@@ -6,11 +6,11 @@ This file is part of the costgate project.
 
 # CHANGELOG
 
-本项目尚未打正式版本 tag。当前 `main` 是可交付状态，本文件记录“现在能用什么、已知限制”，
-而非逐 commit 的开发流水。打首个 tag 是发布动作，需维护者拍板；版本号以 `multi-proxy-manager/package.json`
-为真源（当前 `1.0.0`），tag 命名待维护者定。
+首个版本 `v1.0.0`，2026-11-16。版本号以 `multi-proxy-manager/package.json` 为真源；
+各子包 `package.json` 里的 version 是模块自身版本，与产品版本独立。本文件记录“现在能用什么、已知限制”，
+而非逐 commit 的开发流水。
 
-## [Unreleased] · 当前 main（截至 2026-11-16）
+## [1.0.0] · 2026-11-16
 
 ### 可交付（已实测）
 - 零 key 一条命令冷启：`git clone … && bash scripts/quickstart.sh`，看到第一笔真实账单。
@@ -53,6 +53,7 @@ This file is part of the costgate project.
 | `npx jest --forceExit -w 4` | **123 套件 / 1838 用例全绿**（11-15 真跑，长时；其后仅文档改动） |
 | `npx playwright test --grep @tier0` | **58/58**（11-15 真跑） |
 | `gh run list`（`main` @ `1d447de`） | `P0 Security Gate` + `E2E Tier0` 双 **success** |
+| `bash scripts/quickstart.sh`（`git archive` 干净导出 + 零配置 HOME，无 `node_modules`） | 第一笔真实账单：入 18 / 出 68 = **86 tokens**，¥0，6569ms；全程 **26s**（依赖 9s / 探测上游+起服务+请求 17s），退出码 **0** |
 
 > CI 历史里能看到 `cancelled` / `failed`：那是 PR 迭代中的红→绿循环（含 GitHub runner 网络抖动触发的自动重试），
 > 非当前 main 状态，当前 HEAD 双门全绿。`MANAGER_PASSWORD` 已由 `jest.setup.js` 回退本地占位，跑测试无需手动设密码。
@@ -70,7 +71,9 @@ This file is part of the costgate project.
 - **`manage.sh stop` 对 manager 可能是假停**：`server.js` 的 `SIGTERM` handler 只停文件观测、不退出进程，
   Node 注册 handler 后不再自动结束 ⇒ `kill -TERM` 被吞（2026-11-15 重启时实测）。当前靠桌面 App 的 watchdog
   拉起；根治需在 handler 里补 `process.exit()`，该文件属并行会话资产，未改。
-- **判据 I / IV 的"外部真人复跑"尚未完成**：I 的真机冷启本沙箱跑不出完整端到端（npm 冷缓存 confound），
-  IV 首次 11-10 达成但用的是旧地址 + 修复前代码，改名后复验材料见 `PROJECT-STATE/2026-11-11.md` §7.1。
-  这两条的执行者必须是外部真人，agent 不能代跑。
+- **跨平台与外部复验的口径**：判据 I 的冷启链路已在 macOS 本机真跑（干净导出 + 零配置 HOME，
+  见上方实测记录），Windows 原生环境仍未验；那次 npm 依赖有缓存（9s），不能当冷装基准。
+  判据 IV 首次 11-10 由第三方在 Windows 达成，用的是改名前的地址与 `621c6e5` 之前的代码，
+  改名后的复验材料备在 `PROJECT-STATE/2026-11-11.md` §7.1，尚未由外部真人重跑。
+  对外口径只到“macOS 干净环境已验证”，不说成“第三方已复验”。
 - **单机单用户**：多租户 / SSO / 企业分账不在本仓库（见 `LICENSE-COMMERCIAL.md`）。
