@@ -3,13 +3,23 @@
 # This file is part of the costgate project.
 #
 # GitHub Pages 落地页部署（site/index.html）。
-# 🔴 刻意只挂 workflow_dispatch：Pages 尚未在仓库 Settings 启用时，自动触发会让每次 push 都红一条 CI。
-#    等老板在 Settings → Pages → Build and deployment → Source 选 "GitHub Actions" 之后，
-#    再手动跑一次本 workflow 即可。要改成自动，把下面 on: 加 push/branches: [main] 即可。
-name: Pages (manual)
+#
+# 2026-11-16 改：从「只手动」变成「site/ 变更即部署」，手动通道保留。
+#   原来只挂 workflow_dispatch，理由是当时 Settings 里还没启用 Pages，自动触发会让每次 push 都红一条。
+#   现在 Pages 已启用（build_type=workflow，线上实测 200），手动模式的后遗症出来了：
+#   site/index.html 已改成「已有 v1.0.0」，线上却还写着「还没发正式版本号」——
+#   公开站点与 tag 自相矛盾，而这类脱节没有任何本地症状，只能靠人记得手动点一下。
+#   paths 过滤保证只有 site/ 或本文件变化时才跑，不影响其他 push 的两个门（P0 / E2E Tier0）。
+#   若某次 Pages 部署本身失败，只会红这一条，不会连累其他检查。
+name: Pages
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
 
 permissions:
   contents: read
